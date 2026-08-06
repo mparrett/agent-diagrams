@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Render at device width (not the ~980px default) and allow pinch-zoom so dense diagrams stay readable on phones. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diagram Tool</title>
+<style>
+/* DiagramMono / DiagramSans must match the PNG renderer's loadFont
+   registrations so layout measurement stays WYSIWYG. */
+@font-face {
+  font-family: 'DiagramMono';
+  src: url('assets/fonts/DejaVuSansMono.ttf') format('truetype');
+  font-weight: normal;
+}
+@font-face {
+  font-family: 'DiagramMono';
+  src: url('assets/fonts/DejaVuSansMono-Bold.ttf') format('truetype');
+  font-weight: bold;
+}
+@font-face {
+  font-family: 'DiagramSans';
+  src: url('assets/fonts/InstrumentSans-Regular.ttf') format('truetype');
+  font-weight: normal;
+}
+@font-face {
+  font-family: 'DiagramSans';
+  src: url('assets/fonts/InstrumentSans-SemiBold.ttf') format('truetype');
+  font-weight: bold;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  margin: 0; height: 100vh; box-sizing: border-box;
+  display: flex; flex-direction: row;
+}
+h1 { color: #58a6ff; font-size: 14px; letter-spacing: .3px; margin: 0; }
+.sub { color: #6e7681; font-size: 11px; line-height: 1.4; margin: 4px 0 0; }
+.sub a { color: #58a6ff; text-decoration: none; }
+.sub a:hover { text-decoration: underline; }
+
+/* ---- App shell: left sidebar + main canvas area ---- */
+.sidebar {
+  width: 230px; flex-shrink: 0; height: 100vh; box-sizing: border-box;
+  background: #0b0e13; border-right: 1px solid #21262d;
+  padding: 16px 14px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 13px;
+}
+.brand { border-bottom: 1px solid #21262d; padding-bottom: 11px; }
+.brand-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nav-collapse-btn {
+  width: 22px; height: 22px; padding: 0; border-radius: 5px;
+  font-size: 14px; line-height: 1; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Sidebar dock: collapse the controls so the canvas gets the full width (esp.
+   on phones). The expand affordance floats over the stage when collapsed. */
+body.nav-collapsed .sidebar { display: none; }
+#navExpand {
+  position: absolute; top: 10px; left: 10px; z-index: 6; box-sizing: border-box;
+  width: 34px; height: 34px; padding: 0; display: none;
+  align-items: center; justify-content: center; font-size: 16px; line-height: 1;
+  background: #0b0e13cc; border: 1px solid #30363d; border-radius: 6px;
+}
+body.nav-collapsed #navExpand { display: flex; }
+.sub[hidden] { display: none; }
+.group { display: flex; flex-direction: column; gap: 6px; }
+.group-label {
+  color: #6e7681; font-size: 10px; font-weight: 600;
+  letter-spacing: .6px; text-transform: uppercase; margin-bottom: 1px;
+}
+.main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: column; padding: 14px 14px 14px 10px; box-sizing: border-box; }
+
+button {
+  background: #161b22; color: #8b949e;
+  border: 1px solid #30363d; padding: 6px 12px;
+  cursor: pointer; border-radius: 6px; font-size: 12px;
+  font-family: inherit; transition: all .15s;
+}
+button:hover { background: #21262d; color: #c9d1d9; border-color: #6e7681; }
+button.on { background: #1f6feb22; color: #58a6ff; border-color: #1f6feb; }
+/* Sidebar controls stretch full width and read left-aligned like a menu. */
+.sidebar .group > button { width: 100%; text-align: left; }
+
+/* Multi-control rows: equal-width buttons sharing a line, optional leading label. */
+.btn-row { display: flex; gap: 6px; align-items: stretch; }
+.btn-row button { flex: 1; text-align: center; padding: 6px 4px; }
+.btn-row .row-label {
+  flex: 0 0 auto; align-self: center; color: #8b949e; font-size: 11px;
+  padding-right: 2px;
+}
+/* Segmented radio (Drag | Connect): one piece active at a time. */
+.segmented { display: flex; gap: 0; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+.segmented button { flex: 1; border: none; border-radius: 0; text-align: center; }
+.segmented button + button { border-left: 1px solid #30363d; }
+.segmented button.on { background: #1f6feb33; }
+select {
+  background: #161b22; color: #8b949e;
+  border: 1px solid #30363d; padding: 6px 10px;
+  cursor: pointer; border-radius: 6px; font-size: 12px;
+  font-family: inherit; width: 100%;
+}
+select:hover { border-color: #6e7681; color: #c9d1d9; }
+
+/* Stage fills the main area; the canvas fills the stage and the board is drawn
+   into it through a pan/zoom view transform (no longer fit-to-window). */
+.stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+canvas { display: block; cursor: default; touch-action: none; /* the app owns touch gestures (drag/pan); no native scroll/zoom steal */
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } /* no iOS selection callout on long-press */
+/* View HUD: zoom controls + board/content size readout, pinned top-right
+   (clear of the top-left expand button and the sidebar). */
+#viewHud { position: absolute; right: 10px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 6px;
+  font: 11px ui-monospace, monospace; color: #8b949e; background: #0b0e13cc; border: 1px solid #30363d;
+  border-radius: 6px; padding: 3px 6px; user-select: none; }
+#viewHud button { font: 14px ui-monospace, monospace; color: #c9d1d9; background: #161b22; border: 1px solid #30363d;
+  border-radius: 4px; width: 22px; height: 22px; line-height: 1; cursor: pointer; padding: 0; }
+#viewHud button:hover { background: #21262d; }
+#viewHud #zoomFit { width: auto; padding: 0 8px; font-size: 11px; }
+#viewHud #zoomPct { min-width: 40px; text-align: center; cursor: pointer; }
+#viewHud #sizeReadout { margin-left: 4px; color: #6e7681; }
+/* Sidebar foot: legend + live status, pinned to the bottom. */
+.sidebar-foot { margin-top: auto; border-top: 1px solid #21262d; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.legend { color: #6e7681; font-size: 10px; display: flex; flex-direction: column; gap: 5px; }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.sep { color: #30363d; }
+
+/* Routing-params: collapsible section inside the sidebar */
+#tuningDock.collapsed #tuningPanel { display: none; }
+#tuningDock.collapsed #tuningToggle::after { content: '▸'; }
+#tuningToggle::after { content: '▾'; float: right; color: #6e7681; }
+.panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 4px 2px 2px;
+}
+.panel-title { display: none; }
+.param { display: flex; flex-direction: column; gap: 3px; }
+.param label {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11px; color: #8b949e;
+}
+.param label .val {
+  color: #c9d1d9; font-weight: 600;
+  min-width: 28px; text-align: right;
+}
+.param input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px;
+  background: #30363d; border-radius: 2px; outline: none;
+}
+.param input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #58a6ff; border: 2px solid #0d1117;
+  cursor: pointer; transition: background .15s;
+}
+.param input[type=range]::-webkit-slider-thumb:hover { background: #79c0ff; }
+.param input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #58a6ff; border: 2px solid #0d1117; cursor: pointer;
+}
+.param input[type=range]::-moz-range-track {
+  height: 4px; background: #30363d; border-radius: 2px;
+}
+.param .label-row { display: flex; align-items: center; gap: 5px; }
+.param .label-row .name { font-size: 11px; color: #8b949e; }
+.info-btn {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: transparent; border: 1px solid #30363d;
+  color: #6e7681; font-size: 9px; font-weight: 700;
+  font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; line-height: 1; flex-shrink: 0; transition: all .15s;
+}
+.info-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+.info-btn.open { background: #1f6feb22; border-color: #1f6feb; color: #58a6ff; }
+.param-desc {
+  display: none; font-size: 10px; color: #6e7681; line-height: 1.45; padding: 4px 0 2px;
+}
+.param-desc.show { display: block; }
+
+#status {
+  color: #6e7681; font-size: 10px; min-height: 14px; line-height: 1.4;
+}
+#tuningToggle { font-size: 11px; color: #8b949e; }
+
+/* Node editor popover */
+.node-editor {
+  position: fixed; z-index: 60; width: 260px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  box-shadow: 0 8px 32px #000000aa; padding: 12px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.node-editor .ne-field { display: flex; flex-direction: column; gap: 4px; }
+.node-editor label { color: #8b949e; font-size: 11px; }
+.node-editor .ne-hint { color: #6e7681; }
+.node-editor input, .node-editor textarea, .node-editor select {
+  background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 5px; padding: 5px 7px; font: inherit; font-size: 12px; width: 100%;
+}
+.node-editor textarea { resize: vertical; }
+.node-editor .ne-actions { display: flex; align-items: center; gap: 6px; }
+.node-editor button.ne-primary { background: #1f6feb22; color: #58a6ff; border-color: #1f6feb; }
+.node-editor button.ne-danger { background: #da363322; color: #f85149; border-color: #da3633; }
+
+/* Confirm modal — centered, backdropped (used for the destructive Shift+Backspace). */
+.confirm-modal {
+  position: fixed; inset: 0; z-index: 80; display: none;
+  align-items: center; justify-content: center; background: #00000088;
+}
+.confirm-modal .cm-box {
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  box-shadow: 0 8px 32px #000000aa; padding: 16px; width: 340px;
+  font-size: 12px; display: flex; flex-direction: column; gap: 14px;
+}
+.confirm-modal .cm-msg { color: #c9d1d9; line-height: 1.45; }
+.confirm-modal .cm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.confirm-modal .cm-actions button {
+  background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+  border-radius: 5px; padding: 6px 12px; font: inherit; font-size: 12px;
+}
+.confirm-modal .cm-actions button.ne-danger { background: #da363322; color: #f85149; border-color: #da3633; }
+
+/* Right-click context menu — shares the node-editor popover vocabulary. */
+.ctx-menu {
+  position: fixed; z-index: 70; min-width: 160px;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  box-shadow: 0 8px 32px #000000aa; padding: 4px; font-size: 12px;
+  display: none; flex-direction: column; gap: 1px;
+  overflow-y: auto;  /* scroll instead of running off-screen when capped */
+}
+.ctx-menu > button {
+  width: 100%; text-align: left; background: transparent; border: none;
+  border-radius: 5px; padding: 6px 10px; color: #c9d1d9; font-size: 12px;
+}
+.ctx-menu > button:hover:not(:disabled) { background: #21262d; }
+.ctx-menu > button.danger { color: #f85149; }
+.ctx-menu > button:disabled { color: #6e7681; cursor: default; }
+.ctx-menu .ctx-sep { height: 1px; background: #30363d; margin: 4px 2px; }
+/* Color-swatch row (non-closing): dots, current one ringed. */
+.ctx-menu .ctx-swatches { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px; max-width: 180px; }
+.ctx-menu .ctx-swatch {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; flex: 0 0 auto;
+}
+.ctx-menu .ctx-swatch:hover { border-color: #6e7681; }
+.ctx-menu .ctx-swatch.current { border-color: #c9d1d9; }
+
+/* ---- Live-editor controls: chip groups, color picker, stepper ---- */
+/* One-of chip group (thickness, line, label-side). One .on at a time. */
+.chip-group { display: flex; gap: 4px; }
+.chip-group.wrap { flex-wrap: wrap; }
+.chip {
+  flex: 1 1 auto; padding: 5px 6px; font-size: 11px; line-height: 1;
+  background: #161b22; color: #8b949e; border: 1px solid #30363d;
+  border-radius: 5px; cursor: pointer; font-family: inherit; text-align: center;
+  white-space: nowrap;
+}
+.chip:hover { background: #21262d; color: #c9d1d9; border-color: #6e7681; }
+.chip.on { background: #1f6feb22; color: #58a6ff; border-color: #1f6feb; }
+/* Color picker: a labeled semantic-chip row above a named-color dot row. */
+.color-picker { display: flex; flex-direction: column; gap: 6px; }
+.color-picker .ctx-swatches { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; max-width: none; }
+.color-picker .ctx-swatch {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; flex: 0 0 auto;
+}
+.color-picker .ctx-swatch:hover { border-color: #6e7681; }
+.color-picker .ctx-swatch.current { border-color: #c9d1d9; }
+/* Label input with an inline clear (×) button. */
+.input-x { position: relative; display: flex; }
+.input-x input { flex: 1; padding-right: 24px !important; }
+.input-x .x-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; padding: 0; border-radius: 4px; line-height: 1;
+  background: transparent; border: none; color: #6e7681; font-size: 14px;
+}
+.input-x .x-btn:hover { color: #c9d1d9; background: #30363d; }
+/* − value + stepper for the label offset. */
+.stepper { display: flex; align-items: stretch; gap: 0; flex: 0 0 auto; }
+.stepper button {
+  width: 26px; padding: 0; border-radius: 0; background: #161b22; color: #8b949e;
+  border: 1px solid #30363d; font-size: 14px; line-height: 1;
+}
+.stepper button:first-child { border-radius: 5px 0 0 5px; }
+.stepper button:last-child { border-radius: 0 5px 5px 0; border-left: none; }
+.stepper .stepper-val {
+  min-width: 40px; padding: 5px 6px; text-align: center; font-size: 11px;
+  color: #c9d1d9; background: #0d1117; border-top: 1px solid #30363d; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; justify-content: center;
+}
+.row-2 { display: flex; gap: 6px; align-items: center; }
+.row-2 .chip-group { flex: 1; }
+
+/* ---- Narrow screens (phones / portrait): not a full mobile pass, just enough
+   to be usable. Stack canvas-first above a full-width control strip, give the
+   canvas real width, and grow tap targets toward ~44px. ---- */
+@media (max-width: 720px) {
+  html { -webkit-text-size-adjust: 100%; }      /* stop iOS auto-inflating text */
+  body { flex-direction: column; height: auto; min-height: 100dvh; }
+  .main {                                         /* canvas on top, gets full width */
+    order: 1; height: auto; min-height: 60dvh; width: 100%; padding: 4px;
+  }
+  .stage { min-height: 60dvh; }
+  /* Collapsed = no controls below, so the canvas takes the whole screen. */
+  body.nav-collapsed .main, body.nav-collapsed .stage { min-height: 100dvh; }
+  .sidebar {                                      /* controls below, page scrolls to them */
+    order: 2; width: 100%; height: auto; padding: 10px 12px; gap: 10px;
+    border-right: none; border-top: 1px solid #21262d;
+  }
+  .sidebar-foot { margin-top: 12px; }            /* no longer pinned to a 100vh column */
+  /* Touch-friendly hit areas */
+  button, select { padding: 11px 12px; font-size: 14px; }
+  .btn-row button { padding: 11px 6px; }
+  .chip { padding: 10px 8px; font-size: 13px; }
+  .ctx-menu > button { padding: 12px 12px; }
+  .ctx-menu .ctx-swatch, .color-picker .ctx-swatch { width: 24px; height: 24px; }
+  .stepper button { width: 36px; }
+  .node-editor { width: min(92vw, 320px); }      /* popovers fit a phone screen */
+  .input-x .x-btn { width: 28px; height: 28px; font-size: 16px; }
+}
+
+/* ---- Short viewports (landscape phones, short windows): these stay in the
+   side-by-side desktop layout (width > 720) but height is scarce, so trim the
+   vertical chrome that otherwise eats the canvas. ---- */
+@media (max-height: 560px) {
+  .main { padding: 6px; }
+  .sidebar { padding: 10px 12px; gap: 9px; }
+  .brand { padding-bottom: 8px; }
+}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-head">
+      <h1 id="brand">Diagram Tool</h1>
+      <button id="navCollapse" class="nav-collapse-btn" title="Collapse sidebar">‹</button>
+    </div>
+    <p class="sub" id="diagramTitle" hidden></p>
+  </div>
+
+  <div class="group">
+    <div class="group-label">Board</div>
+    <select id="boardSelect" title="Switch whiteboard"></select>
+  </div>
+
+  <div class="group">
+    <div class="group-label">View</div>
+    <div class="btn-row">
+      <button id="bGrid" title="Toggle the grid overlay">Grid</button>
+      <button id="bHeat" title="Toggle the routing-cost heat map">Heat</button>
+      <button id="bConn" title="Toggle connection points">Conn</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="group-label">Mode</div>
+    <div class="segmented">
+      <button id="bDrag" class="on" title="Drag mode: click and drag nodes to move them">Drag</button>
+      <button id="bConnect" title="Connect mode: reveals connector slots; click a source node, then a target node, to draw an edge">Connect</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="group-label">Nodes &amp; layout</div>
+    <button id="bAddNode" title="Add a new node (then edit it)">+ Node</button>
+    <div class="btn-row">
+      <span class="row-label">Align</span>
+      <button id="bAlignH" title="Nudge nearly-aligned box centers onto the same column">H</button>
+      <button id="bAlignV" title="Nudge nearly-aligned box centers onto the same row">V</button>
+    </div>
+    <div class="btn-row">
+      <span class="row-label">Spread</span>
+      <button id="bContract" title="Pull boxes back together — steps down the expand slider (100→50→0), then compacts toward the center">Contract</button>
+      <button id="bExpand" title="Spread boxes apart with force-directed repulsion — press again to go further (50%, 100%, 150%)">Expand</button>
+    </div>
+    <button id="bAutoLayout" title="Clear all pins and re-run the automatic layout from scratch">Auto Layout</button>
+    <button id="bAutoLayoutKeep" title="Re-run automatic layout on the unpinned nodes only — pinned nodes stay put and the rest re-flow around them">Auto Layout (keep pins)</button>
+  </div>
+
+  <div class="group">
+    <div class="group-label">Canvas</div>
+    <button id="bTrimCanvas" title="Shrink the board/export frame to hug the diagram (slides the diagram to a uniform margin)">Shrink to content</button>
+    <button id="bExpandCanvas" title="Grow the board/export frame to the current visible area (never crops content)">Expand to extents</button>
+  </div>
+
+  <div class="group">
+    <div class="group-label">Theme &amp; export</div>
+    <select id="themeSelect" title="Color scheme"></select>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span style="flex:1;color:#8b949e;font-size:11px">Font size</span>
+      <input id="fontSizeInput" type="number" min="6" max="48" placeholder="13" title="Base font size (px); blank = default 13" style="width:64px">
+      <button id="fontSizeReset" title="Reset to default" style="width:auto;padding:6px 8px">↺</button>
+    </div>
+    <label style="display:flex;gap:6px;align-items:center;color:#8b949e;font-size:11px;cursor:pointer"
+           title="Center connectors on each box side (vs the default: align to keep straight runs)">
+      <input id="centerConnectors" type="checkbox" style="width:auto"> Center connectors
+    </label>
+    <button id="bSave" title="Copy the current layout JSON to the clipboard">Copy to Clipboard</button>
+    <button id="bViewer" title="Open the live PNG viewer in a new tab">PNG Viewer ↗</button>
+  </div>
+
+  <div class="group collapsed" id="tuningDock">
+    <button class="group-toggle" id="tuningToggle" title="A* routing parameters">Routing parameters</button>
+    <div class="panel" id="tuningPanel">
+  <div class="param">
+    <label>
+      <span class="label-row"><span class="name">Base step cost</span><button class="info-btn" data-info="dStep">i</button></span>
+      <span class="val" id="vStep">10</span>
+    </label>
+    <div class="param-desc" id="dStep">Per-cell movement cost. Higher values relative to turn penalty make the router prefer shorter paths even with more bends.</div>
+    <input type="range" id="sStep" min="1" max="50" value="10">
+  </div>
+  <div class="param">
+    <label>
+      <span class="label-row"><span class="name">Turn penalty</span><button class="info-btn" data-info="dTurn">i</button></span>
+      <span class="val" id="vTurn">30</span>
+    </label>
+    <div class="param-desc" id="dTurn">Extra cost each time a route changes direction. At 0 routes zigzag freely. High values force long detours to avoid a single bend.</div>
+    <input type="range" id="sTurn" min="0" max="100" value="30">
+  </div>
+  <div class="param">
+    <label>
+      <span class="label-row"><span class="name">Near-box cost</span><button class="info-btn" data-info="dNear">i</button></span>
+      <span class="val" id="vNear">40</span>
+    </label>
+    <div class="param-desc" id="dNear">Clearance penalty for cells adjacent to a box. At 0, wires hug box edges. Higher values push routes further away from boxes.</div>
+    <input type="range" id="sNear" min="0" max="100" value="40">
+  </div>
+  <div class="param">
+    <label>
+      <span class="label-row"><span class="name">Overlap penalty</span><button class="info-btn" data-info="dOver">i</button></span>
+      <span class="val" id="vOver">20</span>
+    </label>
+    <div class="param-desc" id="dOver">Cost stamped on cells after each route is computed. At 0, wires freely stack on each other. Higher values force subsequent routes to spread apart.</div>
+    <input type="range" id="sOver" min="0" max="100" value="20">
+  </div>
+    </div>
+  </div>
+
+  <div class="sidebar-foot">
+    <div class="legend">
+      <span><span class="dot" style="background:#da363333;border:1px solid #da3633"></span>blocked</span>
+      <span><span class="dot" style="background:#ff980033"></span>near-box (<span id="legNear">+40</span>)</span>
+      <span><span class="dot" style="background:#f0c040;border-radius:50%"></span>conn point</span>
+    </div>
+    <div id="status"></div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="stage"><canvas id="c"></canvas>
+    <button id="navExpand" title="Show controls">☰</button>
+    <div id="viewHud">
+      <button id="zoomOut" title="Zoom out">−</button>
+      <span id="zoomPct" title="Reset to fit">100%</span>
+      <button id="zoomIn" title="Zoom in">+</button>
+      <button id="zoomFit" title="Fit board to view">fit</button>
+      <span id="sizeReadout"></span>
+    </div>
+  </div>
+</main>
+
+<div id="nodeEditor" class="node-editor" style="display:none">
+  <div class="ne-field"><label>Label</label>
+    <div class="input-x"><input id="neLabel" type="text" autocomplete="off"><button id="neLabelClear" class="x-btn" title="Clear label">×</button></div>
+  </div>
+  <div class="ne-field"><label>Color</label><div id="neColor"></div></div>
+  <div class="ne-field"><label>Outline</label>
+    <div class="chip-group" id="neOutlineWidth"></div>
+    <div class="chip-group" id="neOutlineDash"></div>
+  </div>
+  <div class="ne-field"><label>Details <span class="ne-hint">(one per line)</span></label><textarea id="neDetails" rows="3"></textarea></div>
+  <div class="ne-actions">
+    <button id="neReset" title="Revert to how it was when this editor opened">Reset</button>
+    <button id="neDelete" class="ne-danger">Delete</button>
+    <span style="flex:1"></span>
+    <button id="neClose" class="ne-primary">Close</button>
+  </div>
+</div>
+
+<div id="edgeEditor" class="node-editor" style="display:none">
+  <div class="ne-field"><label>Edge <span class="ne-hint" id="eeRoute"></span></label></div>
+  <div class="ne-field"><label>Thickness</label><div class="chip-group" id="eeWidth"></div></div>
+  <div class="ne-field"><label>Line</label><div class="chip-group" id="eeDash"></div></div>
+  <div class="ne-field"><label>Color</label><div id="eeColor"></div></div>
+  <div class="ne-field"><label>Label</label>
+    <div class="input-x"><input id="eeLabel" type="text" autocomplete="off"><button id="eeLabelClear" class="x-btn" title="Clear label">×</button></div>
+  </div>
+  <div class="ne-field"><label>Label side <span class="ne-hint">(offset px)</span></label>
+    <div class="row-2">
+      <div class="chip-group" id="eeLabelSide"></div>
+      <div class="stepper" id="eeLabelOffset"></div>
+    </div>
+  </div>
+  <div class="ne-actions">
+    <button id="eeReset" title="Revert to how it was when this editor opened">Reset</button>
+    <button id="eeDelete" class="ne-danger">Delete</button>
+    <span style="flex:1"></span>
+    <button id="eeClose" class="ne-primary">Close</button>
+  </div>
+</div>
+
+<div id="noteEditor" class="node-editor" style="display:none">
+  <div class="ne-field"><label>Title <span class="ne-hint">(optional)</span></label><input id="noteTitle" type="text" autocomplete="off"></div>
+  <div class="ne-field"><label>Text <span class="ne-hint">(one per line)</span></label><textarea id="noteText" rows="3"></textarea></div>
+  <div class="ne-actions">
+    <button id="noteDelete" class="ne-danger">Delete</button>
+    <span style="flex:1"></span>
+    <button id="noteCancel">Cancel</button>
+    <button id="noteSave" class="ne-primary">Save</button>
+  </div>
+</div>
+
+<div id="ctxMenu" class="ctx-menu"></div>
+
+<div id="confirmModal" class="confirm-modal">
+  <div class="cm-box">
+    <div id="cmMsg" class="cm-msg"></div>
+    <div class="cm-actions">
+      <button id="cmCancel">Cancel</button>
+      <button id="cmOk" class="ne-danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="whiteboard-live.js"></script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>parity: pending</title>
+<style>
+  /* Bundled faces, declared exactly as the editor does so the browser canvas
+     measures the same font files the renderer registers. */
+  @font-face { font-family:'DiagramMono'; src:url('/assets/fonts/DejaVuSansMono.ttf') format('truetype'); font-weight:normal; }
+  @font-face { font-family:'DiagramMono'; src:url('/assets/fonts/DejaVuSansMono-Bold.ttf') format('truetype'); font-weight:bold; }
+  @font-face { font-family:'DiagramSans'; src:url('/assets/fonts/InstrumentSans-Regular.ttf') format('truetype'); font-weight:normal; }
+  @font-face { font-family:'DiagramSans'; src:url('/assets/fonts/InstrumentSans-SemiBold.ttf') format('truetype'); font-weight:bold; }
+  body { font:13px ui-monospace, 'SF Mono', Menlo, monospace; background:#0b0e13; color:#c9d1d9; margin:24px; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .sub { color:#8b949e; margin-bottom:14px; }
+  #summary { font-size:15px; font-weight:bold; padding:10px 14px; border-radius:6px; background:#161b22; border:1px solid #30363d; margin-bottom:16px; }
+  .pass { color:#3fb950; } .fail { color:#f85149; } .warn { color:#d29922; }
+  table { border-collapse:collapse; margin-top:10px; font-size:12px; }
+  th,td { padding:2px 12px; border-bottom:1px solid #21262d; text-align:right; white-space:nowrap; }
+  td.k, th.k { text-align:left; }
+  tr.bad td { background:#2d1416; }
+  caption { text-align:left; color:#8b949e; padding:10px 0 4px; font-size:13px; }
+</style>
+</head>
+<body>
+<h1>editor ↔ renderer measurement parity</h1>
+<div class="sub">Browser canvas vs <code>tests/parity-deno.json</code>. The only cross-engine variable is <code>ctx.measureText</code>; everything downstream is a pure function of it.</div>
+<div id="summary">running…</div>
+<div id="out"></div>
+
+<script type="module">
+import { CELL, fontFamily, fontSizes, measureNodeWidth, computeLayout } from '/diagram-core.js';
+import { probes, STATES } from '/tests/parity-corpus.js';
+
+const $ = (id) => document.getElementById(id);
+
+async function loadBundledFonts() {
+  // measureText silently falls back to a system font until the @font-face files
+  // are actually loaded — load every family/weight before measuring anything.
+  const jobs = [];
+  for (const fam of ['DiagramMono', 'DiagramSans']) {
+    for (const px of [10, 11, 13, 14, 15, 16, 18, 20]) {
+      jobs.push(document.fonts.load(`${px}px ${fam}`));
+      jobs.push(document.fonts.load(`bold ${px}px ${fam}`));
+    }
+  }
+  await Promise.all(jobs);
+  await document.fonts.ready;
+}
+
+function measureHere() {
+  const ctx = document.createElement('canvas').getContext('2d');
+  const probeW = {};
+  for (const p of probes()) {
+    probeW[p.key] = measureNodeWidth(ctx, p.node, fontFamily({ font: p.fontMode }), fontSizes({ fontSize: p.fontSize }));
+  }
+  const states = {};
+  for (const s of STATES) {
+    states[s.name] = computeLayout(ctx, s.state, s.state.width || 1500)
+      .map((b) => ({ id: b.id, col: b.col, row: b.row, w: b.w, h: b.h, pixW: b.pixW }));
+  }
+  return { probeW, states };
+}
+
+function fail(msg) {
+  $('summary').className = 'fail';
+  $('summary').textContent = 'ERROR: ' + msg;
+  window.__PARITY_RESULT__ = { pass: false, error: msg };
+  document.title = 'parity: ERROR';
+}
+
+(async () => {
+  await loadBundledFonts();
+  const mine = measureHere();
+
+  let deno;
+  try {
+    const res = await fetch('/tests/parity-deno.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status + ' — run `deno run --allow-read --allow-write tests/parity_deno.js` first');
+    deno = await res.json();
+  } catch (e) { return fail(e.message); }
+
+  const cell = deno.CELL ?? CELL;
+  let maxDelta = 0;
+  const cellMismatches = [];
+  const probeRows = [];
+  for (const key of Object.keys(deno.probeW)) {
+    const d = deno.probeW[key], b = mine.probeW[key];
+    const delta = Math.abs(d - b);
+    if (delta > maxDelta) maxDelta = delta;
+    const dCells = Math.ceil(d / cell), bCells = Math.ceil(b / cell);
+    const cellOk = dCells === bCells;
+    if (!cellOk) cellMismatches.push({ key, d, b, dCells, bCells });
+    probeRows.push({ key, d, b, delta, dCells, bCells, cellOk });
+  }
+
+  const layoutMismatches = [];
+  for (const name of Object.keys(deno.states)) {
+    const byId = Object.fromEntries(mine.states[name].map((x) => [x.id, x]));
+    for (const db of deno.states[name]) {
+      const bb = byId[db.id];
+      if (!bb || db.col !== bb.col || db.row !== bb.row || db.w !== bb.w || db.h !== bb.h) {
+        layoutMismatches.push({ name, id: db.id, deno: db, browser: bb });
+      }
+    }
+  }
+
+  const pass = cellMismatches.length === 0 && layoutMismatches.length === 0;
+  window.__PARITY_RESULT__ = {
+    pass, maxDeltaPx: maxDelta,
+    probeCount: probeRows.length,
+    cellMismatchCount: cellMismatches.length,
+    layoutMismatchCount: layoutMismatches.length,
+    cellMismatches, layoutMismatches,
+    canvasLib: deno.canvasLib,
+  };
+  document.title = `parity: ${pass ? 'PASS' : 'FAIL'}`;
+
+  const s = $('summary');
+  s.className = pass ? 'pass' : 'fail';
+  s.innerHTML =
+    `${pass ? '✓ PASS' : '✗ FAIL'} — ${probeRows.length} probes · ` +
+    `max width Δ ${maxDelta}px · ${cellMismatches.length} cell-width mismatch · ` +
+    `${layoutMismatches.length} layout mismatch` +
+    `<div class="sub" style="font-weight:normal">renderer canvas: ${deno.canvasLib} · CELL=${cell}</div>`;
+
+  // Worst probes first (largest pixel delta), so disagreement is easy to spot.
+  probeRows.sort((a, b) => b.delta - a.delta);
+  const rowHtml = probeRows.map((r) =>
+    `<tr class="${r.cellOk ? '' : 'bad'}"><td class="k">${r.key.replace(/</g, '&lt;')}</td>` +
+    `<td>${r.d}</td><td>${r.b}</td><td>${r.delta}</td>` +
+    `<td>${r.dCells}</td><td>${r.bCells}</td><td>${r.cellOk ? '' : '✗'}</td></tr>`).join('');
+  let html =
+    `<table><caption>per-probe measureNodeWidth (px) — deno vs browser</caption>` +
+    `<tr><th class="k">probe (font|size|label)</th><th>deno</th><th>browser</th><th>Δpx</th>` +
+    `<th>deno&nbsp;cells</th><th>br&nbsp;cells</th><th>flip</th></tr>${rowHtml}</table>`;
+
+  if (layoutMismatches.length) {
+    html += `<table><caption>computeLayout {col,row,w,h} mismatches</caption>` +
+      `<tr><th class="k">state.id</th><th>deno</th><th>browser</th></tr>` +
+      layoutMismatches.map((m) =>
+        `<tr class="bad"><td class="k">${m.name}.${m.id}</td>` +
+        `<td>${JSON.stringify(m.deno)}</td><td>${JSON.stringify(m.browser)}</td></tr>`).join('') +
+      `</table>`;
+  }
+  $('out').innerHTML = html;
+})();
+</script>
+</body>
+</html>

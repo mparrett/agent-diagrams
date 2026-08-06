@@ -1,0 +1,199 @@
+{
+  "title": "let-go output I/O — current (w/bug): print bypasses *out*",
+  "width": 1400,
+  "height": 700,
+  "theme": "afterglow",
+  "footer": "solid = live path  ·  dotted = present-but-unused  ·  red = bug",
+  "nodes": [
+    {
+      "id": "print",
+      "label": "println / pr / prn / print",
+      "color": "blue",
+      "details": [
+        "naked fmt.Fprintln"
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "errsites",
+      "label": "error sites",
+      "color": "red",
+      "details": [
+        "http · pods · go-block",
+        "naked fmt.Println"
+      ],
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "binding",
+      "label": "(binding [*out* *err*] …)",
+      "color": "purple",
+      "details": [
+        "rebinds *out*"
+      ],
+      "row": 0,
+      "col": 4
+    },
+    {
+      "id": "osstd",
+      "label": "os.Stdout / os.Stderr",
+      "color": "gray",
+      "details": [
+        "process-global"
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "outvar",
+      "label": "*out* / *err*",
+      "color": "purple",
+      "details": [
+        "IOHandles (*os.File-locked)",
+        "print never consults them"
+      ],
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "capture",
+      "label": "with-out-str* / nREPL eval",
+      "color": "amber",
+      "details": [
+        "capture: os.Stdout = w",
+        "process-global, fragile"
+      ],
+      "row": 1,
+      "col": 6
+    },
+    {
+      "id": "term",
+      "label": "native terminal",
+      "color": "green",
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "shim",
+      "label": "lg -w: fs.writeSync shim",
+      "color": "green",
+      "details": [
+        "→ LetGoHost / xterm"
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "wasm",
+      "label": "wasm REPL",
+      "color": "green",
+      "details": [
+        "wasm_exec.js → console"
+      ],
+      "row": 2,
+      "col": 2
+    }
+  ],
+  "edges": [
+    {
+      "from": "print",
+      "to": "osstd",
+      "style": "solid",
+      "label": "✗ bypasses *out*",
+      "id": "print~osstd"
+    },
+    {
+      "from": "errsites",
+      "to": "osstd",
+      "style": "alert",
+      "label": "✗ wrong stream",
+      "id": "errsites~osstd"
+    },
+    {
+      "from": "binding",
+      "to": "outvar",
+      "style": "dotted",
+      "label": "✗ println ignores it",
+      "id": "binding~outvar"
+    },
+    {
+      "from": "outvar",
+      "to": "osstd",
+      "style": "dotted",
+      "label": "(write! *out*) works",
+      "id": "outvar~osstd"
+    },
+    {
+      "from": "capture",
+      "to": "osstd",
+      "style": "dashed",
+      "label": "swaps os.Stdout",
+      "id": "capture~osstd"
+    },
+    {
+      "from": "osstd",
+      "to": "term",
+      "style": "solid",
+      "id": "osstd~term"
+    },
+    {
+      "from": "osstd",
+      "to": "shim",
+      "style": "solid",
+      "id": "osstd~shim"
+    },
+    {
+      "from": "osstd",
+      "to": "wasm",
+      "style": "solid",
+      "id": "osstd~wasm"
+    }
+  ],
+  "layout": {
+    "print": {
+      "x": 60,
+      "y": 45
+    },
+    "errsites": {
+      "x": 405,
+      "y": 45
+    },
+    "binding": {
+      "x": 1080,
+      "y": 45
+    },
+    "osstd": {
+      "x": 300,
+      "y": 165
+    },
+    "outvar": {
+      "x": 705,
+      "y": 165
+    },
+    "capture": {
+      "x": 1020,
+      "y": 165
+    },
+    "term": {
+      "x": 75,
+      "y": 285
+    },
+    "shim": {
+      "x": 555,
+      "y": 285
+    },
+    "wasm": {
+      "x": 1095,
+      "y": 285
+    }
+  },
+  "rowY": {},
+  "rev": 5,
+  "output": "panel1.png",
+  "pinned": [
+    "osstd"
+  ],
+  "noteLayout": {}
+}

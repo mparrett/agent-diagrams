@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagram</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 16px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  h1 { font-size: 18px; color: #8888cc; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 12px; }
+  .subtitle a { color: #6ca; }
+  /* Fill the remaining viewport height; the image scales to fit within it
+     (whole diagram always visible), preserving aspect ratio. */
+  .imgwrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: flex-start; }
+  .imgwrap img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid #333;
+    border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+<h1>Diagram
+  <span style="font-size: 12px; font-weight: normal; margin-left: 12px;">
+    <a href="whiteboard-live.html" style="color: #6ca;">Interactive editor &rarr;</a>
+    <span id="live" title="live-reload status"
+          style="margin-left: 10px; color: #555;">&#9679; offline</span>
+  </span>
+</h1>
+<p class="subtitle">
+  Static PNG (what agents see). Auto-reloads when the diagram changes (via the dev server).
+</p>
+<div class="imgwrap"><img id="diagram" alt="Diagram"></div>
+<script>
+  // ?d=<name> selects a whiteboard from the dev server's registry.
+  const BOARD = new URLSearchParams(location.search).get('d') || 'default';
+  const API = BOARD === 'default' ? '' : '/d/' + BOARD;
+  const editorLink = document.querySelector('a[href="whiteboard-live.html"]');
+  if (editorLink && BOARD !== 'default') editorLink.href = 'whiteboard-live.html?d=' + BOARD;
+
+  const img = document.getElementById('diagram');
+  const live = document.getElementById('live');
+  const refresh = () => { img.src = API + '/diagram.png?v=' + Date.now(); };
+  refresh();
+
+  // Live reload via SSE (served by dev-server.js). Falls back gracefully if
+  // opened through a plain static server — the image just won't auto-update.
+  function connect() {
+    const es = new EventSource('/events');
+    es.onopen  = () => { live.textContent = '● live';   live.style.color = '#4a9'; };
+    es.onerror = () => { live.textContent = '● reconnecting'; live.style.color = '#ca6'; };
+    es.addEventListener('reload', (ev) => {
+      try { if ((JSON.parse(ev.data).diagram || 'default') !== BOARD) return; } catch { /* legacy */ }
+      refresh();
+    });
+  }
+  connect();
+</script>
+</body>
+</html>

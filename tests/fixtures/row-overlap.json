@@ -1,0 +1,97 @@
+{
+  "title": "Repro 3 \u2014 cell-exact widths",
+  "width": 1500,
+  "height": 460,
+  "nodes": [
+    {
+      "id": "root",
+      "label": "root",
+      "color": "green",
+      "row": 0,
+      "col": 0,
+      "w": 8,
+      "h": 5
+    },
+    {
+      "id": "n0",
+      "label": "shadow-canary-probe.test.js",
+      "color": "blue",
+      "row": 1,
+      "col": 0,
+      "w": 20,
+      "h": 5
+    },
+    {
+      "id": "n1",
+      "label": "diagram-core-router.test.js",
+      "color": "blue",
+      "row": 1,
+      "col": 1,
+      "w": 20,
+      "h": 5
+    },
+    {
+      "id": "n2",
+      "label": "parity-browser-runner.js",
+      "color": "blue",
+      "row": 1,
+      "col": 2,
+      "w": 20,
+      "h": 5
+    },
+    {
+      "id": "n3",
+      "label": "raster-parity-corpus.test.js",
+      "color": "blue",
+      "row": 1,
+      "col": 3,
+      "w": 20,
+      "h": 5
+    },
+    {
+      "id": "n4",
+      "label": "upstream-defect-canary.js",
+      "color": "blue",
+      "row": 1,
+      "col": 4,
+      "w": 20,
+      "h": 5
+    },
+    {
+      "id": "n5",
+      "label": "whiteboard-live-editor.js",
+      "color": "blue",
+      "row": 1,
+      "col": 5,
+      "w": 20,
+      "h": 5
+    }
+  ],
+  "edges": [
+    {
+      "from": "root",
+      "to": "n0"
+    },
+    {
+      "from": "root",
+      "to": "n1"
+    },
+    {
+      "from": "root",
+      "to": "n2"
+    },
+    {
+      "from": "root",
+      "to": "n3"
+    },
+    {
+      "from": "root",
+      "to": "n4"
+    },
+    {
+      "from": "root",
+      "to": "n5"
+    }
+  ],
+  "rev": 0
+}

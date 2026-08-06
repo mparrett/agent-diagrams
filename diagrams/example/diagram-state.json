@@ -1,0 +1,227 @@
+{
+  "title": "Example — Request Flow",
+  "width": 1045,
+  "height": 1040,
+  "footer": "Solid = sync call  |  Dashed = async/queue  |  Dotted = data store access",
+  "theme": "dawnfox",
+  "rev": 454,
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Toaster",
+      "color": "info",
+      "details": [
+        "browser SPA"
+      ],
+      "row": 0,
+      "col": 1,
+      "outlineWidth": "thin",
+      "w": 8,
+      "h": 5
+    },
+    {
+      "id": "queue",
+      "label": "Event Queue",
+      "color": "purple",
+      "details": [
+        "order.created"
+      ],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "nku164",
+      "label": "Auth Service",
+      "color": "red",
+      "details": [],
+      "row": 4,
+      "col": 0
+    },
+    {
+      "id": "nm8pjn",
+      "label": "New Node",
+      "color": "neutral",
+      "details": [],
+      "row": 5,
+      "col": 0,
+      "w": 9,
+      "h": 5
+    },
+    {
+      "id": "nc68n2",
+      "label": "testing this is a lot of text",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 0,
+      "w": 8,
+      "h": 5
+    },
+    {
+      "id": "n0e08e",
+      "label": "New Node",
+      "color": "blue",
+      "details": [
+        "testing one two three four five"
+      ],
+      "row": 7,
+      "col": 0,
+      "outlineWidth": "thick",
+      "outlineDash": "dotted"
+    }
+  ],
+  "edges": [
+    {
+      "from": "client",
+      "to": "queue",
+      "style": "solid",
+      "label": "test",
+      "labelPos": {
+        "side": "above",
+        "offset": 5
+      },
+      "id": "client~api",
+      "fromEdge": "S",
+      "fromConn": 6
+    },
+    {
+      "from": "queue",
+      "to": "nku164",
+      "style": "dashed",
+      "label": "consume",
+      "id": "queue~worker",
+      "toEdge": "E",
+      "toConn": 3,
+      "fromEdge": "S",
+      "fromConn": 4
+    },
+    {
+      "from": "queue",
+      "to": "nku164",
+      "style": "dotted",
+      "label": "update",
+      "id": "queue~nku164",
+      "toEdge": "E",
+      "toConn": 1,
+      "fromEdge": "S",
+      "fromConn": 3
+    },
+    {
+      "from": "api",
+      "to": "nku164",
+      "style": "default",
+      "width": "thin",
+      "toEdge": "S",
+      "fromPos": {
+        "x": 291,
+        "y": 241
+      },
+      "id": "api~nku164",
+      "toConn": 4
+    },
+    {
+      "from": "nm8pjn",
+      "to": "queue",
+      "style": "default",
+      "fromEdge": "E",
+      "id": "nm8pjn~queue"
+    },
+    {
+      "from": "nku164",
+      "to": "client",
+      "style": "default",
+      "fromEdge": "N",
+      "id": "nku164~client",
+      "fromConn": 3
+    },
+    {
+      "from": "nm8pjn",
+      "to": "nku164",
+      "style": "default",
+      "fromEdge": "S",
+      "fromConn": 7,
+      "id": "nm8pjn~nku164",
+      "toEdge": "W"
+    },
+    {
+      "from": "nc68n2",
+      "to": "client",
+      "style": "default",
+      "fromEdge": "S",
+      "toEdge": "N",
+      "toConn": 4,
+      "id": "nc68n2~client",
+      "fromConn": 4
+    },
+    {
+      "id": "client~nm8pjn~2",
+      "from": "client",
+      "to": "nm8pjn",
+      "style": "default",
+      "fromEdge": "S",
+      "toEdge": "N",
+      "fromConn": 1,
+      "toConn": 6
+    },
+    {
+      "id": "n0e08e~nc68n2",
+      "from": "n0e08e",
+      "to": "nc68n2",
+      "style": "default",
+      "fromEdge": "E",
+      "fromConn": 4
+    },
+    {
+      "id": "n0e08e~nc68n2~2",
+      "from": "n0e08e",
+      "to": "nc68n2",
+      "style": "default",
+      "fromEdge": "S",
+      "toEdge": "N",
+      "fromConn": 5,
+      "toConn": 5
+    }
+  ],
+  "layout": {
+    "client": {
+      "x": 405,
+      "y": 60
+    },
+    "queue": {
+      "x": 675,
+      "y": 375
+    },
+    "nku164": {
+      "x": 195,
+      "y": 540
+    },
+    "nm8pjn": {
+      "x": 135,
+      "y": 660
+    },
+    "nc68n2": {
+      "x": 75,
+      "y": 780
+    },
+    "n0e08e": {
+      "x": 45,
+      "y": 900
+    }
+  },
+  "rowY": {
+    "0": 60,
+    "1": 220,
+    "2": 380,
+    "3": 540
+  },
+  "pinned": [],
+  "noteLayout": {},
+  "costs": {
+    "step": 15,
+    "turn": 70,
+    "near": 69,
+    "overlap": 52
+  },
+  "connectorAnchor": "center",
+  "fontSize": 7
+}

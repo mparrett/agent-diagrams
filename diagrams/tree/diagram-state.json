@@ -1,0 +1,1058 @@
+{
+  "title": "File tree — agent-diagrams/ (depth ≤ 2, files)",
+  "footer": "58 nodes · 57 containment edges · 9 rows",
+  "theme": "dawnfox",
+  "width": 1795,
+  "height": 1310,
+  "nodes": [
+    {
+      "id": "agent-diagrams",
+      "label": "agent-diagrams/",
+      "color": "green",
+      "details": [],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/.gitignore",
+      "label": ".gitignore",
+      "color": "gray",
+      "details": [],
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/deno.json",
+      "label": "deno.json",
+      "color": "amber",
+      "details": [],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/deno.lock",
+      "label": "deno.lock",
+      "color": "gray",
+      "details": [],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/dev-server.js",
+      "label": "dev-server.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/diagram-api.js",
+      "label": "diagram-api.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/diagram-cli.js",
+      "label": "diagram-cli.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/diagram-core.js",
+      "label": "diagram-core.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/HANDOFF.md",
+      "label": "HANDOFF.md",
+      "color": "gray",
+      "details": [],
+      "row": 1,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/justfile",
+      "label": "justfile",
+      "color": "gray",
+      "details": [],
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/raster-check.js",
+      "label": "raster-check.js",
+      "color": "blue",
+      "details": [],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/README.md",
+      "label": "README.md",
+      "color": "gray",
+      "details": [],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/render-diagram.js",
+      "label": "render-diagram.js",
+      "color": "blue",
+      "details": [],
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/themes.js",
+      "label": "themes.js",
+      "color": "blue",
+      "details": [],
+      "row": 2,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/whiteboard-live.html",
+      "label": "whiteboard-live.html",
+      "color": "teal",
+      "details": [],
+      "row": 2,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/whiteboard-live.js",
+      "label": "whiteboard-live.js",
+      "color": "blue",
+      "details": [],
+      "row": 2,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/whiteboard.html",
+      "label": "whiteboard.html",
+      "color": "teal",
+      "details": [],
+      "row": 2,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/.claude",
+      "label": ".claude/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/.claude/settings.local.json",
+      "label": "settings.local.json",
+      "color": "amber",
+      "details": [],
+      "row": 4,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/.claude/slot-drag-test.png",
+      "label": "slot-drag-test.png",
+      "color": "pink",
+      "details": [],
+      "row": 4,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/.claude/slot-hover-test.png",
+      "label": "slot-hover-test.png",
+      "color": "pink",
+      "details": [],
+      "row": 4,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/assets",
+      "label": "assets/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/assets/fonts",
+      "label": "fonts/",
+      "color": "green",
+      "details": [],
+      "row": 4,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/bin",
+      "label": "bin/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/bin/import-depgraph.js",
+      "label": "import-depgraph.js",
+      "color": "blue",
+      "details": [],
+      "row": 4,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/bin/import-filetree.js",
+      "label": "import-filetree.js",
+      "color": "blue",
+      "details": [],
+      "row": 4,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/bin/import-util.js",
+      "label": "import-util.js",
+      "color": "blue",
+      "details": [],
+      "row": 4,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/bin/serve.sh",
+      "label": "serve.sh",
+      "color": "gray",
+      "details": [],
+      "row": 4,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/bin/upstream-check.js",
+      "label": "upstream-check.js",
+      "color": "blue",
+      "details": [],
+      "row": 5,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/diagrams",
+      "label": "diagrams/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/diagrams/deps",
+      "label": "deps/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/diagrams/example",
+      "label": "example/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/diagrams/letgo-io",
+      "label": "letgo-io/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/diagrams/letgo-io-phases",
+      "label": "letgo-io-phases/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/diagrams/letgo-io-phases/1-current",
+      "label": "1-current/",
+      "color": "green",
+      "details": [],
+      "row": 8,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/docs",
+      "label": "docs/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/docs/drafts",
+      "label": "drafts/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/docs/plans",
+      "label": "plans/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/docs/project_archived",
+      "label": "project_archived/",
+      "color": "green",
+      "details": [],
+      "row": 5,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/docs/project_archived/handoffs",
+      "label": "handoffs/",
+      "color": "green",
+      "details": [],
+      "row": 8,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/docs/project_incoming",
+      "label": "project_incoming/",
+      "color": "green",
+      "details": [],
+      "row": 6,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/docs/project_notes",
+      "label": "project_notes/",
+      "color": "green",
+      "details": [],
+      "row": 6,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/docs/project_notes/handoffs",
+      "label": "handoffs/",
+      "color": "green",
+      "details": [],
+      "row": 8,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/tests",
+      "label": "tests/",
+      "color": "green",
+      "details": [],
+      "row": 3,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/tests/canary-render.js",
+      "label": "canary-render.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/tests/diagram-api.test.js",
+      "label": "diagram-api.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/tests/diagram-cli.test.js",
+      "label": "diagram-cli.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/tests/diagram-core.test.js",
+      "label": "diagram-core.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/tests/parity_browser.js",
+      "label": "parity_browser.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/tests/parity_deno.js",
+      "label": "parity_deno.js",
+      "color": "blue",
+      "details": [],
+      "row": 6,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/tests/parity-corpus.js",
+      "label": "parity-corpus.js",
+      "color": "blue",
+      "details": [],
+      "row": 7,
+      "col": 0
+    },
+    {
+      "id": "agent-diagrams/tests/parity-deno.json",
+      "label": "parity-deno.json",
+      "color": "amber",
+      "details": [],
+      "row": 7,
+      "col": 1
+    },
+    {
+      "id": "agent-diagrams/tests/parity-page.html",
+      "label": "parity-page.html",
+      "color": "teal",
+      "details": [],
+      "row": 7,
+      "col": 2
+    },
+    {
+      "id": "agent-diagrams/tests/parity.test.js",
+      "label": "parity.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 7,
+      "col": 3
+    },
+    {
+      "id": "agent-diagrams/tests/raster-parity.test.js",
+      "label": "raster-parity.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 7,
+      "col": 4
+    },
+    {
+      "id": "agent-diagrams/tests/shadow-canary.test.js",
+      "label": "shadow-canary.test.js",
+      "color": "blue",
+      "details": [],
+      "row": 7,
+      "col": 5
+    },
+    {
+      "id": "agent-diagrams/tests/shadow-probe.js",
+      "label": "shadow-probe.js",
+      "color": "blue",
+      "details": [],
+      "row": 7,
+      "col": 6
+    },
+    {
+      "id": "agent-diagrams/tests/fixtures",
+      "label": "fixtures/",
+      "color": "green",
+      "details": [],
+      "row": 7,
+      "col": 7
+    }
+  ],
+  "edges": [
+    {
+      "id": "agent-diagrams~agent-diagrams/.gitignore",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/.gitignore",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/deno.json",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/deno.json",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/deno.lock",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/deno.lock",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/dev-server.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/dev-server.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/diagram-api.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/diagram-api.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/diagram-cli.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/diagram-cli.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/diagram-core.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/diagram-core.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/HANDOFF.md",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/HANDOFF.md",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/justfile",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/justfile",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/raster-check.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/raster-check.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/README.md",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/README.md",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/render-diagram.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/render-diagram.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/themes.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/themes.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/whiteboard-live.html",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/whiteboard-live.html",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/whiteboard-live.js",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/whiteboard-live.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/whiteboard.html",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/whiteboard.html",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/.claude",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/.claude",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/.claude~agent-diagrams/.claude/settings.local.json",
+      "from": "agent-diagrams/.claude",
+      "to": "agent-diagrams/.claude/settings.local.json",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/.claude~agent-diagrams/.claude/slot-drag-test.png",
+      "from": "agent-diagrams/.claude",
+      "to": "agent-diagrams/.claude/slot-drag-test.png",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/.claude~agent-diagrams/.claude/slot-hover-test.png",
+      "from": "agent-diagrams/.claude",
+      "to": "agent-diagrams/.claude/slot-hover-test.png",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/assets",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/assets",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/assets~agent-diagrams/assets/fonts",
+      "from": "agent-diagrams/assets",
+      "to": "agent-diagrams/assets/fonts",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/bin",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/bin",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/bin~agent-diagrams/bin/import-depgraph.js",
+      "from": "agent-diagrams/bin",
+      "to": "agent-diagrams/bin/import-depgraph.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/bin~agent-diagrams/bin/import-filetree.js",
+      "from": "agent-diagrams/bin",
+      "to": "agent-diagrams/bin/import-filetree.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/bin~agent-diagrams/bin/import-util.js",
+      "from": "agent-diagrams/bin",
+      "to": "agent-diagrams/bin/import-util.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/bin~agent-diagrams/bin/serve.sh",
+      "from": "agent-diagrams/bin",
+      "to": "agent-diagrams/bin/serve.sh",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/bin~agent-diagrams/bin/upstream-check.js",
+      "from": "agent-diagrams/bin",
+      "to": "agent-diagrams/bin/upstream-check.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/diagrams",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/diagrams",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/diagrams~agent-diagrams/diagrams/deps",
+      "from": "agent-diagrams/diagrams",
+      "to": "agent-diagrams/diagrams/deps",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/diagrams~agent-diagrams/diagrams/example",
+      "from": "agent-diagrams/diagrams",
+      "to": "agent-diagrams/diagrams/example",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/diagrams~agent-diagrams/diagrams/letgo-io",
+      "from": "agent-diagrams/diagrams",
+      "to": "agent-diagrams/diagrams/letgo-io",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/diagrams~agent-diagrams/diagrams/letgo-io-phases",
+      "from": "agent-diagrams/diagrams",
+      "to": "agent-diagrams/diagrams/letgo-io-phases",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/diagrams/letgo-io-phases~agent-diagrams/diagrams/letgo-io-phases/1-current",
+      "from": "agent-diagrams/diagrams/letgo-io-phases",
+      "to": "agent-diagrams/diagrams/letgo-io-phases/1-current",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/docs",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/docs",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs~agent-diagrams/docs/drafts",
+      "from": "agent-diagrams/docs",
+      "to": "agent-diagrams/docs/drafts",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs~agent-diagrams/docs/plans",
+      "from": "agent-diagrams/docs",
+      "to": "agent-diagrams/docs/plans",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs~agent-diagrams/docs/project_archived",
+      "from": "agent-diagrams/docs",
+      "to": "agent-diagrams/docs/project_archived",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs/project_archived~agent-diagrams/docs/project_archived/handoffs",
+      "from": "agent-diagrams/docs/project_archived",
+      "to": "agent-diagrams/docs/project_archived/handoffs",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs~agent-diagrams/docs/project_incoming",
+      "from": "agent-diagrams/docs",
+      "to": "agent-diagrams/docs/project_incoming",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs~agent-diagrams/docs/project_notes",
+      "from": "agent-diagrams/docs",
+      "to": "agent-diagrams/docs/project_notes",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/docs/project_notes~agent-diagrams/docs/project_notes/handoffs",
+      "from": "agent-diagrams/docs/project_notes",
+      "to": "agent-diagrams/docs/project_notes/handoffs",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/tests",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/tests",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/canary-render.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/canary-render.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/diagram-api.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/diagram-api.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/diagram-cli.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/diagram-cli.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/diagram-core.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/diagram-core.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity_browser.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity_browser.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity_deno.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity_deno.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity-corpus.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity-corpus.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity-deno.json",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity-deno.json",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity-page.html",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity-page.html",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/parity.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/parity.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/raster-parity.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/raster-parity.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/shadow-canary.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/shadow-canary.test.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/shadow-probe.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/shadow-probe.js",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/fixtures",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/fixtures",
+      "style": "thin"
+    }
+  ],
+  "rev": 17,
+  "layout": {
+    "agent-diagrams": {
+      "x": 525,
+      "y": 45
+    },
+    "agent-diagrams/.gitignore": {
+      "x": 90,
+      "y": 165
+    },
+    "agent-diagrams/deno.json": {
+      "x": 270,
+      "y": 165
+    },
+    "agent-diagrams/deno.lock": {
+      "x": 450,
+      "y": 165
+    },
+    "agent-diagrams/dev-server.js": {
+      "x": 615,
+      "y": 165
+    },
+    "agent-diagrams/diagram-api.js": {
+      "x": 795,
+      "y": 165
+    },
+    "agent-diagrams/diagram-cli.js": {
+      "x": 975,
+      "y": 165
+    },
+    "agent-diagrams/diagram-core.js": {
+      "x": 1155,
+      "y": 165
+    },
+    "agent-diagrams/HANDOFF.md": {
+      "x": 1350,
+      "y": 165
+    },
+    "agent-diagrams/justfile": {
+      "x": 90,
+      "y": 285
+    },
+    "agent-diagrams/raster-check.js": {
+      "x": 270,
+      "y": 285
+    },
+    "agent-diagrams/README.md": {
+      "x": 465,
+      "y": 285
+    },
+    "agent-diagrams/render-diagram.js": {
+      "x": 615,
+      "y": 285
+    },
+    "agent-diagrams/themes.js": {
+      "x": 825,
+      "y": 285
+    },
+    "agent-diagrams/whiteboard-live.html": {
+      "x": 975,
+      "y": 285
+    },
+    "agent-diagrams/whiteboard-live.js": {
+      "x": 1215,
+      "y": 285
+    },
+    "agent-diagrams/whiteboard.html": {
+      "x": 1440,
+      "y": 285
+    },
+    "agent-diagrams/.claude": {
+      "x": 150,
+      "y": 405
+    },
+    "agent-diagrams/.claude/settings.local.json": {
+      "x": 45,
+      "y": 525
+    },
+    "agent-diagrams/.claude/slot-drag-test.png": {
+      "x": 270,
+      "y": 525
+    },
+    "agent-diagrams/.claude/slot-hover-test.png": {
+      "x": 495,
+      "y": 525
+    },
+    "agent-diagrams/assets": {
+      "x": 390,
+      "y": 405
+    },
+    "agent-diagrams/assets/fonts": {
+      "x": 720,
+      "y": 525
+    },
+    "agent-diagrams/bin": {
+      "x": 705,
+      "y": 405
+    },
+    "agent-diagrams/bin/import-depgraph.js": {
+      "x": 855,
+      "y": 525
+    },
+    "agent-diagrams/bin/import-filetree.js": {
+      "x": 1080,
+      "y": 525
+    },
+    "agent-diagrams/bin/import-util.js": {
+      "x": 1305,
+      "y": 525
+    },
+    "agent-diagrams/bin/serve.sh": {
+      "x": 1485,
+      "y": 525
+    },
+    "agent-diagrams/bin/upstream-check.js": {
+      "x": 105,
+      "y": 645
+    },
+    "agent-diagrams/diagrams": {
+      "x": 840,
+      "y": 405
+    },
+    "agent-diagrams/diagrams/deps": {
+      "x": 315,
+      "y": 645
+    },
+    "agent-diagrams/diagrams/example": {
+      "x": 495,
+      "y": 645
+    },
+    "agent-diagrams/diagrams/letgo-io": {
+      "x": 645,
+      "y": 645
+    },
+    "agent-diagrams/diagrams/letgo-io-phases": {
+      "x": 795,
+      "y": 645
+    },
+    "agent-diagrams/diagrams/letgo-io-phases/1-current": {
+      "x": 75,
+      "y": 1185
+    },
+    "agent-diagrams/docs": {
+      "x": 1005,
+      "y": 405
+    },
+    "agent-diagrams/docs/drafts": {
+      "x": 1050,
+      "y": 645
+    },
+    "agent-diagrams/docs/plans": {
+      "x": 1215,
+      "y": 645
+    },
+    "agent-diagrams/docs/project_archived": {
+      "x": 1350,
+      "y": 645
+    },
+    "agent-diagrams/docs/project_archived/handoffs": {
+      "x": 810,
+      "y": 1005
+    },
+    "agent-diagrams/docs/project_incoming": {
+      "x": 135,
+      "y": 765
+    },
+    "agent-diagrams/docs/project_notes": {
+      "x": 390,
+      "y": 765
+    },
+    "agent-diagrams/docs/project_notes/handoffs": {
+      "x": 1335,
+      "y": 1005
+    },
+    "agent-diagrams/tests": {
+      "x": 1140,
+      "y": 405
+    },
+    "agent-diagrams/tests/canary-render.js": {
+      "x": 570,
+      "y": 765
+    },
+    "agent-diagrams/tests/diagram-api.test.js": {
+      "x": 780,
+      "y": 765
+    },
+    "agent-diagrams/tests/diagram-cli.test.js": {
+      "x": 1005,
+      "y": 765
+    },
+    "agent-diagrams/tests/diagram-core.test.js": {
+      "x": 1230,
+      "y": 765
+    },
+    "agent-diagrams/tests/parity_browser.js": {
+      "x": 1470,
+      "y": 765
+    },
+    "agent-diagrams/tests/parity_deno.js": {
+      "x": 1605,
+      "y": 765
+    },
+    "agent-diagrams/tests/parity-corpus.js": {
+      "x": 150,
+      "y": 885
+    },
+    "agent-diagrams/tests/parity-deno.json": {
+      "x": 360,
+      "y": 885
+    },
+    "agent-diagrams/tests/parity-page.html": {
+      "x": 570,
+      "y": 885
+    },
+    "agent-diagrams/tests/parity.test.js": {
+      "x": 780,
+      "y": 885
+    },
+    "agent-diagrams/tests/raster-parity.test.js": {
+      "x": 960,
+      "y": 885
+    },
+    "agent-diagrams/tests/shadow-canary.test.js": {
+      "x": 1200,
+      "y": 885
+    },
+    "agent-diagrams/tests/shadow-probe.js": {
+      "x": 1440,
+      "y": 885
+    },
+    "agent-diagrams/tests/fixtures": {
+      "x": 1605,
+      "y": 885
+    }
+  },
+  "noteLayout": {},
+  "rowY": {},
+  "pinned": [
+    "agent-diagrams/diagrams/letgo-io-phases/1-current"
+  ],
+  "fontSize": 10
+}

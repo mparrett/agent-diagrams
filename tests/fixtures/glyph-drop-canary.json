@@ -1,0 +1,199 @@
+{
+ "title": "let-go \u2014 tail calls & generated artifacts (open work)",
+ "footer": "solid = fixes/implements  |  dashed = blocks/follows  |  dotted = spawned/related",
+ "theme": "dawnfox",
+ "width": 1500,
+ "height": 900,
+ "uniformWidth": false,
+ "nodes": [
+  {
+   "id": "n620",
+   "label": "#620  design",
+   "color": "info",
+   "row": 0,
+   "col": 1,
+   "w": 18,
+   "details": [
+    "constant-space tail calls",
+    "on the explicit-frame",
+    "VM"
+   ]
+  },
+  {
+   "id": "n644",
+   "label": "#644  issue",
+   "color": "error",
+   "row": 1,
+   "col": 0,
+   "w": 18,
+   "details": [
+    "Frame.Run is",
+    "Go-recursive deep",
+    "recursion aborts"
+   ]
+  },
+  {
+   "id": "n636",
+   "label": "#636  issue",
+   "color": "warn",
+   "row": 1,
+   "col": 1,
+   "w": 18,
+   "details": [
+    "AOT: self tail call",
+    "lowers to a Go",
+    "call, not a loop"
+   ]
+  },
+  {
+   "id": "n646",
+   "label": "#646  issue",
+   "color": "warn",
+   "row": 1,
+   "col": 2,
+   "w": 18,
+   "details": [
+    "re-evaluate self-call",
+    "shortcut after",
+    "#645"
+   ]
+  },
+  {
+   "id": "n638",
+   "label": "#638  issue",
+   "color": "warn",
+   "row": 2,
+   "col": 2,
+   "w": 18,
+   "details": [
+    "recur lowers",
+    "to OP_TAIL_CALL,",
+    "not OP_RECUR_FN"
+   ]
+  },
+  {
+   "id": "n645",
+   "label": "#645  open P",
+   "color": "accent",
+   "row": 2,
+   "col": 0,
+   "w": 18,
+   "details": [
+    "#645  open PR: explicit frame chain non-recursive calls"
+   ]
+  },
+  {
+   "id": "n642",
+   "label": "#642  open P",
+   "color": "accent",
+   "row": 3,
+   "col": 2,
+   "w": 18,
+   "details": [
+    "#642  open PR: give recur its own op"
+   ]
+  },
+  {
+   "id": "n634",
+   "label": "#634  draft ",
+   "color": "neutral",
+   "row": 0,
+   "col": 4,
+   "w": 18,
+   "details": [
+    "#634  draft PR: content-gate every committed generated artifact"
+   ]
+  },
+  {
+   "id": "n637",
+   "label": "#637  issue",
+   "color": "warn",
+   "row": 1,
+   "col": 4,
+   "w": 18,
+   "details": [
+    "nothing",
+    "enforces",
+    "GENERATED-TRACKED"
+   ]
+  },
+  {
+   "id": "n635",
+   "label": "#635  issue",
+   "color": "warn",
+   "row": 2,
+   "col": 4,
+   "w": 18,
+   "details": [
+    "untrack generated.sums",
+    "once #634",
+    "merges"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "n620",
+   "to": "n644",
+   "style": "dotted",
+   "label": "spawned"
+  },
+  {
+   "from": "n620",
+   "to": "n636",
+   "style": "dotted",
+   "label": "spawned"
+  },
+  {
+   "from": "n620",
+   "to": "n646",
+   "style": "dotted",
+   "label": "spawned"
+  },
+  {
+   "from": "n645",
+   "to": "n620",
+   "style": "solid",
+   "label": "implements"
+  },
+  {
+   "from": "n645",
+   "to": "n644",
+   "style": "solid",
+   "label": "fixes"
+  },
+  {
+   "from": "n642",
+   "to": "n638",
+   "style": "solid",
+   "label": "fixes"
+  },
+  {
+   "from": "n638",
+   "to": "n636",
+   "style": "dashed",
+   "label": "same root cause"
+  },
+  {
+   "from": "n646",
+   "to": "n645",
+   "style": "dashed",
+   "label": "follow-up"
+  },
+  {
+   "from": "n634",
+   "to": "n637",
+   "style": "dotted",
+   "label": "motivates"
+  },
+  {
+   "from": "n635",
+   "to": "n634",
+   "style": "dashed",
+   "label": "blocked by"
+  }
+ ],
+ "layout": {},
+ "rowY": {},
+ "rev": 0
+}

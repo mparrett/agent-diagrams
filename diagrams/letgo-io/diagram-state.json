@@ -1,0 +1,224 @@
+{
+  "title": "let-go output I/O — print, errors, and term/* all route through *out* / *err*",
+  "width": 1495,
+  "height": 1235,
+  "footer": "#79 arc:  #206 print fns  ·  #207 embedder  ·  #223 term/* (this PR)  ·  host writer (next)      |      solid = live path, dashed = future · green = dynamic var, teal = embedder/host, gray = sink",
+  "theme": "afterglow",
+  "rev": 67,
+  "rowY": {
+    "0": 110,
+    "1": 300,
+    "2": 490,
+    "3": 680
+  },
+  "layout": {
+    "term": {
+      "x": 105,
+      "y": 105
+    },
+    "src": {
+      "x": 465,
+      "y": 105
+    },
+    "api": {
+      "x": 1110,
+      "y": 105
+    },
+    "out": {
+      "x": 615,
+      "y": 300
+    },
+    "osstd": {
+      "x": 105,
+      "y": 495
+    },
+    "ew": {
+      "x": 1185,
+      "y": 495
+    },
+    "sinks": {
+      "x": 45,
+      "y": 675
+    },
+    "host": {
+      "x": 885,
+      "y": 675
+    },
+    "shim": {
+      "x": 1215,
+      "y": 675
+    }
+  },
+  "nodes": [
+    {
+      "id": "term",
+      "label": "term/* ANSI ops",
+      "color": "blue",
+      "details": [
+        "move-cursor, clear, set-fg,",
+        "write, write-at, … (15 ops)",
+        "Phase 1.5 — #223 (this PR)"
+      ],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "src",
+      "label": "print fns + error sites",
+      "color": "blue",
+      "details": [
+        "(println pr prn print)",
+        "runtime error sites",
+        "#206"
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "api",
+      "label": "pkg/api.WithStdout / WithStderr",
+      "color": "purple",
+      "details": [
+        "embedder option — #207",
+        "pushes a per-Run binding"
+      ],
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "out",
+      "label": "*out* / *err*",
+      "color": "green",
+      "details": [
+        "IOHandle wrapping io.Writer",
+        "resolved per call via ExecContext",
+        "#206 · #210"
+      ],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "osstd",
+      "label": "os.Stdout / os.Stderr",
+      "color": "gray",
+      "details": [
+        "default root binding",
+        "fd 1 / fd 2"
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "ew",
+      "label": "embedder io.Writer",
+      "color": "teal",
+      "details": [
+        "test buffer",
+        "WASM HostWriter (next)"
+      ],
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "sinks",
+      "label": "terminal · shim · console",
+      "color": "gray",
+      "details": [
+        "native terminal",
+        "lg -w fs shim → host",
+        "wasm → console"
+      ],
+      "row": 3,
+      "col": 1
+    },
+    {
+      "id": "host",
+      "label": "LetGoHost.onOutput",
+      "color": "teal",
+      "details": [
+        "JS-side dual — #174 shipped"
+      ],
+      "row": 3,
+      "col": 3
+    },
+    {
+      "id": "shim",
+      "label": "fs.writeSync shim",
+      "color": "gray",
+      "details": [
+        "retired by the host writer (next)"
+      ],
+      "row": 3,
+      "col": 4
+    }
+  ],
+  "edges": [
+    {
+      "from": "term",
+      "to": "out",
+      "style": "solid",
+      "label": "#223",
+      "id": "term~out"
+    },
+    {
+      "from": "src",
+      "to": "out",
+      "style": "solid",
+      "toEdge": "W",
+      "id": "src~out"
+    },
+    {
+      "from": "api",
+      "to": "out",
+      "style": "solid",
+      "label": "per-Run binding",
+      "toEdge": "N",
+      "id": "api~out"
+    },
+    {
+      "from": "out",
+      "to": "osstd",
+      "style": "solid",
+      "label": "default",
+      "toEdge": "N",
+      "id": "out~osstd"
+    },
+    {
+      "from": "out",
+      "to": "ew",
+      "style": "solid",
+      "label": "configured",
+      "labelPos": {
+        "side": "below"
+      },
+      "id": "out~ew"
+    },
+    {
+      "from": "osstd",
+      "to": "sinks",
+      "style": "solid",
+      "fromEdge": "S",
+      "toEdge": "N",
+      "id": "osstd~sinks"
+    },
+    {
+      "from": "ew",
+      "to": "host",
+      "style": "solid",
+      "fromEdge": "S",
+      "toEdge": "N",
+      "id": "ew~host"
+    },
+    {
+      "from": "ew",
+      "to": "shim",
+      "style": "dashed",
+      "label": "retires",
+      "fromEdge": "E",
+      "toEdge": "W",
+      "id": "ew~shim"
+    }
+  ],
+  "pinned": [],
+  "noteLayout": {}
+}

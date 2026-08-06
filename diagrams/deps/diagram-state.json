@@ -1,0 +1,463 @@
+{
+  "title": "Import graph — package view",
+  "footer": "320 modules → 20 packages · 6 rows",
+  "theme": "dawnfox",
+  "width": 1780,
+  "height": 1000,
+  "nodes": [
+    {
+      "id": "dev-server.js",
+      "label": "dev-server.js",
+      "color": "blue",
+      "details": [],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "std/http",
+      "label": "std/http",
+      "color": "green",
+      "details": [
+        "3 modules"
+      ],
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "std/path",
+      "label": "std/path",
+      "color": "green",
+      "details": [
+        "77 modules"
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "diagram-api.js",
+      "label": "diagram-api.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "themes.js",
+      "label": "themes.js",
+      "color": "blue",
+      "details": [],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "@gfx/canvas",
+      "label": "@gfx/canvas",
+      "color": "purple",
+      "details": [
+        "16 modules"
+      ],
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "diagram-core.js",
+      "label": "diagram-core.js",
+      "color": "blue",
+      "details": [],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "std/assert",
+      "label": "std/assert",
+      "color": "green",
+      "details": [
+        "2 modules"
+      ],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "std/cli",
+      "label": "std/cli",
+      "color": "green",
+      "details": [],
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "std/encoding",
+      "label": "std/encoding",
+      "color": "green",
+      "details": [
+        "2 modules"
+      ],
+      "row": 2,
+      "col": 4
+    },
+    {
+      "id": "std/fmt",
+      "label": "std/fmt",
+      "color": "green",
+      "details": [
+        "2 modules"
+      ],
+      "row": 2,
+      "col": 5
+    },
+    {
+      "id": "std/media_types",
+      "label": "std/media_types",
+      "color": "green",
+      "details": [
+        "8 modules"
+      ],
+      "row": 2,
+      "col": 6
+    },
+    {
+      "id": "std/streams",
+      "label": "std/streams",
+      "color": "green",
+      "details": [],
+      "row": 2,
+      "col": 7
+    },
+    {
+      "id": "deno.land/std@0.224.0/version.ts",
+      "label": "std@0.224.0/version.ts",
+      "color": "amber",
+      "details": [],
+      "row": 3,
+      "col": 0
+    },
+    {
+      "id": "@denosaurs/plug",
+      "label": "@denosaurs/plug",
+      "color": "purple",
+      "details": [
+        "5 modules"
+      ],
+      "row": 4,
+      "col": 0
+    },
+    {
+      "id": "@std/path",
+      "label": "@std/path",
+      "color": "purple",
+      "details": [
+        "155 modules"
+      ],
+      "row": 4,
+      "col": 1
+    },
+    {
+      "id": "@std/fs",
+      "label": "@std/fs",
+      "color": "purple",
+      "details": [
+        "34 modules"
+      ],
+      "row": 4,
+      "col": 2
+    },
+    {
+      "id": "@std/encoding",
+      "label": "@std/encoding",
+      "color": "purple",
+      "details": [
+        "4 modules"
+      ],
+      "row": 4,
+      "col": 3
+    },
+    {
+      "id": "@std/fmt",
+      "label": "@std/fmt",
+      "color": "purple",
+      "details": [],
+      "row": 5,
+      "col": 0
+    },
+    {
+      "id": "@std/assert",
+      "label": "@std/assert",
+      "color": "purple",
+      "details": [
+        "4 modules"
+      ],
+      "row": 5,
+      "col": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": "dev-server.js~std/http",
+      "from": "dev-server.js",
+      "to": "std/http",
+      "style": "thin"
+    },
+    {
+      "id": "dev-server.js~std/path",
+      "from": "dev-server.js",
+      "to": "std/path",
+      "style": "thin"
+    },
+    {
+      "id": "dev-server.js~diagram-api.js",
+      "from": "dev-server.js",
+      "to": "diagram-api.js",
+      "style": "thin"
+    },
+    {
+      "id": "dev-server.js~themes.js",
+      "from": "dev-server.js",
+      "to": "themes.js",
+      "style": "thin"
+    },
+    {
+      "id": "diagram-api.js~@gfx/canvas",
+      "from": "diagram-api.js",
+      "to": "@gfx/canvas",
+      "style": "thin"
+    },
+    {
+      "id": "diagram-api.js~std/path",
+      "from": "diagram-api.js",
+      "to": "std/path",
+      "style": "thin"
+    },
+    {
+      "id": "diagram-api.js~diagram-core.js",
+      "from": "diagram-api.js",
+      "to": "diagram-core.js",
+      "style": "thin"
+    },
+    {
+      "id": "diagram-api.js~themes.js",
+      "from": "diagram-api.js",
+      "to": "themes.js",
+      "style": "thin"
+    },
+    {
+      "id": "std/cli~std/assert",
+      "from": "std/cli",
+      "to": "std/assert",
+      "style": "thin"
+    },
+    {
+      "id": "std/http~std/encoding",
+      "from": "std/http",
+      "to": "std/encoding",
+      "style": "thin"
+    },
+    {
+      "id": "std/http~std/path",
+      "from": "std/http",
+      "to": "std/path",
+      "style": "solid",
+      "label": "7"
+    },
+    {
+      "id": "std/http~std/media_types",
+      "from": "std/http",
+      "to": "std/media_types",
+      "style": "thin"
+    },
+    {
+      "id": "std/http~std/streams",
+      "from": "std/http",
+      "to": "std/streams",
+      "style": "thin"
+    },
+    {
+      "id": "std/http~std/cli",
+      "from": "std/http",
+      "to": "std/cli",
+      "style": "thin"
+    },
+    {
+      "id": "std/http~std/fmt",
+      "from": "std/http",
+      "to": "std/fmt",
+      "style": "default",
+      "label": "2"
+    },
+    {
+      "id": "std/http~deno.land/std@0.224.0/version.ts",
+      "from": "std/http",
+      "to": "deno.land/std@0.224.0/version.ts",
+      "style": "thin"
+    },
+    {
+      "id": "std/path~std/assert",
+      "from": "std/path",
+      "to": "std/assert",
+      "style": "thin"
+    },
+    {
+      "id": "std/streams~std/assert",
+      "from": "std/streams",
+      "to": "std/assert",
+      "style": "thin"
+    },
+    {
+      "id": "@denosaurs/plug~@std/path",
+      "from": "@denosaurs/plug",
+      "to": "@std/path",
+      "style": "thin"
+    },
+    {
+      "id": "@denosaurs/plug~@std/fs",
+      "from": "@denosaurs/plug",
+      "to": "@std/fs",
+      "style": "thin"
+    },
+    {
+      "id": "@denosaurs/plug~@std/encoding",
+      "from": "@denosaurs/plug",
+      "to": "@std/encoding",
+      "style": "thin"
+    },
+    {
+      "id": "@denosaurs/plug~@std/fmt",
+      "from": "@denosaurs/plug",
+      "to": "@std/fmt",
+      "style": "thin"
+    },
+    {
+      "id": "@gfx/canvas~@std/encoding",
+      "from": "@gfx/canvas",
+      "to": "@std/encoding",
+      "style": "thin"
+    },
+    {
+      "id": "@gfx/canvas~@denosaurs/plug",
+      "from": "@gfx/canvas",
+      "to": "@denosaurs/plug",
+      "style": "solid",
+      "label": "4"
+    },
+    {
+      "id": "@gfx/canvas~@std/path",
+      "from": "@gfx/canvas",
+      "to": "@std/path",
+      "style": "thin"
+    },
+    {
+      "id": "@gfx/canvas~@std/fs",
+      "from": "@gfx/canvas",
+      "to": "@std/fs",
+      "style": "thin"
+    },
+    {
+      "id": "@std/fs~@std/path",
+      "from": "@std/fs",
+      "to": "@std/path",
+      "style": "solid",
+      "label": "42"
+    },
+    {
+      "id": "@std/fs~@std/assert",
+      "from": "@std/fs",
+      "to": "@std/assert",
+      "style": "solid",
+      "label": "4"
+    },
+    {
+      "id": "@std/path~@std/assert",
+      "from": "@std/path",
+      "to": "@std/assert",
+      "style": "default",
+      "label": "2"
+    }
+  ],
+  "rev": 12,
+  "layout": {
+    "dev-server.js": {
+      "x": 300,
+      "y": 45
+    },
+    "std/http": {
+      "x": 435,
+      "y": 165
+    },
+    "std/path": {
+      "x": 570,
+      "y": 165
+    },
+    "diagram-api.js": {
+      "x": 945,
+      "y": 165
+    },
+    "themes.js": {
+      "x": 1455,
+      "y": 165
+    },
+    "@gfx/canvas": {
+      "x": 300,
+      "y": 285
+    },
+    "diagram-core.js": {
+      "x": 465,
+      "y": 285
+    },
+    "std/assert": {
+      "x": 660,
+      "y": 285
+    },
+    "std/cli": {
+      "x": 825,
+      "y": 255
+    },
+    "std/encoding": {
+      "x": 945,
+      "y": 285
+    },
+    "std/fmt": {
+      "x": 1110,
+      "y": 285
+    },
+    "std/media_types": {
+      "x": 1245,
+      "y": 285
+    },
+    "std/streams": {
+      "x": 1440,
+      "y": 285
+    },
+    "deno.land/std@0.224.0/version.ts": {
+      "x": 75,
+      "y": 405
+    },
+    "@denosaurs/plug": {
+      "x": 285,
+      "y": 525
+    },
+    "@std/path": {
+      "x": 660,
+      "y": 525
+    },
+    "@std/fs": {
+      "x": 960,
+      "y": 525
+    },
+    "@std/encoding": {
+      "x": 1335,
+      "y": 525
+    },
+    "@std/fmt": {
+      "x": 135,
+      "y": 645
+    },
+    "@std/assert": {
+      "x": 1440,
+      "y": 645
+    }
+  },
+  "noteLayout": {},
+  "rowY": {},
+  "pinned": [
+    "std/cli"
+  ]
+}
