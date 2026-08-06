@@ -1,9 +1,4 @@
 {
-  "title": "File tree — agent-diagrams/ (depth ≤ 2, files)",
-  "footer": "58 nodes · 57 containment edges · 9 rows",
-  "theme": "dawnfox",
-  "width": 1795,
-  "height": 1310,
   "nodes": [
     {
       "id": "agent-diagrams",
@@ -22,12 +17,20 @@
       "col": 0
     },
     {
+      "id": "agent-diagrams/CLAUDE.md",
+      "label": "CLAUDE.md",
+      "color": "gray",
+      "details": [],
+      "row": 1,
+      "col": 1
+    },
+    {
       "id": "agent-diagrams/deno.json",
       "label": "deno.json",
       "color": "amber",
       "details": [],
       "row": 1,
-      "col": 1
+      "col": 2
     },
     {
       "id": "agent-diagrams/deno.lock",
@@ -35,7 +38,7 @@
       "color": "gray",
       "details": [],
       "row": 1,
-      "col": 2
+      "col": 3
     },
     {
       "id": "agent-diagrams/dev-server.js",
@@ -43,7 +46,7 @@
       "color": "blue",
       "details": [],
       "row": 1,
-      "col": 3
+      "col": 4
     },
     {
       "id": "agent-diagrams/diagram-api.js",
@@ -51,7 +54,7 @@
       "color": "blue",
       "details": [],
       "row": 1,
-      "col": 4
+      "col": 5
     },
     {
       "id": "agent-diagrams/diagram-cli.js",
@@ -59,20 +62,12 @@
       "color": "blue",
       "details": [],
       "row": 1,
-      "col": 5
+      "col": 6
     },
     {
       "id": "agent-diagrams/diagram-core.js",
       "label": "diagram-core.js",
       "color": "blue",
-      "details": [],
-      "row": 1,
-      "col": 6
-    },
-    {
-      "id": "agent-diagrams/HANDOFF.md",
-      "label": "HANDOFF.md",
-      "color": "gray",
       "details": [],
       "row": 1,
       "col": 7
@@ -142,52 +137,22 @@
       "col": 7
     },
     {
-      "id": "agent-diagrams/.claude",
-      "label": ".claude/",
-      "color": "green",
-      "details": [],
-      "row": 3,
-      "col": 0
-    },
-    {
-      "id": "agent-diagrams/.claude/settings.local.json",
-      "label": "settings.local.json",
-      "color": "amber",
-      "details": [],
-      "row": 4,
-      "col": 0
-    },
-    {
-      "id": "agent-diagrams/.claude/slot-drag-test.png",
-      "label": "slot-drag-test.png",
-      "color": "pink",
-      "details": [],
-      "row": 4,
-      "col": 1
-    },
-    {
-      "id": "agent-diagrams/.claude/slot-hover-test.png",
-      "label": "slot-hover-test.png",
-      "color": "pink",
-      "details": [],
-      "row": 4,
-      "col": 2
-    },
-    {
       "id": "agent-diagrams/assets",
       "label": "assets/",
       "color": "green",
       "details": [],
       "row": 3,
-      "col": 1
+      "col": 0
     },
     {
       "id": "agent-diagrams/assets/fonts",
       "label": "fonts/",
       "color": "green",
-      "details": [],
+      "details": [
+        "7 files"
+      ],
       "row": 4,
-      "col": 3
+      "col": 0
     },
     {
       "id": "agent-diagrams/bin",
@@ -195,7 +160,7 @@
       "color": "green",
       "details": [],
       "row": 3,
-      "col": 2
+      "col": 1
     },
     {
       "id": "agent-diagrams/bin/import-depgraph.js",
@@ -203,7 +168,7 @@
       "color": "blue",
       "details": [],
       "row": 4,
-      "col": 4
+      "col": 1
     },
     {
       "id": "agent-diagrams/bin/import-filetree.js",
@@ -211,7 +176,7 @@
       "color": "blue",
       "details": [],
       "row": 4,
-      "col": 5
+      "col": 2
     },
     {
       "id": "agent-diagrams/bin/import-util.js",
@@ -219,7 +184,7 @@
       "color": "blue",
       "details": [],
       "row": 4,
-      "col": 6
+      "col": 3
     },
     {
       "id": "agent-diagrams/bin/serve.sh",
@@ -227,15 +192,15 @@
       "color": "gray",
       "details": [],
       "row": 4,
-      "col": 7
+      "col": 4
     },
     {
       "id": "agent-diagrams/bin/upstream-check.js",
       "label": "upstream-check.js",
       "color": "blue",
       "details": [],
-      "row": 5,
-      "col": 0
+      "row": 4,
+      "col": 5
     },
     {
       "id": "agent-diagrams/diagrams",
@@ -243,31 +208,37 @@
       "color": "green",
       "details": [],
       "row": 3,
-      "col": 3
+      "col": 2
     },
     {
       "id": "agent-diagrams/diagrams/deps",
       "label": "deps/",
       "color": "green",
-      "details": [],
-      "row": 5,
-      "col": 1
+      "details": [
+        "2 files"
+      ],
+      "row": 4,
+      "col": 6
     },
     {
       "id": "agent-diagrams/diagrams/example",
       "label": "example/",
       "color": "green",
-      "details": [],
-      "row": 5,
-      "col": 2
+      "details": [
+        "2 files"
+      ],
+      "row": 4,
+      "col": 7
     },
     {
       "id": "agent-diagrams/diagrams/letgo-io",
       "label": "letgo-io/",
       "color": "green",
-      "details": [],
+      "details": [
+        "2 files"
+      ],
       "row": 5,
-      "col": 3
+      "col": 0
     },
     {
       "id": "agent-diagrams/diagrams/letgo-io-phases",
@@ -275,15 +246,27 @@
       "color": "green",
       "details": [],
       "row": 5,
-      "col": 4
+      "col": 1
     },
     {
       "id": "agent-diagrams/diagrams/letgo-io-phases/1-current",
       "label": "1-current/",
       "color": "green",
-      "details": [],
+      "details": [
+        "2 entries, not expanded"
+      ],
       "row": 8,
       "col": 0
+    },
+    {
+      "id": "agent-diagrams/diagrams/tree",
+      "label": "tree/",
+      "color": "green",
+      "details": [
+        "2 files"
+      ],
+      "row": 5,
+      "col": 2
     },
     {
       "id": "agent-diagrams/docs",
@@ -291,63 +274,17 @@
       "color": "green",
       "details": [],
       "row": 3,
-      "col": 4
-    },
-    {
-      "id": "agent-diagrams/docs/drafts",
-      "label": "drafts/",
-      "color": "green",
-      "details": [],
-      "row": 5,
-      "col": 5
-    },
-    {
-      "id": "agent-diagrams/docs/plans",
-      "label": "plans/",
-      "color": "green",
-      "details": [],
-      "row": 5,
-      "col": 6
-    },
-    {
-      "id": "agent-diagrams/docs/project_archived",
-      "label": "project_archived/",
-      "color": "green",
-      "details": [],
-      "row": 5,
-      "col": 7
-    },
-    {
-      "id": "agent-diagrams/docs/project_archived/handoffs",
-      "label": "handoffs/",
-      "color": "green",
-      "details": [],
-      "row": 8,
-      "col": 1
-    },
-    {
-      "id": "agent-diagrams/docs/project_incoming",
-      "label": "project_incoming/",
-      "color": "green",
-      "details": [],
-      "row": 6,
-      "col": 0
+      "col": 3
     },
     {
       "id": "agent-diagrams/docs/project_notes",
       "label": "project_notes/",
       "color": "green",
-      "details": [],
-      "row": 6,
-      "col": 1
-    },
-    {
-      "id": "agent-diagrams/docs/project_notes/handoffs",
-      "label": "handoffs/",
-      "color": "green",
-      "details": [],
-      "row": 8,
-      "col": 2
+      "details": [
+        "1 file"
+      ],
+      "row": 5,
+      "col": 3
     },
     {
       "id": "agent-diagrams/tests",
@@ -355,39 +292,47 @@
       "color": "green",
       "details": [],
       "row": 3,
-      "col": 5
+      "col": 4
     },
     {
       "id": "agent-diagrams/tests/canary-render.js",
       "label": "canary-render.js",
       "color": "blue",
       "details": [],
-      "row": 6,
-      "col": 2
+      "row": 5,
+      "col": 4
     },
     {
       "id": "agent-diagrams/tests/diagram-api.test.js",
       "label": "diagram-api.test.js",
       "color": "blue",
       "details": [],
-      "row": 6,
-      "col": 3
+      "row": 5,
+      "col": 5
     },
     {
       "id": "agent-diagrams/tests/diagram-cli.test.js",
       "label": "diagram-cli.test.js",
       "color": "blue",
       "details": [],
-      "row": 6,
-      "col": 4
+      "row": 5,
+      "col": 6
     },
     {
       "id": "agent-diagrams/tests/diagram-core.test.js",
       "label": "diagram-core.test.js",
       "color": "blue",
       "details": [],
+      "row": 5,
+      "col": 7
+    },
+    {
+      "id": "agent-diagrams/tests/import-util.test.js",
+      "label": "import-util.test.js",
+      "color": "blue",
+      "details": [],
       "row": 6,
-      "col": 5
+      "col": 0
     },
     {
       "id": "agent-diagrams/tests/parity_browser.js",
@@ -395,7 +340,7 @@
       "color": "blue",
       "details": [],
       "row": 6,
-      "col": 6
+      "col": 1
     },
     {
       "id": "agent-diagrams/tests/parity_deno.js",
@@ -403,55 +348,47 @@
       "color": "blue",
       "details": [],
       "row": 6,
-      "col": 7
+      "col": 2
     },
     {
       "id": "agent-diagrams/tests/parity-corpus.js",
       "label": "parity-corpus.js",
       "color": "blue",
       "details": [],
-      "row": 7,
-      "col": 0
-    },
-    {
-      "id": "agent-diagrams/tests/parity-deno.json",
-      "label": "parity-deno.json",
-      "color": "amber",
-      "details": [],
-      "row": 7,
-      "col": 1
+      "row": 6,
+      "col": 3
     },
     {
       "id": "agent-diagrams/tests/parity-page.html",
       "label": "parity-page.html",
       "color": "teal",
       "details": [],
-      "row": 7,
-      "col": 2
+      "row": 6,
+      "col": 4
     },
     {
       "id": "agent-diagrams/tests/parity.test.js",
       "label": "parity.test.js",
       "color": "blue",
       "details": [],
-      "row": 7,
-      "col": 3
+      "row": 6,
+      "col": 5
     },
     {
       "id": "agent-diagrams/tests/raster-parity.test.js",
       "label": "raster-parity.test.js",
       "color": "blue",
       "details": [],
-      "row": 7,
-      "col": 4
+      "row": 6,
+      "col": 6
     },
     {
       "id": "agent-diagrams/tests/shadow-canary.test.js",
       "label": "shadow-canary.test.js",
       "color": "blue",
       "details": [],
-      "row": 7,
-      "col": 5
+      "row": 6,
+      "col": 7
     },
     {
       "id": "agent-diagrams/tests/shadow-probe.js",
@@ -459,15 +396,17 @@
       "color": "blue",
       "details": [],
       "row": 7,
-      "col": 6
+      "col": 0
     },
     {
       "id": "agent-diagrams/tests/fixtures",
       "label": "fixtures/",
       "color": "green",
-      "details": [],
+      "details": [
+        "2 files"
+      ],
       "row": 7,
-      "col": 7
+      "col": 1
     }
   ],
   "edges": [
@@ -475,6 +414,12 @@
       "id": "agent-diagrams~agent-diagrams/.gitignore",
       "from": "agent-diagrams",
       "to": "agent-diagrams/.gitignore",
+      "style": "thin"
+    },
+    {
+      "id": "agent-diagrams~agent-diagrams/CLAUDE.md",
+      "from": "agent-diagrams",
+      "to": "agent-diagrams/CLAUDE.md",
       "style": "thin"
     },
     {
@@ -511,12 +456,6 @@
       "id": "agent-diagrams~agent-diagrams/diagram-core.js",
       "from": "agent-diagrams",
       "to": "agent-diagrams/diagram-core.js",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams~agent-diagrams/HANDOFF.md",
-      "from": "agent-diagrams",
-      "to": "agent-diagrams/HANDOFF.md",
       "style": "thin"
     },
     {
@@ -565,30 +504,6 @@
       "id": "agent-diagrams~agent-diagrams/whiteboard.html",
       "from": "agent-diagrams",
       "to": "agent-diagrams/whiteboard.html",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams~agent-diagrams/.claude",
-      "from": "agent-diagrams",
-      "to": "agent-diagrams/.claude",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/.claude~agent-diagrams/.claude/settings.local.json",
-      "from": "agent-diagrams/.claude",
-      "to": "agent-diagrams/.claude/settings.local.json",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/.claude~agent-diagrams/.claude/slot-drag-test.png",
-      "from": "agent-diagrams/.claude",
-      "to": "agent-diagrams/.claude/slot-drag-test.png",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/.claude~agent-diagrams/.claude/slot-hover-test.png",
-      "from": "agent-diagrams/.claude",
-      "to": "agent-diagrams/.claude/slot-hover-test.png",
       "style": "thin"
     },
     {
@@ -676,51 +591,21 @@
       "style": "thin"
     },
     {
+      "id": "agent-diagrams/diagrams~agent-diagrams/diagrams/tree",
+      "from": "agent-diagrams/diagrams",
+      "to": "agent-diagrams/diagrams/tree",
+      "style": "thin"
+    },
+    {
       "id": "agent-diagrams~agent-diagrams/docs",
       "from": "agent-diagrams",
       "to": "agent-diagrams/docs",
       "style": "thin"
     },
     {
-      "id": "agent-diagrams/docs~agent-diagrams/docs/drafts",
-      "from": "agent-diagrams/docs",
-      "to": "agent-diagrams/docs/drafts",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/docs~agent-diagrams/docs/plans",
-      "from": "agent-diagrams/docs",
-      "to": "agent-diagrams/docs/plans",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/docs~agent-diagrams/docs/project_archived",
-      "from": "agent-diagrams/docs",
-      "to": "agent-diagrams/docs/project_archived",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/docs/project_archived~agent-diagrams/docs/project_archived/handoffs",
-      "from": "agent-diagrams/docs/project_archived",
-      "to": "agent-diagrams/docs/project_archived/handoffs",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/docs~agent-diagrams/docs/project_incoming",
-      "from": "agent-diagrams/docs",
-      "to": "agent-diagrams/docs/project_incoming",
-      "style": "thin"
-    },
-    {
       "id": "agent-diagrams/docs~agent-diagrams/docs/project_notes",
       "from": "agent-diagrams/docs",
       "to": "agent-diagrams/docs/project_notes",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/docs/project_notes~agent-diagrams/docs/project_notes/handoffs",
-      "from": "agent-diagrams/docs/project_notes",
-      "to": "agent-diagrams/docs/project_notes/handoffs",
       "style": "thin"
     },
     {
@@ -754,6 +639,12 @@
       "style": "thin"
     },
     {
+      "id": "agent-diagrams/tests~agent-diagrams/tests/import-util.test.js",
+      "from": "agent-diagrams/tests",
+      "to": "agent-diagrams/tests/import-util.test.js",
+      "style": "thin"
+    },
+    {
       "id": "agent-diagrams/tests~agent-diagrams/tests/parity_browser.js",
       "from": "agent-diagrams/tests",
       "to": "agent-diagrams/tests/parity_browser.js",
@@ -769,12 +660,6 @@
       "id": "agent-diagrams/tests~agent-diagrams/tests/parity-corpus.js",
       "from": "agent-diagrams/tests",
       "to": "agent-diagrams/tests/parity-corpus.js",
-      "style": "thin"
-    },
-    {
-      "id": "agent-diagrams/tests~agent-diagrams/tests/parity-deno.json",
-      "from": "agent-diagrams/tests",
-      "to": "agent-diagrams/tests/parity-deno.json",
       "style": "thin"
     },
     {
@@ -814,245 +699,13 @@
       "style": "thin"
     }
   ],
-  "rev": 17,
-  "layout": {
-    "agent-diagrams": {
-      "x": 525,
-      "y": 45
-    },
-    "agent-diagrams/.gitignore": {
-      "x": 90,
-      "y": 165
-    },
-    "agent-diagrams/deno.json": {
-      "x": 270,
-      "y": 165
-    },
-    "agent-diagrams/deno.lock": {
-      "x": 450,
-      "y": 165
-    },
-    "agent-diagrams/dev-server.js": {
-      "x": 615,
-      "y": 165
-    },
-    "agent-diagrams/diagram-api.js": {
-      "x": 795,
-      "y": 165
-    },
-    "agent-diagrams/diagram-cli.js": {
-      "x": 975,
-      "y": 165
-    },
-    "agent-diagrams/diagram-core.js": {
-      "x": 1155,
-      "y": 165
-    },
-    "agent-diagrams/HANDOFF.md": {
-      "x": 1350,
-      "y": 165
-    },
-    "agent-diagrams/justfile": {
-      "x": 90,
-      "y": 285
-    },
-    "agent-diagrams/raster-check.js": {
-      "x": 270,
-      "y": 285
-    },
-    "agent-diagrams/README.md": {
-      "x": 465,
-      "y": 285
-    },
-    "agent-diagrams/render-diagram.js": {
-      "x": 615,
-      "y": 285
-    },
-    "agent-diagrams/themes.js": {
-      "x": 825,
-      "y": 285
-    },
-    "agent-diagrams/whiteboard-live.html": {
-      "x": 975,
-      "y": 285
-    },
-    "agent-diagrams/whiteboard-live.js": {
-      "x": 1215,
-      "y": 285
-    },
-    "agent-diagrams/whiteboard.html": {
-      "x": 1440,
-      "y": 285
-    },
-    "agent-diagrams/.claude": {
-      "x": 150,
-      "y": 405
-    },
-    "agent-diagrams/.claude/settings.local.json": {
-      "x": 45,
-      "y": 525
-    },
-    "agent-diagrams/.claude/slot-drag-test.png": {
-      "x": 270,
-      "y": 525
-    },
-    "agent-diagrams/.claude/slot-hover-test.png": {
-      "x": 495,
-      "y": 525
-    },
-    "agent-diagrams/assets": {
-      "x": 390,
-      "y": 405
-    },
-    "agent-diagrams/assets/fonts": {
-      "x": 720,
-      "y": 525
-    },
-    "agent-diagrams/bin": {
-      "x": 705,
-      "y": 405
-    },
-    "agent-diagrams/bin/import-depgraph.js": {
-      "x": 855,
-      "y": 525
-    },
-    "agent-diagrams/bin/import-filetree.js": {
-      "x": 1080,
-      "y": 525
-    },
-    "agent-diagrams/bin/import-util.js": {
-      "x": 1305,
-      "y": 525
-    },
-    "agent-diagrams/bin/serve.sh": {
-      "x": 1485,
-      "y": 525
-    },
-    "agent-diagrams/bin/upstream-check.js": {
-      "x": 105,
-      "y": 645
-    },
-    "agent-diagrams/diagrams": {
-      "x": 840,
-      "y": 405
-    },
-    "agent-diagrams/diagrams/deps": {
-      "x": 315,
-      "y": 645
-    },
-    "agent-diagrams/diagrams/example": {
-      "x": 495,
-      "y": 645
-    },
-    "agent-diagrams/diagrams/letgo-io": {
-      "x": 645,
-      "y": 645
-    },
-    "agent-diagrams/diagrams/letgo-io-phases": {
-      "x": 795,
-      "y": 645
-    },
-    "agent-diagrams/diagrams/letgo-io-phases/1-current": {
-      "x": 75,
-      "y": 1185
-    },
-    "agent-diagrams/docs": {
-      "x": 1005,
-      "y": 405
-    },
-    "agent-diagrams/docs/drafts": {
-      "x": 1050,
-      "y": 645
-    },
-    "agent-diagrams/docs/plans": {
-      "x": 1215,
-      "y": 645
-    },
-    "agent-diagrams/docs/project_archived": {
-      "x": 1350,
-      "y": 645
-    },
-    "agent-diagrams/docs/project_archived/handoffs": {
-      "x": 810,
-      "y": 1005
-    },
-    "agent-diagrams/docs/project_incoming": {
-      "x": 135,
-      "y": 765
-    },
-    "agent-diagrams/docs/project_notes": {
-      "x": 390,
-      "y": 765
-    },
-    "agent-diagrams/docs/project_notes/handoffs": {
-      "x": 1335,
-      "y": 1005
-    },
-    "agent-diagrams/tests": {
-      "x": 1140,
-      "y": 405
-    },
-    "agent-diagrams/tests/canary-render.js": {
-      "x": 570,
-      "y": 765
-    },
-    "agent-diagrams/tests/diagram-api.test.js": {
-      "x": 780,
-      "y": 765
-    },
-    "agent-diagrams/tests/diagram-cli.test.js": {
-      "x": 1005,
-      "y": 765
-    },
-    "agent-diagrams/tests/diagram-core.test.js": {
-      "x": 1230,
-      "y": 765
-    },
-    "agent-diagrams/tests/parity_browser.js": {
-      "x": 1470,
-      "y": 765
-    },
-    "agent-diagrams/tests/parity_deno.js": {
-      "x": 1605,
-      "y": 765
-    },
-    "agent-diagrams/tests/parity-corpus.js": {
-      "x": 150,
-      "y": 885
-    },
-    "agent-diagrams/tests/parity-deno.json": {
-      "x": 360,
-      "y": 885
-    },
-    "agent-diagrams/tests/parity-page.html": {
-      "x": 570,
-      "y": 885
-    },
-    "agent-diagrams/tests/parity.test.js": {
-      "x": 780,
-      "y": 885
-    },
-    "agent-diagrams/tests/raster-parity.test.js": {
-      "x": 960,
-      "y": 885
-    },
-    "agent-diagrams/tests/shadow-canary.test.js": {
-      "x": 1200,
-      "y": 885
-    },
-    "agent-diagrams/tests/shadow-probe.js": {
-      "x": 1440,
-      "y": 885
-    },
-    "agent-diagrams/tests/fixtures": {
-      "x": 1605,
-      "y": 885
-    }
-  },
+  "rev": 2,
+  "title": "File tree — agent-diagrams/ (depth ≤ 2, files)",
+  "footer": "49 nodes · 48 containment edges · 9 rows",
+  "theme": "afterglow",
+  "width": 1600,
+  "height": 1400,
+  "layout": {},
   "noteLayout": {},
-  "rowY": {},
-  "pinned": [
-    "agent-diagrams/diagrams/letgo-io-phases/1-current"
-  ],
-  "fontSize": 10
+  "rowY": {}
 }
