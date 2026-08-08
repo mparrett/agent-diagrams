@@ -961,7 +961,15 @@ export class Diagram {
     const d = { orient, at };
     if (opts.label) d.label = opts.label;
     if (opts.color) d.color = opts.color;
-    if (opts.dash) d.dash = opts.dash;
+    // A bad token used to reach the renderer and die there; validate at the
+    // boundary like addEdge/styleNode do. Arrays are still accepted — boards
+    // predating this wrote raw [on, off] pairs.
+    if (opts.dash) {
+      if (!Array.isArray(opts.dash)) {
+        this._validateEnum(opts.dash, DASH_TOKENS, "dash");
+      }
+      d.dash = opts.dash;
+    }
     this._state.dividers = [...(this._state.dividers || []), d];
   }
 

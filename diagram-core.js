@@ -2315,7 +2315,13 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
-    ctx.setLineDash(d.dash || [2, 5]);
+    // Resolve dash tokens the way edges (routeEdges) and node outlines
+    // (drawBoxes) do. Passing the raw value through meant a token string —
+    // the spelling the rest of the API takes — reached Skia's setLineDash and
+    // segfaulted the process. Arrays still pass through for existing boards.
+    ctx.setLineDash(
+      DASH_TOKENS[d.dash] || (Array.isArray(d.dash) ? d.dash : [2, 5]),
+    );
     ctx.beginPath();
     if (d.orient === "h") {
       ctx.moveTo(0, d.at);

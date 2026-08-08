@@ -43,6 +43,35 @@ Deno.test("auto-legend skips colorless nodes (no undefined label → no fillText
     d.render(); // must not throw "failed to fill text"
   }));
 
+Deno.test("divider dash tokens resolve (no raw string reaches setLineDash)", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    // A board written before validation existed: the token is already on disk,
+    // so loading and rendering has to cope rather than reject.
+    writeState(path, {
+      nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
+      dividers: [{ orient: "h", at: 60, label: "band", dash: "dotted" }],
+    });
+    // Rendering this used to hand "dotted" straight to Skia's setLineDash and
+    // take the whole process down with SIGSEGV — no exception to catch, so a
+    // regression here fails the run by killing it.
+    Diagram.load(path).render();
+
+    // Arrays still work: boards predating tokens wrote raw [on, off] pairs.
+    const d2 = Diagram.load(path);
+    d2.addDivider("v", 40, { dash: [4, 4] });
+    d2.render();
+
+    // And a bad token is now refused at the API boundary, not in the renderer.
+    let threw = false;
+    try {
+      d2.addDivider("h", 90, { dash: "wobbly" });
+    } catch {
+      threw = true;
+    }
+    assert(threw, "invalid dash token rejected by addDivider");
+  }));
+
 Deno.test("parallel edges: same (from,to) coexist, addressed by id", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;
