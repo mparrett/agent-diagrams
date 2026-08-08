@@ -43,33 +43,95 @@ Deno.test("auto-legend skips colorless nodes (no undefined label → no fillText
     d.render(); // must not throw "failed to fill text"
   }));
 
-Deno.test("divider dash tokens resolve (no raw string reaches setLineDash)", () =>
+// Render a board and return a hash of the PNG, so two dash spellings can be
+// compared for "did this actually draw the same thing" rather than merely
+// "did it survive". A crash shows up as the whole run dying: setLineDash
+// faults inside Skia over FFI, so there is no exception to assert on.
+// The vendored @std/assert does not carry assertThrows. Matching the message
+// matters here: a bare "it threw" would also pass if the call failed for an
+// unrelated reason, which is the failure mode this test exists to rule out.
+function assertThrowsWith(fn, needle, what) {
+  let msg = null;
+  try {
+    fn();
+  } catch (e) {
+    msg = String(e?.message ?? e);
+  }
+  assert(msg !== null, `${what}: expected a throw, got none`);
+  assert(msg.includes(needle), `${what}: expected /${needle}/, got "${msg}"`);
+}
+
+function renderHash(state) {
+  return withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, state);
+    Diagram.load(path).render();
+    const png = Deno.readFileSync(`${dir}/diagram.png`);
+    let h = 0n;
+    for (const b of png) h = (h * 31n + BigInt(b)) & 0xffffffffffffffffn;
+    return h.toString(16);
+  });
+}
+
+const NODE_A = { id: "a", label: "A", color: "blue", row: 0, col: 0 };
+const NODE_B = { id: "b", label: "B", color: "green", row: 0, col: 1 };
+const divider = (dash) => ({
+  nodes: [NODE_A],
+  dividers: [{ orient: "h", at: 60, dash }],
+});
+
+Deno.test("dash tokens resolve to their arrays, everywhere they are read", () => {
+  // The token must draw the same as the array it stands for. Asserting only
+  // that rendering survives would pass against a stub that ignored the value.
+  assert(
+    renderHash(divider("dotted")) === renderHash(divider([2, 3])),
+    'divider "dotted" renders identically to [2, 3]',
+  );
+  assert(
+    renderHash(divider("dotted")) !== renderHash(divider("dashed")),
+    "different tokens are distinguishable (the comparison can fail)",
+  );
+  // Unknown values take the fallback rather than reaching the canvas. Inherited
+  // Object members are the interesting case: they are array-like enough not to
+  // crash, so a bare map lookup renders them silently wrong.
+  assert(
+    renderHash(divider("wobbly")) === renderHash(divider("constructor")),
+    "unrecognised dash values all take the fallback",
+  );
+
+  // edgeStyles is merged straight from board JSON, so a custom style's dash is
+  // attacker-shaped input to the same FFI call. This one still segfaulted after
+  // the divider was fixed.
+  const styled = (dash) => ({
+    nodes: [NODE_A, NODE_B],
+    edges: [{ from: "a", to: "b", style: "rpc" }],
+    edgeStyles: { rpc: { color: "#6cf", dash } },
+  });
+  assert(
+    renderHash(styled("dotted")) === renderHash(styled([2, 3])),
+    'edgeStyles dash "dotted" renders identically to [2, 3]',
+  );
+});
+
+Deno.test("addDivider rejects dash values that would draw wrong", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;
-    // A board written before validation existed: the token is already on disk,
-    // so loading and rendering has to cope rather than reject.
-    writeState(path, {
-      nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
-      dividers: [{ orient: "h", at: 60, label: "band", dash: "dotted" }],
-    });
-    // Rendering this used to hand "dotted" straight to Skia's setLineDash and
-    // take the whole process down with SIGSEGV — no exception to catch, so a
-    // regression here fails the run by killing it.
-    Diagram.load(path).render();
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
 
-    // Arrays still work: boards predating tokens wrote raw [on, off] pairs.
-    const d2 = Diagram.load(path);
-    d2.addDivider("v", 40, { dash: [4, 4] });
-    d2.render();
-
-    // And a bad token is now refused at the API boundary, not in the renderer.
-    let threw = false;
-    try {
-      d2.addDivider("h", 90, { dash: "wobbly" });
-    } catch {
-      threw = true;
-    }
-    assert(threw, "invalid dash token rejected by addDivider");
+    assertThrowsWith(
+      () => d.addDivider("h", 90, { dash: "wobbly" }),
+      "Invalid dash",
+      "unknown token",
+    );
+    // Arrays are accepted, but not ones that would draw a NaN pattern.
+    assertThrowsWith(
+      () => d.addDivider("h", 90, { dash: ["a", "b"] }),
+      "Invalid dash",
+      "non-numeric array",
+    );
+    d.addDivider("h", 90, { dash: [4, 4] });
+    assert(d.listDividers().length === 1, "the valid array form is kept");
   }));
 
 Deno.test("parallel edges: same (from,to) coexist, addressed by id", () =>

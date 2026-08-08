@@ -66,6 +66,30 @@ export const EDGE_WIDTHS = { thin: 1.25, medium: 2, thick: 3.25 };
 export const OUTLINE_WIDTHS = { thin: 1, medium: 2, thick: 3 };
 export const DASH_TOKENS = { solid: [], dashed: [6, 3], dotted: [2, 3] };
 
+/**
+ * Resolve a dash value to the [on, off] array Skia requires.
+ *
+ * This has to be total, because it guards an FFI boundary. `setLineDash` builds
+ * `new Float32Array(value)` but passes `value.length` to Skia separately: for a
+ * string those disagree — `new Float32Array("dotted")` is empty while `.length`
+ * is 6 — so Skia reads past the buffer and the process dies with SIGSEGV. There
+ * is no exception to catch. Anything not recognised must become the fallback
+ * rather than reach the canvas.
+ *
+ * Own-property lookup only: a bare `DASH_TOKENS[v]` resolves "constructor" and
+ * "toString" to inherited members, which are array-like enough not to crash and
+ * so render silently wrong instead of taking the fallback.
+ */
+export function resolveDash(v, fallback = []) {
+  if (Array.isArray(v)) {
+    return v.every((n) => Number.isFinite(n)) ? v : fallback;
+  }
+  if (Object.prototype.hasOwnProperty.call(DASH_TOKENS, v)) {
+    return DASH_TOKENS[v];
+  }
+  return fallback;
+}
+
 // Semantic color tokens → named palette colors. Lets an edge/node carry intent
 // ("error") that re-maps per theme, as an alternative to a literal named color.
 // Theme/state-overridable via makePalette (themeObj.semantic / state.semantic).
@@ -1368,9 +1392,13 @@ export function routeEdges(
     const color = edge.color
       ? resolveColorToken(pal, edge.color).border
       : style.color;
-    const dash = edge.dash
-      ? (DASH_TOKENS[edge.dash] || style.dash)
-      : style.dash;
+    // style.dash comes from pal.edgeStyles, which merges state.edgeStyles
+    // straight out of the board JSON (see buildPalette) — a documented,
+    // hand-edited key. So the fallback needs resolving too, not just the
+    // per-edge override: a custom style spelling its dash "dotted" used to
+    // reach setLineDash raw and segfault.
+    const styleDash = resolveDash(style.dash);
+    const dash = edge.dash ? resolveDash(edge.dash, styleDash) : styleDash;
     const width = EDGE_WIDTHS[edge.width] ?? 2;
     // Per-edge cost overrides compose over the global costs (same {...global,
     // ...override} merge used for state.costs). Lets a single wire bias its own
@@ -2253,7 +2281,7 @@ export function drawBoxes(
 
     ctx.strokeStyle = withAlpha(color.border, OUTLINE_ALPHA);
     ctx.lineWidth = OUTLINE_WIDTHS[b.outlineWidth] ?? 2;
-    ctx.setLineDash(b.outlineDash ? (DASH_TOKENS[b.outlineDash] || []) : []);
+    ctx.setLineDash(resolveDash(b.outlineDash));
     drawRoundRect(ctx, x, y, w, h, 6);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -2315,13 +2343,7 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
-    // Resolve dash tokens the way edges (routeEdges) and node outlines
-    // (drawBoxes) do. Passing the raw value through meant a token string —
-    // the spelling the rest of the API takes — reached Skia's setLineDash and
-    // segfaulted the process. Arrays still pass through for existing boards.
-    ctx.setLineDash(
-      DASH_TOKENS[d.dash] || (Array.isArray(d.dash) ? d.dash : [2, 5]),
-    );
+    ctx.setLineDash(resolveDash(d.dash, [2, 5]));
     ctx.beginPath();
     if (d.orient === "h") {
       ctx.moveTo(0, d.at);
