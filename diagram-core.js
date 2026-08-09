@@ -103,6 +103,19 @@ export function fontFamily(state = {}) {
 // with their text. Literals here are exactly today's hardcoded sizes, so an
 // unset fontSize (scale 1) renders byte-identically.
 const BASE_LABEL_PX = 13;
+
+// Default ceiling for an auto-sized box, before its text wraps instead of
+// growing. ~3.4x the card minimum: wide enough that ordinary labels never wrap,
+// narrow enough that a pasted sentence does. Override per board with
+// state.maxNodeW; declared here because fontSizes() runs at module load.
+export const DEFAULT_MAX_BOX_W = 340;
+
+// A title gets two lines; a detail line gets three. Details are usually the
+// longer text, and vertical space is cheap next to the width that forces a
+// whole row wider.
+export const MAX_LABEL_LINES = 2;
+export const MAX_DETAIL_LINES = 3;
+
 export function fontSizes(state = {}) {
   const fs = Number.isFinite(state.fontSize) && state.fontSize > 0
     ? state.fontSize
@@ -131,6 +144,15 @@ export function fontSizes(state = {}) {
       gap: r(4),
       padX: r(20),
       labelBaseline: r(12),
+      // Width a box grows to before its text wraps instead. Without a ceiling
+      // one long string sets the column width for its whole row, so a single
+      // node stretches the board — and a wide enough board hits the 4096px
+      // raster cap and is downscaled until nothing reads. Scales with fontSize
+      // so larger text still gets room for the same number of words.
+      // state.maxNodeW overrides; 0 restores unbounded growth.
+      maxW: Number.isFinite(state.maxNodeW)
+        ? (state.maxNodeW > 0 ? r(state.maxNodeW) : Infinity)
+        : r(DEFAULT_MAX_BOX_W),
     },
   };
 }
@@ -595,33 +617,75 @@ export function wrapLabel(
   const fits = (s) => ctx.measureText(s).width <= budgetPx;
   if (!Number.isFinite(budgetPx) || fits(label)) return [label];
 
-  const words = label.split(/\s+/).filter(Boolean);
-  let i = 0, l1 = "";
-  for (; i < words.length; i++) { // pack line 1 (force ≥1 word even if it overflows)
-    const t = l1 ? l1 + " " + words[i] : words[i];
-    if (fits(t) || !l1) l1 = t;
-    else break;
+  return wrapToLines(label, fits, MAX_LABEL_LINES);
+}
+
+// Greedy word-wrap into at most maxLines lines under `fits`, ellipsizing the
+// last line only if words are left over. A line always takes at least one word,
+// so an unbreakable word longer than the budget yields a line that overflows
+// rather than an empty one — the box then grows to that word, which is why a
+// single long word still widens a box instead of vanishing into an ellipsis.
+function wrapToLines(text, fits, maxLines) {
+  const words = String(text ?? "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let i = 0;
+  while (i < words.length && lines.length < maxLines) {
+    let ln = "";
+    for (; i < words.length; i++) {
+      const t = ln ? ln + " " + words[i] : words[i];
+      if (fits(t) || !ln) ln = t;
+      else break;
+    }
+    lines.push(ln);
   }
-  if (i >= words.length) return [l1];
-  let l2 = "";
-  for (; i < words.length; i++) { // pack line 2
-    const t = l2 ? l2 + " " + words[i] : words[i];
-    if (fits(t) || !l2) l2 = t;
-    else break;
+  const last = lines.length - 1;
+  // The second clause preserves the pre-wrap behaviour for a lone overflowing
+  // word: it is ellipsized once it shares a box with other lines, but a
+  // single-line box keeps the whole word and widens instead.
+  if (i < words.length || (lines.length > 1 && !fits(lines[last]))) {
+    lines[last] = ellipsize(lines[last], fits);
   }
-  if (i < words.length || !fits(l2)) l2 = ellipsize(l2, fits); // leftover words / too-long → …
-  return [l1, l2];
+  return lines;
+}
+
+/**
+ * Wrap detail lines to the same budget as the label, at the detail font.
+ *
+ * Capping the label alone cannot cap the box: contentWidth takes the max over
+ * label *and* detail lines, so one long detail widens the box regardless. Each
+ * source line wraps independently — they are separate facts, not a paragraph —
+ * and runs to MAX_DETAIL_LINES before ellipsizing.
+ */
+export function wrapDetails(
+  ctx,
+  details,
+  budgetPx,
+  font = "monospace",
+  sizes = DEFAULT_SIZES,
+) {
+  const src = details || [];
+  if (!Number.isFinite(budgetPx) || src.length === 0) return [...src];
+  ctx.font = `${sizes.detail}px ${font}`;
+  const fits = (s) => ctx.measureText(s).width <= budgetPx;
+  const out = [];
+  for (const d of src) {
+    const s = String(d ?? "");
+    if (fits(s)) out.push(s);
+    else out.push(...wrapToLines(s, fits, MAX_DETAIL_LINES));
+  }
+  return out;
 }
 
 // Width (px) to fit pre-wrapped label lines + detail lines, floored to the
 // card/emphasis minimum. Shared by measureNodeWidth (single line) and the
 // wrap-aware layout path.
-function contentWidth(ctx, labelLines, node, font, sizes) {
+function contentWidth(ctx, labelLines, detailLines, node, font, sizes) {
   ctx.font = `bold ${sizes.label}px ${font}`;
   let maxW = 0;
   for (const ln of labelLines) maxW = Math.max(maxW, ctx.measureText(ln).width);
   ctx.font = `${sizes.detail}px ${font}`;
-  for (const ln of (node.details || [])) {
+  for (const ln of detailLines) {
     maxW = Math.max(maxW, ctx.measureText(ln).width);
   }
   // node.minW: per-node floor (px) — deliberate emphasis ("make this one bigger")
@@ -638,7 +702,7 @@ export function measureNodeWidth(
   font = "monospace",
   sizes = DEFAULT_SIZES,
 ) {
-  return contentWidth(ctx, [node.label], node, font, sizes);
+  return contentWidth(ctx, [node.label], node.details || [], node, font, sizes);
 }
 
 export function nodeBoxHeight(details, sizes = DEFAULT_SIZES, labelLines = 1) {
@@ -661,18 +725,23 @@ export function nodeBoxSize(
   sizes = DEFAULT_SIZES,
 ) {
   const explicitWpx = node.w > 0 ? node.w * CELL : 0;
-  const budget = explicitWpx > 0 ? explicitWpx - sizes.box.padX * 2 : Infinity;
+  // An explicit width (a drag-resize) is the manual override and wins outright.
+  // Otherwise the board's ceiling applies, so text wraps rather than the box
+  // growing without bound. sizes.box.maxW is Infinity when disabled.
+  const capPx = explicitWpx > 0 ? explicitWpx : sizes.box.maxW;
+  const budget = Number.isFinite(capPx) ? capPx - sizes.box.padX * 2 : Infinity;
   const labelLines = wrapLabel(ctx, node.label, budget, font, sizes);
+  const detailLines = wrapDetails(ctx, node.details, budget, font, sizes);
   const w = Math.max(
-    contentWidth(ctx, labelLines, node, font, sizes),
+    contentWidth(ctx, labelLines, detailLines, node, font, sizes),
     explicitWpx,
   );
   const h = Math.max(
-    nodeBoxHeight(node.details, sizes, labelLines.length),
+    nodeBoxHeight(detailLines, sizes, labelLines.length),
     MIN_BOX_H,
     node.h > 0 ? node.h * CELL : 0,
   );
-  return { w, h, labelLines };
+  return { w, h, labelLines, detailLines };
 }
 
 export function boardExtentForContent(content, baseW = 0, baseH = 0) {
@@ -729,8 +798,13 @@ export function computeLayout(ctx, state, canvasW) {
     // nodeBoxSize is the single source of truth (explicit-width title wrap +
     // card floor); the editor's live resize calls it too, so a dragged box
     // matches what re-rendering produces.
-    const { w, h, labelLines } = nodeBoxSize(ctx, node, FONT, SIZES);
-    pixDims.set(node.id, { w, h, labelLines });
+    const { w, h, labelLines, detailLines } = nodeBoxSize(
+      ctx,
+      node,
+      FONT,
+      SIZES,
+    );
+    pixDims.set(node.id, { w, h, labelLines, detailLines });
   }
 
   // uniformWidth: homogenize — every box without an explicit minW takes the
@@ -974,6 +1048,7 @@ export function computeLayout(ctx, state, canvasW) {
       outlineDash: node.outlineDash,
       details: node.details || [],
       labelLines: dims.labelLines,
+      detailLines: dims.detailLines,
       col,
       row,
       w,
@@ -2262,11 +2337,14 @@ export function drawBoxes(
     // raw box without it falls back to its single label).
     const S = pal.sizes || DEFAULT_SIZES;
     const labelLines = b.labelLines || [b.label];
+    // Pre-wrapped by computeLayout; a raw box without them falls back to its
+    // unwrapped details, which is what a hand-built box or an older caller has.
+    const detailLines = b.detailLines || b.details;
     // Center the text block vertically: the box may be taller than its content
     // (aspect floor / explicit height / wrapped title), so push the block down
     // by half the slack instead of letting it hug the top.
     const slackY =
-      Math.max(0, h - nodeBoxHeight(b.details, S, labelLines.length)) / 2;
+      Math.max(0, h - nodeBoxHeight(detailLines, S, labelLines.length)) / 2;
     let labelY = y + slackY + S.box.padTop + S.box.labelBaseline;
     ctx.fillStyle = pal.text;
     ctx.font = `bold ${S.label}px ${pal.font}`;
@@ -2279,11 +2357,11 @@ export function drawBoxes(
     labelY -= S.box.labelH; // back to the last drawn line's baseline for detail spacing
 
     // Detail lines
-    if (b.details && b.details.length > 0) {
+    if (detailLines && detailLines.length > 0) {
       ctx.fillStyle = pal.textDim;
       ctx.font = `${S.detail}px ${pal.font}`;
       const detailStartY = labelY + S.box.gap + S.box.detailH;
-      b.details.forEach((line, di) => {
+      detailLines.forEach((line, di) => {
         const lineW = ctx.measureText(line).width;
         ctx.fillText(
           line,

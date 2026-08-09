@@ -8,7 +8,9 @@ import {
   computeLayout,
   createAstarState,
   DEFAULT_COSTS,
+  DEFAULT_MAX_BOX_W,
   fontFamily,
+  fontSizes,
   Grid,
   MIN_BOX_H,
   nodeBoxHeight,
@@ -17,6 +19,7 @@ import {
   snapAlign,
   T_BLOCKED,
   withAlpha,
+  wrapDetails,
   wrapLabel,
 } from "../diagram-core.js";
 
@@ -231,6 +234,121 @@ Deno.test("wrapLabel: infinite budget never wraps; a finite budget wraps to <=2 
   assertEquals(wrapLabel(ctx, "Supercalifragilistic", 40), [
     "Supercalifragilistic",
   ]);
+});
+
+// The point of the default ceiling: one long string used to set the column
+// width for its whole row, so a single node could stretch the board past the
+// 4096px raster cap. These pin that wrapping is what happens instead, and that
+// every way of asking for a wide box still works.
+const LONG =
+  "Reconcile the fork and upstream ownership status before the release";
+
+Deno.test("a long label wraps to the default ceiling instead of widening the box", () => {
+  const ctx = measureContext();
+  const boxOf = (state) =>
+    computeLayout(ctx, { edges: [], ...state }, 4000).find((b) => b.id === "a");
+
+  const wrapped = boxOf({ nodes: [{ id: "a", label: LONG, row: 0, col: 0 }] });
+  assert(
+    wrapped.pixW <= DEFAULT_MAX_BOX_W,
+    `expected width <= ${DEFAULT_MAX_BOX_W}, got ${wrapped.pixW}`,
+  );
+  assert(
+    wrapped.labelLines.length === 2,
+    `expected the label to wrap, got ${JSON.stringify(wrapped.labelLines)}`,
+  );
+
+  // maxNodeW: 0 restores unbounded growth, so a board that wants the old
+  // behaviour can still have it.
+  const unbounded = boxOf({
+    maxNodeW: 0,
+    nodes: [{ id: "a", label: LONG, row: 0, col: 0 }],
+  });
+  assert(
+    unbounded.pixW > DEFAULT_MAX_BOX_W,
+    `expected an unbounded box to exceed the ceiling, got ${unbounded.pixW}`,
+  );
+  assertEquals(unbounded.labelLines, [LONG], "unbounded means unwrapped");
+
+  // An explicit width is the manual override and beats the ceiling.
+  const explicit = boxOf({
+    nodes: [{ id: "a", label: LONG, row: 0, col: 0, w: 40 }],
+  });
+  assert(
+    explicit.pixW === 40 * CELL,
+    `explicit width wins, got ${explicit.pixW}`,
+  );
+});
+
+Deno.test("detail lines wrap too — capping only the label cannot cap the box", () => {
+  const ctx = measureContext();
+  const box = computeLayout(ctx, {
+    edges: [],
+    nodes: [{ id: "a", label: "#653", details: [LONG], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+
+  assert(
+    box.pixW <= DEFAULT_MAX_BOX_W,
+    `a long detail must not widen the box, got ${box.pixW}`,
+  );
+  assert(
+    box.detailLines.length > 1,
+    `expected the detail to wrap, got ${JSON.stringify(box.detailLines)}`,
+  );
+
+  // The trade itself: against the same node with the ceiling off, the wrapped
+  // box is narrower and no shorter. Asserting a bare height floor would not
+  // catch a change that widened the box again.
+  const unbounded = computeLayout(ctx, {
+    edges: [],
+    maxNodeW: 0,
+    nodes: [{ id: "a", label: "#653", details: [LONG], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    box.pixW < unbounded.pixW,
+    `wrapped box should be narrower: ${box.pixW} vs ${unbounded.pixW}`,
+  );
+  assert(
+    box.pixH >= unbounded.pixH,
+    `wrapped box should be no shorter: ${box.pixH} vs ${unbounded.pixH}`,
+  );
+});
+
+Deno.test("wrapDetails: each source line wraps independently and keeps unbreakable words", () => {
+  const ctx = measureContext();
+  const sizes = fontSizes();
+
+  // Two facts stay two facts — they are not reflowed into one paragraph.
+  const two = wrapDetails(
+    ctx,
+    ["alpha beta gamma delta", "second"],
+    90,
+    "monospace",
+    sizes,
+  );
+  assertEquals(two[two.length - 1], "second", "the last source line survives");
+  assert(
+    two.length > 2,
+    `expected the first line to wrap, got ${JSON.stringify(two)}`,
+  );
+
+  // No budget → verbatim passthrough, so nothing changes for callers that
+  // disable the ceiling.
+  assertEquals(
+    wrapDetails(ctx, ["a b c"], Infinity, "monospace", sizes),
+    ["a b c"],
+  );
+
+  // An unbreakable token is never chopped: it overflows its line and widens the
+  // box, which is what keeps module specifiers and ids readable.
+  const long = wrapDetails(
+    ctx,
+    ["jsr:@std/path@0.224.0/posix"],
+    40,
+    "monospace",
+    sizes,
+  );
+  assertEquals(long, ["jsr:@std/path@0.224.0/posix"]);
 });
 
 Deno.test("computeLayout honors explicit w/h (cells), clamped up to content", () => {
