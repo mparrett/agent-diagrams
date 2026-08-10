@@ -351,6 +351,67 @@ Deno.test("wrapDetails: each source line wraps independently and keeps unbreakab
   assertEquals(long, ["jsr:@std/path@0.224.0/posix"]);
 });
 
+Deno.test("auto widths come from the ladder, so a board shares box edges", () => {
+  const ctx = measureContext();
+  // Titles of deliberately assorted lengths: free-growing boxes would take a
+  // different width each, which is the incoherence the ladder exists to remove.
+  const boxes = computeLayout(ctx, {
+    edges: [],
+    nodes: [
+      "Alpha",
+      "Alpha Beta",
+      "Alpha Beta Gamma",
+      "Alpha Beta Gamma Delta",
+      "Alpha Beta Gamma Delta Epsilon",
+      "Alpha Beta Gamma Delta Epsilon Zeta",
+    ].map((label, i) => ({ id: `n${i}`, label, row: i, col: 0 })),
+  }, 4000);
+
+  for (const b of boxes) {
+    assert(
+      b.pixW % CELL === 0,
+      `${b.id} width ${b.pixW} is not a whole number of cells`,
+    );
+  }
+  const distinct = new Set(boxes.map((b) => b.pixW));
+  assert(
+    distinct.size <= 3,
+    `expected a handful of shared widths, got ${[...distinct].join(", ")}`,
+  );
+});
+
+Deno.test("a narrower box is not chosen by throwing text away", () => {
+  const ctx = measureContext();
+  // The line caps let a narrow candidate ellipsize instead of growing taller,
+  // so on area alone it looks cheapest *because* it lost content. The chooser
+  // has to rule that out before comparing area.
+  const node = {
+    id: "a",
+    label: "#653",
+    details: [
+      "boxed override for typed-return fns across the AOT lowering path",
+    ],
+    row: 0,
+    col: 0,
+  };
+  const box = computeLayout(ctx, { edges: [], nodes: [node] }, 4000)
+    .find((b) => b.id === "a");
+
+  const lines = [...box.labelLines, ...box.detailLines];
+  assert(
+    !lines.some((l) => l.endsWith("…")),
+    `a wider rung holds this text, so nothing should be cut: ${
+      JSON.stringify(lines)
+    }`,
+  );
+
+  // And when no rung can hold it, it still renders rather than failing.
+  const huge = { ...node, details: [("word ").repeat(120).trim()] };
+  const wide = computeLayout(ctx, { edges: [], nodes: [huge] }, 4000)
+    .find((b) => b.id === "a");
+  assert(wide.pixW > 0 && wide.detailLines.length > 0, "still lays out");
+});
+
 Deno.test("computeLayout honors explicit w/h (cells), clamped up to content", () => {
   const ctx = measureContext();
   const sized = computeLayout(ctx, {

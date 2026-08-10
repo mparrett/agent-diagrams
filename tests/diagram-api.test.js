@@ -453,10 +453,22 @@ Deno.test("solvePositions reports the drawn box size, not the content size", () 
     const path = `${dir}/diagram-state.json`;
     // An auto-sized box, deliberately: with an explicit `w` in cells the content
     // and drawn widths coincide, so the assertion passes on the old code too and
-    // proves nothing. This label measures to a non-multiple of CELL, which is
-    // the only case that separates the two.
+    // proves nothing. The content must measure to a non-multiple of CELL.
+    //
+    // It has to be one unbreakable token. Auto widths are chosen from a ladder
+    // of whole-cell rungs and padded out to the rung, so an ordinary label now
+    // lands exactly on a cell boundary and closes the gap this test needs. A
+    // word too long to wrap overflows its rung, and that overflow is the
+    // remaining case where content and drawn width genuinely differ.
     writeState(path, {
-      nodes: [{ id: "a", label: "Payment Reconciliation", row: 0, col: 0 }],
+      nodes: [
+        {
+          id: "a",
+          label: "PaymentReconciliationServiceEndpoint",
+          row: 0,
+          col: 0,
+        },
+      ],
     });
     const p = Diagram.load(path).solvePositions().positions.a;
 
