@@ -961,7 +961,26 @@ export class Diagram {
     const d = { orient, at };
     if (opts.label) d.label = opts.label;
     if (opts.color) d.color = opts.color;
-    if (opts.dash) d.dash = opts.dash;
+    // Validate at the boundary so a typo fails here rather than rendering as
+    // something unintended. Unlike addEdge/styleNode, which take tokens only,
+    // a divider also accepts an explicit [on, off] pair — it is the one dash
+    // that is a visual choice about a rule rather than a semantic style, so a
+    // caller wanting a specific pattern has nowhere else to say it. Elements
+    // are checked too: ["a","b"] would persist and draw a NaN dash.
+    if (opts.dash) {
+      if (Array.isArray(opts.dash)) {
+        if (!opts.dash.every((n) => Number.isFinite(n))) {
+          throw new Error(
+            `Invalid dash ${
+              JSON.stringify(opts.dash)
+            }. Array form must be finite numbers, e.g. [2, 3]`,
+          );
+        }
+      } else {
+        this._validateEnum(opts.dash, DASH_TOKENS, "dash");
+      }
+      d.dash = opts.dash;
+    }
     this._state.dividers = [...(this._state.dividers || []), d];
   }
 
