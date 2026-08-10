@@ -8,15 +8,19 @@ import {
   computeLayout,
   createAstarState,
   DEFAULT_COSTS,
+  DEFAULT_MAX_BOX_W,
   fontFamily,
+  fontSizes,
   Grid,
   MIN_BOX_H,
+  MIN_BOX_W,
   nodeBoxHeight,
   routeEdges,
   simplifyPath,
   snapAlign,
   T_BLOCKED,
   withAlpha,
+  wrapDetails,
   wrapLabel,
 } from "../diagram-core.js";
 
@@ -231,6 +235,306 @@ Deno.test("wrapLabel: infinite budget never wraps; a finite budget wraps to <=2 
   assertEquals(wrapLabel(ctx, "Supercalifragilistic", 40), [
     "Supercalifragilistic",
   ]);
+});
+
+// The point of the default ceiling: one long string used to set the column
+// width for its whole row, so a single node could stretch the board past the
+// 4096px raster cap. These pin that wrapping is what happens instead, and that
+// every way of asking for a wide box still works.
+const LONG =
+  "Reconcile the fork and upstream ownership status before the release";
+
+Deno.test("a long label wraps to the default ceiling instead of widening the box", () => {
+  const ctx = measureContext();
+  const boxOf = (state) =>
+    computeLayout(ctx, { edges: [], ...state }, 4000).find((b) => b.id === "a");
+
+  const wrapped = boxOf({ nodes: [{ id: "a", label: LONG, row: 0, col: 0 }] });
+  assert(
+    wrapped.pixW <= DEFAULT_MAX_BOX_W,
+    `expected width <= ${DEFAULT_MAX_BOX_W}, got ${wrapped.pixW}`,
+  );
+  assert(
+    wrapped.labelLines.length === 2,
+    `expected the label to wrap, got ${JSON.stringify(wrapped.labelLines)}`,
+  );
+
+  // maxNodeW: 0 restores unbounded growth, so a board that wants the old
+  // behaviour can still have it.
+  const unbounded = boxOf({
+    maxNodeW: 0,
+    nodes: [{ id: "a", label: LONG, row: 0, col: 0 }],
+  });
+  assert(
+    unbounded.pixW > DEFAULT_MAX_BOX_W,
+    `expected an unbounded box to exceed the ceiling, got ${unbounded.pixW}`,
+  );
+  assertEquals(unbounded.labelLines, [LONG], "unbounded means unwrapped");
+
+  // An explicit width is the manual override and beats the ceiling.
+  const explicit = boxOf({
+    nodes: [{ id: "a", label: LONG, row: 0, col: 0, w: 40 }],
+  });
+  assert(
+    explicit.pixW === 40 * CELL,
+    `explicit width wins, got ${explicit.pixW}`,
+  );
+});
+
+Deno.test("detail lines wrap too — capping only the label cannot cap the box", () => {
+  const ctx = measureContext();
+  const box = computeLayout(ctx, {
+    edges: [],
+    nodes: [{ id: "a", label: "#653", details: [LONG], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+
+  assert(
+    box.pixW <= DEFAULT_MAX_BOX_W,
+    `a long detail must not widen the box, got ${box.pixW}`,
+  );
+  assert(
+    box.detailLines.length > 1,
+    `expected the detail to wrap, got ${JSON.stringify(box.detailLines)}`,
+  );
+
+  // The trade itself: against the same node with the ceiling off, the wrapped
+  // box is narrower and no shorter. Asserting a bare height floor would not
+  // catch a change that widened the box again.
+  const unbounded = computeLayout(ctx, {
+    edges: [],
+    maxNodeW: 0,
+    nodes: [{ id: "a", label: "#653", details: [LONG], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    box.pixW < unbounded.pixW,
+    `wrapped box should be narrower: ${box.pixW} vs ${unbounded.pixW}`,
+  );
+  assert(
+    box.pixH >= unbounded.pixH,
+    `wrapped box should be no shorter: ${box.pixH} vs ${unbounded.pixH}`,
+  );
+});
+
+Deno.test("wrapDetails: each source line wraps independently and keeps unbreakable words", () => {
+  const ctx = measureContext();
+  const sizes = fontSizes();
+
+  // Two facts stay two facts — they are not reflowed into one paragraph.
+  const two = wrapDetails(
+    ctx,
+    ["alpha beta gamma delta", "second"],
+    90,
+    "monospace",
+    sizes,
+  );
+  assertEquals(two[two.length - 1], "second", "the last source line survives");
+  assert(
+    two.length > 2,
+    `expected the first line to wrap, got ${JSON.stringify(two)}`,
+  );
+
+  // No budget → verbatim passthrough, so nothing changes for callers that
+  // disable the ceiling.
+  assertEquals(
+    wrapDetails(ctx, ["a b c"], Infinity, "monospace", sizes),
+    ["a b c"],
+  );
+
+  // An unbreakable token is never chopped: it overflows its line and widens the
+  // box, which is what keeps module specifiers and ids readable.
+  const long = wrapDetails(
+    ctx,
+    ["jsr:@std/path@0.224.0/posix"],
+    40,
+    "monospace",
+    sizes,
+  );
+  assertEquals(long, ["jsr:@std/path@0.224.0/posix"]);
+});
+
+Deno.test("auto widths come from the ladder, so a board shares box edges", () => {
+  const ctx = measureContext();
+  // Titles of deliberately assorted lengths: free-growing boxes would take a
+  // different width each, which is the incoherence the ladder exists to remove.
+  const boxes = computeLayout(ctx, {
+    edges: [],
+    nodes: [
+      "Alpha",
+      "Alpha Beta",
+      "Alpha Beta Gamma",
+      "Alpha Beta Gamma Delta",
+      "Alpha Beta Gamma Delta Epsilon",
+      "Alpha Beta Gamma Delta Epsilon Zeta",
+    ].map((label, i) => ({ id: `n${i}`, label, row: i, col: 0 })),
+  }, 4000);
+
+  for (const b of boxes) {
+    assert(
+      b.pixW % CELL === 0,
+      `${b.id} width ${b.pixW} is not a whole number of cells`,
+    );
+  }
+  const distinct = new Set(boxes.map((b) => b.pixW));
+  assert(
+    distinct.size <= 3,
+    `expected a handful of shared widths, got ${[...distinct].join(", ")}`,
+  );
+});
+
+Deno.test("a narrower box is not chosen by throwing text away", () => {
+  const ctx = measureContext();
+  // The line caps let a narrow candidate ellipsize instead of growing taller,
+  // so on area alone it looks cheapest *because* it lost content. The chooser
+  // has to rule that out before comparing area.
+  const node = {
+    id: "a",
+    label: "#653",
+    details: [
+      "boxed override for typed-return fns across the AOT lowering path",
+    ],
+    row: 0,
+    col: 0,
+  };
+  const box = computeLayout(ctx, { edges: [], nodes: [node] }, 4000)
+    .find((b) => b.id === "a");
+
+  const lines = [...box.labelLines, ...box.detailLines];
+  assert(
+    !lines.some((l) => l.endsWith("…")),
+    `a wider rung holds this text, so nothing should be cut: ${
+      JSON.stringify(lines)
+    }`,
+  );
+
+  // When no rung holds it all, show as much as possible. Minimising area here
+  // would pick the narrowest rung — the one that discards the most — so this
+  // must beat what the smallest box would have shown.
+  const huge = { ...node, details: [("word ").repeat(120).trim()] };
+  const wide = computeLayout(ctx, { edges: [], nodes: [huge] }, 4000)
+    .find((b) => b.id === "a");
+  const shown = (b) =>
+    [...b.labelLines, ...b.detailLines].join(" ").replace(/…/g, "").length;
+  const narrow = computeLayout(ctx, {
+    edges: [],
+    maxNodeW: MIN_BOX_W,
+    nodes: [huge],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    shown(wide) > shown(narrow),
+    `unavoidable clipping should still show more than the smallest box: ` +
+      `${shown(wide)} vs ${shown(narrow)}`,
+  );
+});
+
+Deno.test("box width never shrinks as its label grows", () => {
+  const ctx = measureContext();
+  // The property that catches the whole class. A label one word too long for
+  // the widest rung used to fall through to "smallest area among candidates
+  // that all clip" — which is the narrowest rung, the one discarding the most
+  // text. The box got *smaller* as the label got longer, dropping three
+  // quarters of it, which is worse than having no ceiling at all.
+  const words =
+    "Reconcile the fork and upstream ownership status before the release goes out to the wider team"
+      .split(" ");
+  let prevW = 0, prevShown = 0;
+  for (let n = 3; n <= words.length; n++) {
+    const label = words.slice(0, n).join(" ");
+    const b = computeLayout(ctx, {
+      edges: [],
+      nodes: [{ id: "a", label, row: 0, col: 0 }],
+    }, 4000).find((x) => x.id === "a");
+    assert(
+      b.pixW >= prevW,
+      `width shrank at ${n} words: ${b.pixW} after ${prevW}`,
+    );
+    const shown = b.labelLines.join(" ").replace(/…/g, "").length;
+    assert(
+      shown >= prevShown,
+      `shown text shrank at ${n} words: ${shown} after ${prevShown}`,
+    );
+    prevW = b.pixW;
+    prevShown = shown;
+  }
+});
+
+Deno.test("the uniformity pass keeps boxes inside the aspect band", () => {
+  const ctx = measureContext();
+  // A short-labelled peer makes a narrow width popular. Nudging a detail-rich
+  // box onto it passes the area test — narrower is smaller *and* taller — so
+  // without an aspect check the pass reinstates the columns the chooser just
+  // rejected.
+  const boxes = computeLayout(ctx, {
+    edges: [],
+    nodes: [
+      { id: "a", label: "Hi", row: 0, col: 0 },
+      { id: "b", label: "Yo", row: 1, col: 0 },
+      {
+        id: "c",
+        label: "Service",
+        details: ["one two three four five six seven eight nine ten"],
+        row: 2,
+        col: 0,
+      },
+    ],
+  }, 4000);
+
+  for (const b of boxes) {
+    const aspect = b.pixW / b.pixH;
+    assert(
+      aspect >= 4 / 3 - 1e-9,
+      `${b.id} is a column: ${b.pixW}x${b.pixH} (aspect ${aspect.toFixed(2)})`,
+    );
+  }
+});
+
+Deno.test("minW and uniformWidth wrap to the width the box actually gets", () => {
+  const ctx = measureContext();
+  const detail = "one two three four five six seven eight nine ten eleven";
+
+  // minW widens the box through contentWidth, so wrapping to the ladder rung
+  // alone broke text to fit a box it never landed in.
+  const wide = computeLayout(ctx, {
+    edges: [],
+    nodes: [{
+      id: "a",
+      label: "S",
+      details: [detail],
+      minW: 500,
+      row: 0,
+      col: 0,
+    }],
+  }, 4000).find((b) => b.id === "a");
+  assert(wide.pixW >= 500, `minW honored, got ${wide.pixW}`);
+  const narrow = computeLayout(ctx, {
+    edges: [],
+    nodes: [{ id: "a", label: "S", details: [detail], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    wide.detailLines.length < narrow.detailLines.length,
+    `a 500px box should need fewer lines than a laddered one: ` +
+      `${wide.detailLines.length} vs ${narrow.detailLines.length}`,
+  );
+
+  // uniformWidth widens every auto box to the widest; the text must reflow.
+  const uni = computeLayout(ctx, {
+    edges: [],
+    uniformWidth: true,
+    nodes: [
+      { id: "a", label: "S", details: [detail], row: 0, col: 0 },
+      {
+        id: "b",
+        label: "A much longer label that forces a wide rung",
+        row: 1,
+        col: 0,
+      },
+    ],
+  }, 4000);
+  const [ua, ub] = ["a", "b"].map((id) => uni.find((x) => x.id === id));
+  assertEquals(ua.pixW, ub.pixW, "uniformWidth homogenizes");
+  assert(
+    ua.detailLines.length <= narrow.detailLines.length,
+    "the widened box re-wrapped rather than keeping its narrow lines",
+  );
 });
 
 Deno.test("computeLayout honors explicit w/h (cells), clamped up to content", () => {

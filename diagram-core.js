@@ -127,6 +127,13 @@ export function fontFamily(state = {}) {
 // with their text. Literals here are exactly today's hardcoded sizes, so an
 // unset fontSize (scale 1) renders byte-identically.
 const BASE_LABEL_PX = 13;
+
+// Default ceiling for an auto-sized box, before its text wraps instead of
+// growing. ~3.4x the card minimum: wide enough that ordinary labels never wrap,
+// narrow enough that a pasted sentence does. Override per board with
+// state.maxNodeW; declared here because fontSizes() runs at module load.
+export const DEFAULT_MAX_BOX_W = 340;
+
 export function fontSizes(state = {}) {
   const fs = Number.isFinite(state.fontSize) && state.fontSize > 0
     ? state.fontSize
@@ -155,6 +162,16 @@ export function fontSizes(state = {}) {
       gap: r(4),
       padX: r(20),
       labelBaseline: r(12),
+      // Width a box grows to before its text wraps instead. Without a ceiling
+      // one long string sets the column width for its whole row, so a single
+      // node stretches the board — and a wide enough board hits the 4096px
+      // raster cap and is downscaled until nothing reads. Scales with fontSize
+      // so larger text still gets room for the same number of words.
+      // state.maxNodeW overrides; 0 restores unbounded growth.
+      // Any value <= 0 disables the ceiling, not just the documented 0.
+      maxW: Number.isFinite(state.maxNodeW)
+        ? (state.maxNodeW > 0 ? r(state.maxNodeW) : Infinity)
+        : r(DEFAULT_MAX_BOX_W),
     },
   };
 }
@@ -288,6 +305,46 @@ export const BOX_ASPECT_W = 4;
 export const BOX_ASPECT_H = 3;
 export const MIN_BOX_H = Math.round(MIN_BOX_W * BOX_ASPECT_H / BOX_ASPECT_W);
 export const MIN_ARROW_SEGMENT = CELL * 3;
+
+// A title gets two lines; a detail line gets three. Details are usually the
+// longer text, and vertical space is cheap next to the width that forces a
+// whole row wider.
+export const MAX_LABEL_LINES = 2;
+export const MAX_DETAIL_LINES = 3;
+
+/**
+ * Auto-sized boxes pick a width from this ladder (whole cells) rather than
+ * taking whatever their longest string measures.
+ *
+ * Two reasons it is discrete. Box edges line up, because every width is a whole
+ * number of cells off the same ladder — measured on a real board, free-growing
+ * boxes took 19 distinct widths where the ladder takes 3. And it makes the
+ * search a handful of candidates instead of a continuous optimisation.
+ */
+// The bottom rung is MIN_BOX_W rounded up to a whole cell (105, not 100): a
+// rung doubles as a floor, since a box is padded out to the rung it picks, so
+// a bottom rung above the card minimum would silently inflate every small box.
+// Rungs must stay ascending — the smallest-area tie-break assumes it.
+export const BOX_W_LADDER_CELLS = [Math.ceil(MIN_BOX_W / CELL), 12, 16, 20, 24];
+
+/**
+ * Aspect band a chosen width must land in.
+ *
+ * The floor is the card ratio MIN_BOX_H is derived from, and it is what stops
+ * the objective degenerating: area alone is minimised at the narrowest rung
+ * every time, because a short box pays the MIN_BOX_H floor while width
+ * multiplies it — so unconstrained "smallest area" turns every box into a tall
+ * thin column. The ceiling stops the opposite, a box so wide it reads as a bar.
+ */
+export const BOX_ASPECT_MIN = BOX_ASPECT_W / BOX_ASPECT_H;
+export const BOX_ASPECT_MAX = 4.5;
+
+/**
+ * How much extra area a box will accept to share a width with more of its
+ * neighbours. Pure per-box minimisation ignores that a board of near-identical
+ * widths reads as noise; this buys uniformity where it is nearly free.
+ */
+export const BOX_UNIFORMITY_TOLERANCE = 0.12;
 
 // Default cost parameters
 export const DEFAULT_COSTS = { step: 10, turn: 30, near: 40, overlap: 20 };
@@ -619,33 +676,75 @@ export function wrapLabel(
   const fits = (s) => ctx.measureText(s).width <= budgetPx;
   if (!Number.isFinite(budgetPx) || fits(label)) return [label];
 
-  const words = label.split(/\s+/).filter(Boolean);
-  let i = 0, l1 = "";
-  for (; i < words.length; i++) { // pack line 1 (force ≥1 word even if it overflows)
-    const t = l1 ? l1 + " " + words[i] : words[i];
-    if (fits(t) || !l1) l1 = t;
-    else break;
+  return wrapToLines(label, fits, MAX_LABEL_LINES);
+}
+
+// Greedy word-wrap into at most maxLines lines under `fits`, ellipsizing the
+// last line only if words are left over. A line always takes at least one word,
+// so an unbreakable word longer than the budget yields a line that overflows
+// rather than an empty one — the box then grows to that word, which is why a
+// single long word still widens a box instead of vanishing into an ellipsis.
+function wrapToLines(text, fits, maxLines) {
+  const words = String(text ?? "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let i = 0;
+  while (i < words.length && lines.length < maxLines) {
+    let ln = "";
+    for (; i < words.length; i++) {
+      const t = ln ? ln + " " + words[i] : words[i];
+      if (fits(t) || !ln) ln = t;
+      else break;
+    }
+    lines.push(ln);
   }
-  if (i >= words.length) return [l1];
-  let l2 = "";
-  for (; i < words.length; i++) { // pack line 2
-    const t = l2 ? l2 + " " + words[i] : words[i];
-    if (fits(t) || !l2) l2 = t;
-    else break;
+  const last = lines.length - 1;
+  // The second clause preserves the pre-wrap behaviour for a lone overflowing
+  // word: it is ellipsized once it shares a box with other lines, but a
+  // single-line box keeps the whole word and widens instead.
+  if (i < words.length || (lines.length > 1 && !fits(lines[last]))) {
+    lines[last] = ellipsize(lines[last], fits);
   }
-  if (i < words.length || !fits(l2)) l2 = ellipsize(l2, fits); // leftover words / too-long → …
-  return [l1, l2];
+  return lines;
+}
+
+/**
+ * Wrap detail lines to the same budget as the label, at the detail font.
+ *
+ * Capping the label alone cannot cap the box: contentWidth takes the max over
+ * label *and* detail lines, so one long detail widens the box regardless. Each
+ * source line wraps independently — they are separate facts, not a paragraph —
+ * and runs to MAX_DETAIL_LINES before ellipsizing.
+ */
+export function wrapDetails(
+  ctx,
+  details,
+  budgetPx,
+  font = "monospace",
+  sizes = DEFAULT_SIZES,
+) {
+  const src = details || [];
+  if (!Number.isFinite(budgetPx) || src.length === 0) return [...src];
+  ctx.font = `${sizes.detail}px ${font}`;
+  const fits = (s) => ctx.measureText(s).width <= budgetPx;
+  const out = [];
+  for (const d of src) {
+    const s = String(d ?? "");
+    if (fits(s)) out.push(s);
+    else out.push(...wrapToLines(s, fits, MAX_DETAIL_LINES));
+  }
+  return out;
 }
 
 // Width (px) to fit pre-wrapped label lines + detail lines, floored to the
 // card/emphasis minimum. Shared by measureNodeWidth (single line) and the
 // wrap-aware layout path.
-function contentWidth(ctx, labelLines, node, font, sizes) {
+function contentWidth(ctx, labelLines, detailLines, node, font, sizes) {
   ctx.font = `bold ${sizes.label}px ${font}`;
   let maxW = 0;
   for (const ln of labelLines) maxW = Math.max(maxW, ctx.measureText(ln).width);
   ctx.font = `${sizes.detail}px ${font}`;
-  for (const ln of (node.details || [])) {
+  for (const ln of detailLines) {
     maxW = Math.max(maxW, ctx.measureText(ln).width);
   }
   // node.minW: per-node floor (px) — deliberate emphasis ("make this one bigger")
@@ -662,7 +761,7 @@ export function measureNodeWidth(
   font = "monospace",
   sizes = DEFAULT_SIZES,
 ) {
-  return contentWidth(ctx, [node.label], node, font, sizes);
+  return contentWidth(ctx, [node.label], node.details || [], node, font, sizes);
 }
 
 export function nodeBoxHeight(details, sizes = DEFAULT_SIZES, labelLines = 1) {
@@ -685,18 +784,142 @@ export function nodeBoxSize(
   sizes = DEFAULT_SIZES,
 ) {
   const explicitWpx = node.w > 0 ? node.w * CELL : 0;
-  const budget = explicitWpx > 0 ? explicitWpx - sizes.box.padX * 2 : Infinity;
+  if (explicitWpx > 0) return sizeAt(ctx, node, explicitWpx, font, sizes);
+
+  const cands = boxCandidates(ctx, node, font, sizes);
+  return cands.length
+    ? bestCandidate(cands)
+    : sizeAt(ctx, node, 0, font, sizes);
+}
+
+/**
+ * Measure a box wrapped to `targetPx` (0 → no wrap at all).
+ *
+ * `w` is what the box actually becomes, which can exceed the target: content
+ * width floors at the longest unbreakable word, so a target narrower than that
+ * does not hold it. Scoring the target rather than this is what made narrow
+ * rungs look artificially cheap in the first draft of the chooser.
+ */
+function sizeAt(ctx, node, targetPx, font, sizes) {
+  // Floor the target at the widths the box will be forced to anyway. minW and
+  // MIN_BOX_W widen it after the fact via contentWidth, so wrapping to a
+  // narrower budget than that produced text broken to fit a box it never
+  // landed in — a minW:500 box whose detail was still chopped at 240.
+  const floor = Math.max(MIN_BOX_W, node.minW || 0);
+  const target = targetPx > 0 ? Math.max(targetPx, floor) : 0;
+  // A budget can still go non-positive if padding exceeds the floor; wrapping
+  // to it would force one word per line and ellipsize everything.
+  const budget = target > 0
+    ? Math.max(sizes.box.padX, target - sizes.box.padX * 2)
+    : Infinity;
   const labelLines = wrapLabel(ctx, node.label, budget, font, sizes);
+  const detailLines = wrapDetails(ctx, node.details, budget, font, sizes);
   const w = Math.max(
-    contentWidth(ctx, labelLines, node, font, sizes),
-    explicitWpx,
+    contentWidth(ctx, labelLines, detailLines, node, font, sizes),
+    target,
   );
   const h = Math.max(
-    nodeBoxHeight(node.details, sizes, labelLines.length),
+    nodeBoxHeight(detailLines, sizes, labelLines.length),
     MIN_BOX_H,
     node.h > 0 ? node.h * CELL : 0,
   );
-  return { w, h, labelLines };
+  return { w, h, labelLines, detailLines };
+}
+
+/**
+ * Every ladder rung this node could take, scored. Empty when the ladder is
+ * disabled (maxNodeW: 0), which is the caller's signal to grow unbounded.
+ */
+export function boxCandidates(
+  ctx,
+  node,
+  font = "monospace",
+  sizes = DEFAULT_SIZES,
+) {
+  const cap = sizes.box.maxW;
+  if (!Number.isFinite(cap)) return [];
+  const out = [];
+  for (const cells of BOX_W_LADDER_CELLS) {
+    const target = cells * CELL;
+    if (target > cap) continue;
+    const s = sizeAt(ctx, node, target, font, sizes);
+    const aspect = s.w / s.h;
+    out.push({
+      ...s,
+      target,
+      area: s.w * s.h,
+      aspect,
+      clipped: isClipped(node, s),
+      retained: retainedChars(s),
+      feasible: aspect >= BOX_ASPECT_MIN && aspect <= BOX_ASPECT_MAX,
+    });
+  }
+  // The cap can sit below every rung, leaving nothing to choose from.
+  if (!out.length) {
+    out.push({
+      ...sizeAt(ctx, node, cap, font, sizes),
+      target: cap,
+      area: 0,
+      aspect: 0,
+      feasible: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Did wrapping to this width cost text?
+ *
+ * Compared per string, not per node: a label the caller already truncated (the
+ * importers do this) must not license clipping the *details* underneath it.
+ * An ellipsis a source string arrived with is the caller's, not ours.
+ */
+function isClipped(node, sized) {
+  const label = String(node.label ?? "");
+  if (
+    !label.endsWith("…") &&
+    sized.labelLines.some((l) => String(l).endsWith("…"))
+  ) {
+    return true;
+  }
+  const details = (node.details || []).map((s) => String(s ?? ""));
+  if (details.every((d) => d.endsWith("…"))) return false;
+  return sized.detailLines.some((l) => String(l).endsWith("…"));
+}
+
+/** Characters actually shown, ignoring the ellipses we added. */
+function retainedChars(sized) {
+  return [...sized.labelLines, ...sized.detailLines]
+    .reduce((n, l) => n + String(l).replace(/…/g, "").length, 0);
+}
+
+/**
+ * Smallest-area candidate that keeps all its text and sits in the aspect band.
+ *
+ * Clipping is ruled out before area is even compared, because the line caps let
+ * a narrow candidate cheat: it drops the text that would not fit instead of
+ * growing taller to hold it, so it scores as the cheapest option precisely
+ * because it threw content away. Preferring width over silent truncation is the
+ * whole reason the ceiling exists — the previous fixed 340 wrapped text rather
+ * than cutting it, and losing that would be a step backwards.
+ */
+function bestCandidate(cands) {
+  const smallest = (pool) => pool.reduce((a, b) => (b.area < a.area ? b : a));
+  const keeps = cands.filter((c) => !c.clipped);
+  const inBand = keeps.filter((c) => c.feasible);
+  if (inBand.length) return smallest(inBand);
+  if (keeps.length) return smallest(keeps); // text intact beats a pretty shape
+
+  // Nothing holds it all. Now the objective has to inverte: minimising area
+  // here picks the *narrowest* rung, which is by construction the one that
+  // throws away the most — so a label one word too long for the widest rung
+  // collapsed to the smallest box on the ladder and lost three quarters of
+  // itself, a worse result than having no ceiling at all. Show the most text,
+  // and only then prefer the smaller box.
+  return cands.reduce((a, b) => {
+    if (b.retained !== a.retained) return b.retained > a.retained ? b : a;
+    return b.area < a.area ? b : a;
+  });
 }
 
 export function boardExtentForContent(content, baseW = 0, baseH = 0) {
@@ -753,8 +976,58 @@ export function computeLayout(ctx, state, canvasW) {
     // nodeBoxSize is the single source of truth (explicit-width title wrap +
     // card floor); the editor's live resize calls it too, so a dragged box
     // matches what re-rendering produces.
-    const { w, h, labelLines } = nodeBoxSize(ctx, node, FONT, SIZES);
-    pixDims.set(node.id, { w, h, labelLines });
+    const { w, h, labelLines, detailLines } = nodeBoxSize(
+      ctx,
+      node,
+      FONT,
+      SIZES,
+    );
+    pixDims.set(node.id, { w, h, labelLines, detailLines });
+  }
+
+  // Uniformity pass. Choosing each box's width independently minimises area per
+  // box but ignores that a board of near-but-not-quite-equal widths reads as
+  // noise. Once every box has its own best rung, re-offer the popular rungs:
+  // a box moves if the rung is more common and costs no more than
+  // BOX_UNIFORMITY_TOLERANCE extra area. Boxes with an explicit w/minW are left
+  // alone — their size is a deliberate statement, not an optimisation result.
+  {
+    const auto = nodes.filter((n) => !(n.w > 0) && !n.minW);
+    const popularity = new Map();
+    for (const n of auto) {
+      const w = pixDims.get(n.id).w;
+      popularity.set(w, (popularity.get(w) || 0) + 1);
+    }
+    if (popularity.size > 1) {
+      // Descending popularity, then narrower: a tie should not widen the board.
+      const ranked = [...popularity.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+        .map(([w]) => w);
+      for (const node of auto) {
+        const cur = pixDims.get(node.id);
+        const curArea = cur.w * cur.h;
+        const curRank = ranked.indexOf(cur.w);
+        const curClipped = isClipped(node, cur);
+        const curCount = popularity.get(cur.w) || 0;
+        for (const w of ranked.slice(0, curRank)) {
+          // slice() alone would also offer equally-popular-but-narrower rungs,
+          // which is not uniformity, just shrinking.
+          if ((popularity.get(w) || 0) <= curCount) continue;
+          const alt = sizeAt(ctx, node, w, FONT, SIZES);
+          // Uniformity is never worth losing text for.
+          if (!curClipped && isClipped(node, alt)) continue;
+          // Nor worth leaving the aspect band the chooser just enforced: a
+          // narrower rung is taller *and* smaller in area, so the tolerance
+          // test alone waves through the tall thin columns the band rejects.
+          const aspect = alt.w / alt.h;
+          if (aspect < BOX_ASPECT_MIN || aspect > BOX_ASPECT_MAX) continue;
+          if (alt.w * alt.h <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
+            pixDims.set(node.id, alt);
+            break;
+          }
+        }
+      }
+    }
   }
 
   // uniformWidth: homogenize — every box without an explicit minW takes the
@@ -766,7 +1039,14 @@ export function computeLayout(ctx, state, canvasW) {
     for (const node of nodes) {
       if (!fixed(node)) mw = Math.max(mw, pixDims.get(node.id).w);
     }
-    for (const node of nodes) if (!fixed(node)) pixDims.get(node.id).w = mw;
+    // Re-measure at the homogenized width rather than stretching the box over
+    // text already broken to fit a narrower one: assigning .w alone left a box
+    // widened 240 -> 440 whose detail was still wrapped into three lines.
+    for (const node of nodes) {
+      if (!fixed(node)) {
+        pixDims.set(node.id, sizeAt(ctx, node, mw, FONT, SIZES));
+      }
+    }
   }
 
   // Per-node absolute overrides (from drags / layout passes). An override supplies
@@ -998,6 +1278,7 @@ export function computeLayout(ctx, state, canvasW) {
       outlineDash: node.outlineDash,
       details: node.details || [],
       labelLines: dims.labelLines,
+      detailLines: dims.detailLines,
       col,
       row,
       w,
@@ -2290,11 +2571,14 @@ export function drawBoxes(
     // raw box without it falls back to its single label).
     const S = pal.sizes || DEFAULT_SIZES;
     const labelLines = b.labelLines || [b.label];
+    // Pre-wrapped by computeLayout; a raw box without them falls back to its
+    // unwrapped details, which is what a hand-built box or an older caller has.
+    const detailLines = b.detailLines || b.details;
     // Center the text block vertically: the box may be taller than its content
     // (aspect floor / explicit height / wrapped title), so push the block down
     // by half the slack instead of letting it hug the top.
     const slackY =
-      Math.max(0, h - nodeBoxHeight(b.details, S, labelLines.length)) / 2;
+      Math.max(0, h - nodeBoxHeight(detailLines, S, labelLines.length)) / 2;
     let labelY = y + slackY + S.box.padTop + S.box.labelBaseline;
     ctx.fillStyle = pal.text;
     ctx.font = `bold ${S.label}px ${pal.font}`;
@@ -2307,11 +2591,11 @@ export function drawBoxes(
     labelY -= S.box.labelH; // back to the last drawn line's baseline for detail spacing
 
     // Detail lines
-    if (b.details && b.details.length > 0) {
+    if (detailLines && detailLines.length > 0) {
       ctx.fillStyle = pal.textDim;
       ctx.font = `${S.detail}px ${pal.font}`;
       const detailStartY = labelY + S.box.gap + S.box.detailH;
-      b.details.forEach((line, di) => {
+      detailLines.forEach((line, di) => {
         const lineW = ctx.measureText(line).width;
         ctx.fillText(
           line,
