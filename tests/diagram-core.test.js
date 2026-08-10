@@ -13,6 +13,7 @@ import {
   fontSizes,
   Grid,
   MIN_BOX_H,
+  MIN_BOX_W,
   nodeBoxHeight,
   routeEdges,
   simplifyPath,
@@ -405,11 +406,135 @@ Deno.test("a narrower box is not chosen by throwing text away", () => {
     }`,
   );
 
-  // And when no rung can hold it, it still renders rather than failing.
+  // When no rung holds it all, show as much as possible. Minimising area here
+  // would pick the narrowest rung — the one that discards the most — so this
+  // must beat what the smallest box would have shown.
   const huge = { ...node, details: [("word ").repeat(120).trim()] };
   const wide = computeLayout(ctx, { edges: [], nodes: [huge] }, 4000)
     .find((b) => b.id === "a");
-  assert(wide.pixW > 0 && wide.detailLines.length > 0, "still lays out");
+  const shown = (b) =>
+    [...b.labelLines, ...b.detailLines].join(" ").replace(/…/g, "").length;
+  const narrow = computeLayout(ctx, {
+    edges: [],
+    maxNodeW: MIN_BOX_W,
+    nodes: [huge],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    shown(wide) > shown(narrow),
+    `unavoidable clipping should still show more than the smallest box: ` +
+      `${shown(wide)} vs ${shown(narrow)}`,
+  );
+});
+
+Deno.test("box width never shrinks as its label grows", () => {
+  const ctx = measureContext();
+  // The property that catches the whole class. A label one word too long for
+  // the widest rung used to fall through to "smallest area among candidates
+  // that all clip" — which is the narrowest rung, the one discarding the most
+  // text. The box got *smaller* as the label got longer, dropping three
+  // quarters of it, which is worse than having no ceiling at all.
+  const words =
+    "Reconcile the fork and upstream ownership status before the release goes out to the wider team"
+      .split(" ");
+  let prevW = 0, prevShown = 0;
+  for (let n = 3; n <= words.length; n++) {
+    const label = words.slice(0, n).join(" ");
+    const b = computeLayout(ctx, {
+      edges: [],
+      nodes: [{ id: "a", label, row: 0, col: 0 }],
+    }, 4000).find((x) => x.id === "a");
+    assert(
+      b.pixW >= prevW,
+      `width shrank at ${n} words: ${b.pixW} after ${prevW}`,
+    );
+    const shown = b.labelLines.join(" ").replace(/…/g, "").length;
+    assert(
+      shown >= prevShown,
+      `shown text shrank at ${n} words: ${shown} after ${prevShown}`,
+    );
+    prevW = b.pixW;
+    prevShown = shown;
+  }
+});
+
+Deno.test("the uniformity pass keeps boxes inside the aspect band", () => {
+  const ctx = measureContext();
+  // A short-labelled peer makes a narrow width popular. Nudging a detail-rich
+  // box onto it passes the area test — narrower is smaller *and* taller — so
+  // without an aspect check the pass reinstates the columns the chooser just
+  // rejected.
+  const boxes = computeLayout(ctx, {
+    edges: [],
+    nodes: [
+      { id: "a", label: "Hi", row: 0, col: 0 },
+      { id: "b", label: "Yo", row: 1, col: 0 },
+      {
+        id: "c",
+        label: "Service",
+        details: ["one two three four five six seven eight nine ten"],
+        row: 2,
+        col: 0,
+      },
+    ],
+  }, 4000);
+
+  for (const b of boxes) {
+    const aspect = b.pixW / b.pixH;
+    assert(
+      aspect >= 4 / 3 - 1e-9,
+      `${b.id} is a column: ${b.pixW}x${b.pixH} (aspect ${aspect.toFixed(2)})`,
+    );
+  }
+});
+
+Deno.test("minW and uniformWidth wrap to the width the box actually gets", () => {
+  const ctx = measureContext();
+  const detail = "one two three four five six seven eight nine ten eleven";
+
+  // minW widens the box through contentWidth, so wrapping to the ladder rung
+  // alone broke text to fit a box it never landed in.
+  const wide = computeLayout(ctx, {
+    edges: [],
+    nodes: [{
+      id: "a",
+      label: "S",
+      details: [detail],
+      minW: 500,
+      row: 0,
+      col: 0,
+    }],
+  }, 4000).find((b) => b.id === "a");
+  assert(wide.pixW >= 500, `minW honored, got ${wide.pixW}`);
+  const narrow = computeLayout(ctx, {
+    edges: [],
+    nodes: [{ id: "a", label: "S", details: [detail], row: 0, col: 0 }],
+  }, 4000).find((b) => b.id === "a");
+  assert(
+    wide.detailLines.length < narrow.detailLines.length,
+    `a 500px box should need fewer lines than a laddered one: ` +
+      `${wide.detailLines.length} vs ${narrow.detailLines.length}`,
+  );
+
+  // uniformWidth widens every auto box to the widest; the text must reflow.
+  const uni = computeLayout(ctx, {
+    edges: [],
+    uniformWidth: true,
+    nodes: [
+      { id: "a", label: "S", details: [detail], row: 0, col: 0 },
+      {
+        id: "b",
+        label: "A much longer label that forces a wide rung",
+        row: 1,
+        col: 0,
+      },
+    ],
+  }, 4000);
+  const [ua, ub] = ["a", "b"].map((id) => uni.find((x) => x.id === id));
+  assertEquals(ua.pixW, ub.pixW, "uniformWidth homogenizes");
+  assert(
+    ua.detailLines.length <= narrow.detailLines.length,
+    "the widened box re-wrapped rather than keeping its narrow lines",
+  );
 });
 
 Deno.test("computeLayout honors explicit w/h (cells), clamped up to content", () => {

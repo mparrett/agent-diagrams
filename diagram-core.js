@@ -144,6 +144,7 @@ export function fontSizes(state = {}) {
       // raster cap and is downscaled until nothing reads. Scales with fontSize
       // so larger text still gets room for the same number of words.
       // state.maxNodeW overrides; 0 restores unbounded growth.
+      // Any value <= 0 disables the ceiling, not just the documented 0.
       maxW: Number.isFinite(state.maxNodeW)
         ? (state.maxNodeW > 0 ? r(state.maxNodeW) : Infinity)
         : r(DEFAULT_MAX_BOX_W),
@@ -293,13 +294,13 @@ export const MAX_DETAIL_LINES = 3;
  *
  * Two reasons it is discrete. Box edges line up, because every width is a whole
  * number of cells off the same ladder — measured on a real board, free-growing
- * boxes took 19 distinct widths where the ladder takes 2. And it makes the
+ * boxes took 19 distinct widths where the ladder takes 3. And it makes the
  * search a handful of candidates instead of a continuous optimisation.
  */
-// The bottom rung is the card minimum itself, not a value above it: a rung
-// doubles as a floor (a box is padded out to the rung it picks, which is what
-// makes widths agree across a board), so starting higher than MIN_BOX_W would
-// silently inflate every small box.
+// The bottom rung is MIN_BOX_W rounded up to a whole cell (105, not 100): a
+// rung doubles as a floor, since a box is padded out to the rung it picks, so
+// a bottom rung above the card minimum would silently inflate every small box.
+// Rungs must stay ascending — the smallest-area tie-break assumes it.
 export const BOX_W_LADDER_CELLS = [Math.ceil(MIN_BOX_W / CELL), 12, 16, 20, 24];
 
 /**
@@ -776,12 +777,22 @@ export function nodeBoxSize(
  * rungs look artificially cheap in the first draft of the chooser.
  */
 function sizeAt(ctx, node, targetPx, font, sizes) {
-  const budget = targetPx > 0 ? targetPx - sizes.box.padX * 2 : Infinity;
+  // Floor the target at the widths the box will be forced to anyway. minW and
+  // MIN_BOX_W widen it after the fact via contentWidth, so wrapping to a
+  // narrower budget than that produced text broken to fit a box it never
+  // landed in — a minW:500 box whose detail was still chopped at 240.
+  const floor = Math.max(MIN_BOX_W, node.minW || 0);
+  const target = targetPx > 0 ? Math.max(targetPx, floor) : 0;
+  // A budget can still go non-positive if padding exceeds the floor; wrapping
+  // to it would force one word per line and ellipsize everything.
+  const budget = target > 0
+    ? Math.max(sizes.box.padX, target - sizes.box.padX * 2)
+    : Infinity;
   const labelLines = wrapLabel(ctx, node.label, budget, font, sizes);
   const detailLines = wrapDetails(ctx, node.details, budget, font, sizes);
   const w = Math.max(
     contentWidth(ctx, labelLines, detailLines, node, font, sizes),
-    targetPx,
+    target,
   );
   const h = Math.max(
     nodeBoxHeight(detailLines, sizes, labelLines.length),
@@ -815,10 +826,11 @@ export function boxCandidates(
       area: s.w * s.h,
       aspect,
       clipped: isClipped(node, s),
+      retained: retainedChars(s),
       feasible: aspect >= BOX_ASPECT_MIN && aspect <= BOX_ASPECT_MAX,
     });
   }
-  // The cap may sit below every rung, or exclude all the feasible ones.
+  // The cap can sit below every rung, leaving nothing to choose from.
   if (!out.length) {
     out.push({
       ...sizeAt(ctx, node, cap, font, sizes),
@@ -832,15 +844,29 @@ export function boxCandidates(
 }
 
 /**
- * Did wrapping to this width cost text? A source string that already ends in an
- * ellipsis is the caller's own truncation and does not count.
+ * Did wrapping to this width cost text?
+ *
+ * Compared per string, not per node: a label the caller already truncated (the
+ * importers do this) must not license clipping the *details* underneath it.
+ * An ellipsis a source string arrived with is the caller's, not ours.
  */
 function isClipped(node, sized) {
-  const src = [node.label, ...(node.details || [])].map((s) => String(s ?? ""));
-  if (src.some((s) => s.endsWith("…"))) return false;
-  return [...sized.labelLines, ...sized.detailLines].some((l) =>
-    String(l).endsWith("…")
-  );
+  const label = String(node.label ?? "");
+  if (
+    !label.endsWith("…") &&
+    sized.labelLines.some((l) => String(l).endsWith("…"))
+  ) {
+    return true;
+  }
+  const details = (node.details || []).map((s) => String(s ?? ""));
+  if (details.every((d) => d.endsWith("…"))) return false;
+  return sized.detailLines.some((l) => String(l).endsWith("…"));
+}
+
+/** Characters actually shown, ignoring the ellipses we added. */
+function retainedChars(sized) {
+  return [...sized.labelLines, ...sized.detailLines]
+    .reduce((n, l) => n + String(l).replace(/…/g, "").length, 0);
 }
 
 /**
@@ -859,8 +885,17 @@ function bestCandidate(cands) {
   const inBand = keeps.filter((c) => c.feasible);
   if (inBand.length) return smallest(inBand);
   if (keeps.length) return smallest(keeps); // text intact beats a pretty shape
-  const feasible = cands.filter((c) => c.feasible);
-  return smallest(feasible.length ? feasible : cands);
+
+  // Nothing holds it all. Now the objective has to inverte: minimising area
+  // here picks the *narrowest* rung, which is by construction the one that
+  // throws away the most — so a label one word too long for the widest rung
+  // collapsed to the smallest box on the ladder and lost three quarters of
+  // itself, a worse result than having no ceiling at all. Show the most text,
+  // and only then prefer the smaller box.
+  return cands.reduce((a, b) => {
+    if (b.retained !== a.retained) return b.retained > a.retained ? b : a;
+    return b.area < a.area ? b : a;
+  });
 }
 
 export function boardExtentForContent(content, baseW = 0, baseH = 0) {
@@ -949,10 +984,19 @@ export function computeLayout(ctx, state, canvasW) {
         const curArea = cur.w * cur.h;
         const curRank = ranked.indexOf(cur.w);
         const curClipped = isClipped(node, cur);
-        for (const w of ranked.slice(0, curRank)) { // strictly more popular
+        const curCount = popularity.get(cur.w) || 0;
+        for (const w of ranked.slice(0, curRank)) {
+          // slice() alone would also offer equally-popular-but-narrower rungs,
+          // which is not uniformity, just shrinking.
+          if ((popularity.get(w) || 0) <= curCount) continue;
           const alt = sizeAt(ctx, node, w, FONT, SIZES);
           // Uniformity is never worth losing text for.
           if (!curClipped && isClipped(node, alt)) continue;
+          // Nor worth leaving the aspect band the chooser just enforced: a
+          // narrower rung is taller *and* smaller in area, so the tolerance
+          // test alone waves through the tall thin columns the band rejects.
+          const aspect = alt.w / alt.h;
+          if (aspect < BOX_ASPECT_MIN || aspect > BOX_ASPECT_MAX) continue;
           if (alt.w * alt.h <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
             pixDims.set(node.id, alt);
             break;
@@ -971,7 +1015,14 @@ export function computeLayout(ctx, state, canvasW) {
     for (const node of nodes) {
       if (!fixed(node)) mw = Math.max(mw, pixDims.get(node.id).w);
     }
-    for (const node of nodes) if (!fixed(node)) pixDims.get(node.id).w = mw;
+    // Re-measure at the homogenized width rather than stretching the box over
+    // text already broken to fit a narrower one: assigning .w alone left a box
+    // widened 240 -> 440 whose detail was still wrapped into three lines.
+    for (const node of nodes) {
+      if (!fixed(node)) {
+        pixDims.set(node.id, sizeAt(ctx, node, mw, FONT, SIZES));
+      }
+    }
   }
 
   // Per-node absolute overrides (from drags / layout passes). An override supplies
