@@ -1061,10 +1061,18 @@ export function computeLayout(ctx, state, canvasW) {
   // overlapped rows whenever a box had 3+ detail lines, which blocked its S-side
   // connectors against the box below → "Missing conn point" route failures.)
   const ROW_GAP_PX = 45; // ≥3 grid cells of wiring room between rows
-  const rowIdxs = [
-    ...new Set(nodes.filter((n) => !overridden.has(n.id)).map((n) => n.row)),
-  ]
-    .sort((a, b) => a - b);
+  // Every authored row, including ones whose nodes have all been pinned.
+  //
+  // Filtering to un-pinned nodes made a fully-pinned row vanish from the stack,
+  // so the cursor never advanced past it and the next row started at the top of
+  // the canvas — landing inside boxes that were still drawn there. Persisting a
+  // subset is what the editor does the moment a human drags a couple of boxes,
+  // so a board went from clean to overlapping without its content changing.
+  //
+  // A pinned node still occupies its band, so the band is still reserved. If it
+  // was dragged far away the reservation costs some empty space, which is the
+  // right way to be wrong: a gap is recoverable by eye, an overlap is not.
+  const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
   const rowYEff = new Map();
   let rowCursor = 48, prevIdx = null;
   for (const r of rowIdxs) {
@@ -1074,11 +1082,12 @@ export function computeLayout(ctx, state, canvasW) {
     }
     const y = rowY[String(r)] !== undefined ? rowY[String(r)] : rowCursor;
     rowYEff.set(r, y);
+    // Height over every node in the row, pinned included: a tall pinned box
+    // still needs the band under it kept clear, and measuring only the un-pinned
+    // ones let the next row start inside it.
     let maxH = 0;
     for (const n of nodes) {
-      if (!overridden.has(n.id) && n.row === r) {
-        maxH = Math.max(maxH, pixDims.get(n.id).h);
-      }
+      if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
     }
     rowCursor = Math.max(rowCursor, y + maxH + ROW_GAP_PX);
     prevIdx = r;

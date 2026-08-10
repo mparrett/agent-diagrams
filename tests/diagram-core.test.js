@@ -537,6 +537,71 @@ Deno.test("minW and uniformWidth wrap to the width the box actually gets", () =>
   );
 });
 
+Deno.test("persisting a subset of nodes does not move the rows around them", () => {
+  const ctx = measureContext();
+  // The editor persists positions the moment a human drags a couple of boxes,
+  // so this runs on ordinary use. Row 0 holding a single tall box is the sharp
+  // case: pinning it used to drop the row out of the stack entirely, and row 1
+  // then started at the top of the canvas, inside the box still drawn there.
+  const nodes = [
+    {
+      id: "root",
+      label: "Root",
+      details: ["a", "b", "c", "d", "e", "f"],
+      row: 0,
+      col: 0,
+    },
+    { id: "n1", label: "One", row: 1, col: 0 },
+    { id: "n2", label: "Two", row: 1, col: 2 },
+    { id: "n3", label: "Three", row: 2, col: 0 },
+  ];
+
+  const layoutOf = (bs, ids) =>
+    Object.fromEntries(
+      ids.map((id) => {
+        const b = bs.find((x) => x.id === id);
+        return [id, { x: b.col * CELL, y: b.row * CELL }];
+      }),
+    );
+  const bands = (bs) =>
+    bs.map((b) => `${b.id}@${b.row}h${b.h}`).sort().join(" ");
+  const collide = (bs) => {
+    for (let i = 0; i < bs.length; i++) {
+      for (let j = i + 1; j < bs.length; j++) {
+        const a = bs[i], b = bs[j];
+        const dx = Math.min(a.col + a.w, b.col + b.w) - Math.max(a.col, b.col);
+        const dy = Math.min(a.row + a.h, b.row + b.h) - Math.max(a.row, b.row);
+        if (dx > 0 && dy > 0) return `${a.id}/${b.id}`;
+      }
+    }
+    return null;
+  };
+
+  const base = computeLayout(ctx, { nodes, edges: [], layout: {} }, 1200);
+  const want = bands(base);
+  const ids = nodes.map((n) => n.id);
+
+  // Every subset, pinned at the position the layout itself just produced.
+  // Persisting where a box already is has to be a no-op.
+  for (let mask = 0; mask < (1 << ids.length); mask++) {
+    const pinned = ids.filter((_, i) => mask & (1 << i));
+    const bs = computeLayout(
+      ctx,
+      { nodes, edges: [], layout: layoutOf(base, pinned) },
+      1200,
+    );
+    const hit = collide(bs);
+    assert(!hit, `pinning ${JSON.stringify(pinned)} made ${hit} overlap`);
+    // Row bands, not exact pixels: pinning removes a node from the force pass,
+    // so its neighbours may drift a cell horizontally. That is by design.
+    assertEquals(
+      bands(bs),
+      want,
+      `pinning ${JSON.stringify(pinned)} moved the vertical stack`,
+    );
+  }
+});
+
 Deno.test("computeLayout honors explicit w/h (cells), clamped up to content", () => {
   const ctx = measureContext();
   const sized = computeLayout(ctx, {
