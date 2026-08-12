@@ -541,8 +541,8 @@ Deno.test("persisting a subset of nodes does not move the rows around them", () 
   const ctx = measureContext();
   // The editor persists positions the moment a human drags a couple of boxes,
   // so this runs on ordinary use. Row 0 holding a single tall box is the sharp
-  // case: pinning it used to drop the row out of the stack entirely, and row 1
-  // then started at the top of the canvas, inside the box still drawn there.
+  // case: pinning it used to drop the row out of the stack entirely, and rows 1
+  // and 2 then slid up into the band it had vacated.
   const nodes = [
     {
       id: "root",
@@ -590,10 +590,15 @@ Deno.test("persisting a subset of nodes does not move the rows around them", () 
       { nodes, edges: [], layout: layoutOf(base, pinned) },
       1200,
     );
+    // A backstop, not the symptom: the force pass pushes displaced boxes
+    // sideways, so the reflow never actually drew one box over another — this
+    // passed against the broken engine too. It is here to catch a future change
+    // that removes that cushion, and it should be expected to stay quiet.
     const hit = collide(bs);
     assert(!hit, `pinning ${JSON.stringify(pinned)} made ${hit} overlap`);
-    // Row bands, not exact pixels: pinning removes a node from the force pass,
-    // so its neighbours may drift a cell horizontally. That is by design.
+    // The real assertion. Row bands, not exact pixels: pinning removes a node
+    // from the force pass, so its neighbours may drift a cell horizontally.
+    // That is by design.
     assertEquals(
       bands(bs),
       want,

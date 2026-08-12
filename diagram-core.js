@@ -1064,14 +1064,19 @@ export function computeLayout(ctx, state, canvasW) {
   // Every authored row, including ones whose nodes have all been pinned.
   //
   // Filtering to un-pinned nodes made a fully-pinned row vanish from the stack,
-  // so the cursor never advanced past it and the next row started at the top of
-  // the canvas — landing inside boxes that were still drawn there. Persisting a
-  // subset is what the editor does the moment a human drags a couple of boxes,
-  // so a board went from clean to overlapping without its content changing.
+  // so the cursor never advanced past it and every row below slid up into the
+  // vacated band. Persisting a subset is what the editor does the moment a
+  // human drags a couple of boxes, so a board's vertical stack rearranged
+  // itself without its content changing.
+  //
+  // The boxes do not end up drawn on top of each other — the force pass shoves
+  // the displaced ones sideways instead — so what a human sees is rows at the
+  // wrong height and columns knocked out of line, not a visible collision.
   //
   // A pinned node still occupies its band, so the band is still reserved. If it
   // was dragged far away the reservation costs some empty space, which is the
-  // right way to be wrong: a gap is recoverable by eye, an overlap is not.
+  // right way to be wrong: a gap is recoverable by eye, a scrambled stack is
+  // not.
   const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
   const rowYEff = new Map();
   let rowCursor = 48, prevIdx = null;
@@ -1084,7 +1089,7 @@ export function computeLayout(ctx, state, canvasW) {
     rowYEff.set(r, y);
     // Height over every node in the row, pinned included: a tall pinned box
     // still needs the band under it kept clear, and measuring only the un-pinned
-    // ones let the next row start inside it.
+    // ones let the next row start partway up it.
     let maxH = 0;
     for (const n of nodes) {
       if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
