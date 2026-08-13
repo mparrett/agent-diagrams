@@ -957,7 +957,10 @@ export function boardExtent(gridBoxes, baseW = 0, baseH = 0) {
  * Returns array of box objects with {id, label, color, details, col, row, w, h, pixW, pixH, _origCol, _origRow}.
  */
 export function computeLayout(ctx, state, canvasW) {
-  const { nodes, edges, rowY = {}, layout = {} } = state;
+  // No `edges`: placement is now purely declarative from row/col. The edge
+  // springs that once pulled connected boxes together are gone with the
+  // repulsion pass, so connectivity no longer moves a box.
+  const { nodes, rowY = {}, layout = {} } = state;
   const LAYOUT_MARGIN = 40;
   const LAYOUT_MIN_GAP = 30;
 
@@ -1119,158 +1122,73 @@ export function computeLayout(ctx, state, canvasW) {
     positions.set(node.id, { x: o.x, y: o.y, w: dims.w, h: dims.h });
   }
 
-  for (const [y, rowNodes] of rowGroups) {
-    rowNodes.sort((a, b) => a.col - b.col);
-    const auto = rowNodes;
+  // Resolve `col` to a board-global x. A column is as wide as the widest box
+  // that declares it, columns run left to right, and every node in a column
+  // shares that column's x — so two boxes with the same `col` line up whatever
+  // rows they sit in.
+  //
+  // Placement used to be a per-row spread: `col` weighted a node between its
+  // own row's min and max col, so the same `col` landed at a different x in
+  // every row, and a box slid sideways whenever a sibling joined its row. The
+  // only way to get a straight column was to pin every node by hand, which
+  // left a board that no longer reflowed at all.
+  const COL_GAP_PX = 40; // ≥ DESIRED_GAP below, so columns are already settled
+  const autoNodes = nodes.filter((n) => !overridden.has(n.id));
 
-    const cols = auto.map((n) => n.col);
-    const minCol = Math.min(...cols);
-    const maxCol = Math.max(...cols);
-    const colRange = maxCol - minCol;
+  const colW = new Map();
+  for (const n of autoNodes) {
+    const w = pixDims.get(n.id).w;
+    colW.set(n.col, Math.max(colW.get(n.col) ?? 0, w));
+  }
+  const colIdxs = [...colW.keys()].sort((a, b) => a - b);
 
-    if (auto.length === 1) {
-      const node = auto[0];
-      const dims = pixDims.get(node.id);
-      const allCols = nodes.map((n) => n.col);
-      const globalMaxCol = Math.max(...allCols);
-      const frac = globalMaxCol > 0 ? node.col / globalMaxCol : 0.5;
-      const x = LAYOUT_MARGIN + frac * (usableWidth - dims.w);
-      positions.set(node.id, {
-        x: Math.max(LAYOUT_MARGIN, x),
-        y,
-        w: dims.w,
-        h: dims.h,
-      });
-    } else if (colRange === 0) {
-      const totalAutoWidth = auto.reduce((s, n) => s + pixDims.get(n.id).w, 0);
-      const totalGap = usableWidth - totalAutoWidth;
-      const gap = Math.max(LAYOUT_MIN_GAP, totalGap / (auto.length + 1));
-      let cx = LAYOUT_MARGIN + gap;
-      for (const node of auto) {
-        const dims = pixDims.get(node.id);
-        positions.set(node.id, { x: cx, y, w: dims.w, h: dims.h });
-        cx += dims.w + gap;
-      }
-    } else {
-      for (const node of auto) {
-        const dims = pixDims.get(node.id);
-        const frac = (node.col - minCol) / colRange;
-        const x = LAYOUT_MARGIN + frac * (usableWidth - dims.w);
-        positions.set(node.id, {
-          x: Math.max(LAYOUT_MARGIN, x),
-          y,
-          w: dims.w,
-          h: dims.h,
-        });
-      }
-      const sorted = [...auto].sort((a, b) =>
-        positions.get(a.id).x - positions.get(b.id).x
-      );
-      for (let i = 1; i < sorted.length; i++) {
-        const prev = positions.get(sorted[i - 1].id);
-        const curr = positions.get(sorted[i].id);
-        const minX = prev.x + prev.w + LAYOUT_MIN_GAP;
-        if (curr.x < minX) curr.x = minX;
-      }
+  const colX = new Map();
+  let colCursor = 0, prevCol = null;
+  for (const c of colIdxs) {
+    // Skipped column indices are an authoring hint for extra air, the same way
+    // skipped row indices are.
+    if (prevCol !== null && c - prevCol > 1) {
+      colCursor += (c - prevCol - 1) * COL_GAP_PX;
     }
+    colX.set(c, colCursor);
+    colCursor += colW.get(c) + COL_GAP_PX;
+    prevCol = c;
+  }
+  // Centre the whole block, so a board narrower than its canvas is not pinned
+  // to the left margin.
+  const colsTotal = Math.max(0, colCursor - COL_GAP_PX);
+  const colOffset = LAYOUT_MARGIN + Math.max(0, (usableWidth - colsTotal) / 2);
+  for (const c of colIdxs) colX.set(c, colX.get(c) + colOffset);
+
+  for (const node of autoNodes) {
+    const dims = pixDims.get(node.id);
+    // A box narrower than its column centres inside it, so the column reads as
+    // one line through the middle of its boxes rather than a ragged edge.
+    const x = colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
+    positions.set(node.id, {
+      x: Math.max(LAYOUT_MARGIN, x),
+      y: rowYEff.get(node.row),
+      w: dims.w,
+      h: dims.h,
+    });
   }
 
-  // Spring-repulsion pass
-  const REPEL_STRENGTH = 3000;
-  const SPRING_STRENGTH = 0.01;
-  const ANCHOR_STRENGTH = 0.08;
-  const DESIRED_GAP = LAYOUT_MIN_GAP + 10;
-  const DAMPING = 0.6;
-  const ITERS = 30;
-
-  const anchorX = new Map();
-  for (const node of nodes) {
-    const pos = positions.get(node.id);
-    if (pos) anchorX.set(node.id, pos.x);
-  }
-
-  const vx = new Map();
-  for (const node of nodes) vx.set(node.id, 0);
-  const allPositioned = nodes.filter((n) => positions.has(n.id));
-
-  for (let iter = 0; iter < ITERS; iter++) {
-    const forces = new Map();
-    for (const n of allPositioned) forces.set(n.id, 0);
-
-    // Repulsion
-    for (let i = 0; i < allPositioned.length; i++) {
-      const a = positions.get(allPositioned[i].id);
-      const aId = allPositioned[i].id;
-      if (isFixed(aId)) continue;
-      for (let j = i + 1; j < allPositioned.length; j++) {
-        const b = positions.get(allPositioned[j].id);
-        const bId = allPositioned[j].id;
-        const aCx = a.x + a.w / 2, bCx = b.x + b.w / 2;
-        const aCy = a.y + a.h / 2, bCy = b.y + b.h / 2;
-        const dx = bCx - aCx, dy = bCy - aCy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 1) continue;
-        const combinedW = (a.w + b.w) / 2 + DESIRED_GAP;
-        if (Math.abs(dx) > combinedW * 2.5) continue;
-        const force = REPEL_STRENGTH / (dist * dist);
-        const fx = (dx / dist) * force;
-        forces.set(aId, forces.get(aId) - fx);
-        if (!isFixed(bId)) forces.set(bId, forces.get(bId) + fx);
-      }
-    }
-
-    // Edge springs
-    for (const edge of edges) {
-      const aPos = positions.get(edge.from);
-      const bPos = positions.get(edge.to);
-      if (!aPos || !bPos) continue;
-      const dx = (bPos.x + bPos.w / 2) - (aPos.x + aPos.w / 2);
-      const fx = dx * SPRING_STRENGTH;
-      if (!isFixed(edge.from)) {
-        forces.set(edge.from, forces.get(edge.from) + fx);
-      }
-      if (!isFixed(edge.to)) forces.set(edge.to, forces.get(edge.to) - fx);
-    }
-
-    // Anchor pull
-    for (const node of allPositioned) {
-      if (isFixed(node.id)) continue;
-      const pos = positions.get(node.id);
-      const dx = anchorX.get(node.id) - pos.x;
-      forces.set(node.id, forces.get(node.id) + dx * ANCHOR_STRENGTH);
-    }
-
-    // Apply forces
-    for (const node of allPositioned) {
-      if (isFixed(node.id)) continue;
-      const pos = positions.get(node.id);
-      const v = (vx.get(node.id) + forces.get(node.id)) * DAMPING;
-      vx.set(node.id, v);
-      pos.x += v;
-      pos.x = Math.max(
-        LAYOUT_MARGIN,
-        Math.min(canvasW - LAYOUT_MARGIN - pos.w, pos.x),
-      );
-    }
-
-    // Fix overlaps within rows
-    for (const [, rNodes] of rowGroups) {
-      const sorted = [...rNodes]
-        .filter((n) => positions.has(n.id))
-        .sort((a, b) => positions.get(a.id).x - positions.get(b.id).x);
-      for (let i = 1; i < sorted.length; i++) {
-        const prev = positions.get(sorted[i - 1].id);
-        const curr = positions.get(sorted[i].id);
-        const minX = prev.x + prev.w + LAYOUT_MIN_GAP;
-        if (curr.x < minX) {
-          const overlap = minX - curr.x;
-          curr.x = minX;
-          if (!isFixed(sorted[i - 1].id)) {
-            prev.x -= overlap * 0.3;
-            prev.x = Math.max(LAYOUT_MARGIN, prev.x);
-          }
-        }
-      }
+  // Columns cannot overlap each other, so the spring-repulsion pass that used
+  // to repair the spread has nothing left to fix — and its edge springs pulled
+  // connected boxes toward each other, which is exactly what knocked a declared
+  // column out of line. What it cannot express is a pinned box sitting where an
+  // auto box wants to be, so that single case keeps a sweep: the auto box
+  // yields and the column bends locally, visibly, rather than drawing one box
+  // over another.
+  for (const [, rNodes] of rowGroups) {
+    const sorted = [...rNodes]
+      .filter((n) => positions.has(n.id))
+      .sort((a, b) => positions.get(a.id).x - positions.get(b.id).x);
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = positions.get(sorted[i - 1].id);
+      const curr = positions.get(sorted[i].id);
+      const minX = prev.x + prev.w + LAYOUT_MIN_GAP;
+      if (curr.x < minX && !isFixed(sorted[i].id)) curr.x = minX;
     }
   }
 

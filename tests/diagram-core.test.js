@@ -537,6 +537,44 @@ Deno.test("minW and uniformWidth wrap to the width the box actually gets", () =>
   );
 });
 
+Deno.test("the same col resolves to the same x, whatever row it is in", () => {
+  const ctx = measureContext();
+  // Widths differ deliberately: the old per-row spread positioned a box by its
+  // share of its own row's col range and then subtracted the box width, so a
+  // wide box and a narrow box declaring the same col drifted apart. Nothing
+  // here is pinned — alignment has to come out of the layout itself.
+  const nodes = [
+    { id: "wide", label: "A box with a much longer label", row: 0, col: 1 },
+    { id: "narrow", label: "x", row: 1, col: 1 },
+    { id: "mid", label: "middling label", row: 2, col: 1 },
+    { id: "side", label: "sidecar", row: 1, col: 0 },
+    { id: "far", label: "far", row: 2, col: 3 },
+  ];
+  const boxes = computeLayout(ctx, { nodes, edges: [], layout: {} }, 1200);
+  const at = (id) => boxes.find((b) => b.id === id);
+  // Centre, not left edge: boxes of different widths share a column by running
+  // a line through their middles, which is what reads as aligned. Left edges
+  // would only line up for boxes that happen to be the same width.
+  const centreOf = (id) => at(id).col + at(id).w / 2;
+
+  // Within half a cell, not exactly equal: boxes are emitted on the grid with
+  // `w` rounded up to whole cells, so two boxes centred on the same pixel can
+  // still report grid centres 0.5 apart. That residue is quantization. What it
+  // replaced was a spread that put the same col 11 cells apart across rows.
+  const colOne = ["wide", "narrow", "mid"].map(centreOf);
+  const spread = Math.max(...colOne) - Math.min(...colOne);
+  assert(
+    spread <= 0.5,
+    `col 1 should resolve to one centre within half a cell, got ${
+      JSON.stringify(colOne)
+    }`,
+  );
+
+  // Columns keep their declared order, and a skipped index (2) still buys air.
+  assert(centreOf("side") < centreOf("wide"), "col 0 sits left of col 1");
+  assert(centreOf("far") > centreOf("wide"), "col 3 sits right of col 1");
+});
+
 Deno.test("persisting a subset of nodes does not move the rows around them", () => {
   const ctx = measureContext();
   // The editor persists positions the moment a human drags a couple of boxes,
