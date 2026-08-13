@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes the run already in flight for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Static gates are platform-independent, so they run on the cheap runner.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          # 1.x cannot read this repo's lockfile (v5) and fails obscurely.
+          deno-version: v2.x
+
+      # Each step is the same task a contributor runs locally, so a red check
+      # names the command that reproduces it.
+      - name: fmt
+        run: deno task fmt:check
+      - name: lint
+        run: deno task lint
+      - name: check
+        run: deno task check
+
+  # The authoritative run: the whole suite, including every rasterizing test.
+  # macOS because @gfx/canvas segfaults on linux-x64 the moment it draws for
+  # real (see test-linux below).
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: test
+        run: deno task test
+
+  # Linux coverage for everything that does not rasterize, so portable logic
+  # still gets a second platform. The rasterizing files are excluded because
+  # @gfx/canvas exits 139 (SIGSEGV) on ubuntu under Deno 2.x as soon as it
+  # draws: diagram-api, raster-parity and shadow-canary crash directly, and
+  # diagram-cli inherits it through the CLI subprocess it spawns. Fold those
+  # back in here once the upstream fault is fixed.
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: test (raster-free subset)
+        run: |
+          deno test --no-check --allow-read --allow-write --allow-net \
+            --allow-env --allow-ffi --allow-run --unstable-ffi \
+            tests/diagram-core.test.js \
+            tests/import-util.test.js \
+            tests/parity.test.js

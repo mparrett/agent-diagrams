@@ -2,9 +2,10 @@
 
 Every entry here is a bug in `jsr:@gfx/canvas` (native Skia, from
 [DjDeveloperr/skia_canvas](https://github.com/DjDeveloperr/skia_canvas)) that
-this repo works around. None has been filed upstream, because none has a
-standalone reproduction — see the "reported upstream" column before assuming
-someone is waiting on a fix.
+this repo works around. None has been filed upstream — see the "reported" column
+before assuming someone is waiting on a fix. Faults 1–3 have no standalone
+reproduction, which is what has kept them unfiled; fault 4 does have one and is
+the first here that could be reported as-is.
 
 This file exists because a workaround for an unreported bug is invisible debt.
 Nothing about a new release announces that the thing you worked around is
@@ -25,6 +26,7 @@ Currently pinned: **0.5.6** (`deno.json`). Latest release: **0.5.8**.
 | 1 | Glyph drop — `fillText` silently draws nothing | measurement font aliases | yes, automated | no — no standalone repro | 0.5.8, 2026-07-31 |
 | 2 | `shadowBlur` displaced under `ctx.scale(DPR)` | shadows off in the PNG renderer | yes, automated | no | 0.5.8, 2026-07-31 |
 | 3 | `getImageData` doesn't reflect what was drawn | decode the encoded PNG instead | no | no | 0.5.8, 2026-07-30 |
+| 4 | SIGSEGV on linux-x64 the moment it rasterizes | CI runs rasterizing tests on macOS only | no | no — has a repro, unfiled | 0.5.6, 2026-08-12 |
 
 ---
 
@@ -138,3 +140,51 @@ is worth keeping even if the underlying bug is fixed.
 **No canary.** Nothing in the codebase depends on `getImageData` working, so
 there is nothing to retire. Recorded here so the next person doesn't reach for
 it and lose an afternoon.
+
+## 4. SIGSEGV on linux-x64 the moment it rasterizes
+
+**Symptom.** A process that draws for real exits 139 (SIGSEGV) on `ubuntu-x64`
+under Deno 2.x. No assertion failure and nothing on stderr from the library — the
+process dies partway through, at a different test each run.
+
+**Trigger.** Rasterizing at all. The split is clean along that line, and the
+suite divides itself:
+
+| test file | ubuntu | rasterizes? |
+|---|---|---|
+| `diagram-core.test.js` | ok | no — measures through a stub context |
+| `import-util.test.js` | ok | no |
+| `parity.test.js` | ok | no |
+| `diagram-api.test.js` | 139 | yes |
+| `raster-parity.test.js` | 139 | yes |
+| `shadow-canary.test.js` | 139 | yes |
+| `diagram-cli.test.js` | fails on `retarget-edge --id exit 139` | yes, in a subprocess |
+
+`diagram-cli.test.js` is not a fourth crash site: it asserts on the exit code of
+a CLI process it spawns, and reports that child's 139.
+
+**Not accumulated state.** Running each file in its own process reproduces every
+crash, so it is not something leaking across a shared run — which is what the
+varying crash point first suggested.
+
+**macOS is unaffected.** The full suite passes on `macos-latest` (arm64) and on
+local macOS at the same pin.
+
+**Workaround.** CI runs the rasterizing tests on macOS only
+(`.github/workflows/ci.yml`); the `test-linux` job runs the raster-free subset so
+portable logic still gets a second platform. The workflow carries the file list
+and the reason.
+
+**No canary.** The exclusion list in the workflow is the whole record. Nothing
+reports that the fault has gone, and `just upstream-check` does not probe for it,
+so this entry is the invisible debt the top of this file warns about.
+
+**Retiring it.** Fold `diagram-api`, `raster-parity`, `shadow-canary` and
+`diagram-cli` back into `test-linux` and confirm it stays green.
+
+**Unfiled, but reportable.** Unlike 1–3 this has a standalone reproduction —
+rasterize anything on linux-x64 — so it needs no further isolation work before it
+goes upstream.
+
+**Unknown.** Whether it is specific to the pinned 0.5.6, to x64 rather than
+arm64, or to the GitHub runner image. Only one configuration has been observed.
