@@ -29,6 +29,7 @@ import {
   drawBoxes,
   drawConnPoints,
   drawDividers,
+  drawEdgeLabels,
   drawFailedRoutes,
   drawGridLines,
   drawHeatmap,
@@ -282,9 +283,12 @@ function render() {
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
-  labelRects = drawRoutes(ctx, routes, CELL, PAL) || []; // stash for label hit-testing
+  // boxes: labels prefer a spot clear of them; painting is deferred below so a
+  // chip in a narrow gap survives drawBoxes.
+  labelRects = drawRoutes(ctx, routes, CELL, PAL, { boxes: BOXES }) || []; // stash for label hit-testing
   drawAlignGuides(); // smart alignment guides — under the boxes, so they peek out in the gaps
   drawBoxes(ctx, BOXES, CELL, PAL);
+  drawEdgeLabels(ctx, labelRects, PAL);
   drawPinOverlay(); // manual-placement markers (editor-only)
   drawNotes(ctx, buildNotes(), PAL);
   if (showConn || connectMode) drawConnPoints(ctx, connMap, CELL); // Connect mode reveals attach slots

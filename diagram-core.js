@@ -2328,9 +2328,16 @@ export function drawRoutes(
   // Pass 2 — place labels. An explicit labelPos.side/offset is honored verbatim.
   // Otherwise the historical position (above a horizontal wire / right of a
   // vertical one, 8px off) is used as-is UNLESS its chip overlaps an
-  // already-placed label — only then do we search mirrored sides / larger
-  // offsets, breaking ties by fewest wire crossings. So diagrams without label
-  // collisions render byte-identically to before.
+  // already-placed label or a box — only then do we search mirrored sides /
+  // larger offsets, breaking ties by fewest wire crossings. So diagrams without
+  // label collisions render byte-identically to before.
+  //
+  // The candidate set is deliberately small (two sides x three offsets, so at
+  // most 3x the base 8px), because a label that wanders to find clear space
+  // stops reading as belonging to its wire. Overlapping a box scores worse than
+  // crossing wires and better than covering another label: take a clear spot
+  // when one is within reach, otherwise sit on the box and let the chip carry
+  // legibility.
   ctx.font = `${(pal.sizes || DEFAULT_SIZES).edgeLabel}px ${pal.font}`;
   ctx.textAlign = "left";
   const wireCross = (rect) => {
@@ -2344,6 +2351,14 @@ export function drawRoutes(
     }
     return c;
   };
+  const boxRects = (opts.boxes || []).map((b) => ({
+    x: b.col * cell,
+    y: b.row * cell,
+    w: b.w * cell,
+    h: b.h * cell,
+  }));
+  const overlapsBox = (rect) => boxRects.some((r) => rectsOverlap(rect, r));
+  const OVER_LABEL = 100, OVER_BOX = 50; // wire crossings score 1 each
   const placed = [];
   for (const t of labelTasks) {
     const tw = ctx.measureText(t.label).width;
@@ -2356,16 +2371,19 @@ export function drawRoutes(
     } else {
       const primary = labelPlacement(t.mx, t.my, tw, orient[0], baseOff);
       const overlapsLabel = (rect) => placed.some((p) => rectsOverlap(rect, p));
-      if (!overlapsLabel(primary.rect)) {
+      const conflict = (rect) =>
+        (overlapsLabel(rect) ? OVER_LABEL : 0) +
+        (overlapsBox(rect) ? OVER_BOX : 0);
+      if (conflict(primary.rect) === 0) {
         chosen = primary;
       } else {
-        let best = primary, bestScore = 100 + wireCross(primary.rect);
+        let best = primary,
+          bestScore = conflict(primary.rect) + wireCross(primary.rect);
         for (const off of [baseOff, baseOff * 2, baseOff * 3]) {
           for (const side of orient) {
             if (off === baseOff && side === orient[0]) continue; // == primary
             const cand = labelPlacement(t.mx, t.my, tw, side, off);
-            const score = (overlapsLabel(cand.rect) ? 100 : 0) +
-              wireCross(cand.rect);
+            const score = conflict(cand.rect) + wireCross(cand.rect);
             if (score < bestScore) {
               bestScore = score;
               best = cand;
@@ -2375,10 +2393,9 @@ export function drawRoutes(
         chosen = best;
       }
     }
-    ctx.fillStyle = chipColor;
-    ctx.fillRect(chosen.rect.x, chosen.rect.y, chosen.rect.w, chosen.rect.h);
-    ctx.fillStyle = pal.textDim;
-    ctx.fillText(t.label, chosen.lx, chosen.ly);
+    // Painting is deferred to drawEdgeLabels, called after drawBoxes: the chip
+    // was always drawn, but boxes painted over it, so a label in a tight gap
+    // lost both its ends.
     placed.push(chosen.rect);
     // mx/my/horiz describe the host segment so the editor can invert this
     // placement when a label is dragged (perpendicular distance → offset, sign
@@ -2389,9 +2406,33 @@ export function drawRoutes(
       mx: t.mx,
       my: t.my,
       horiz: t.horiz,
+      label: t.label,
+      lx: chosen.lx,
+      ly: chosen.ly,
+      chipColor,
     });
   }
   return labelRects;
+}
+
+/**
+ * Paint the edge labels placed by drawRoutes. Called after drawBoxes so a chip
+ * in a narrow gap is not overpainted by the boxes on either side of it.
+ */
+export function drawEdgeLabels(ctx, labelRects, pal) {
+  if (!labelRects || labelRects.length === 0) return;
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.font = `${(pal.sizes || DEFAULT_SIZES).edgeLabel}px ${pal.font}`;
+  ctx.textAlign = "left";
+  for (const l of labelRects) {
+    if (!l.label) continue;
+    ctx.fillStyle = l.chipColor;
+    ctx.fillRect(l.rect.x, l.rect.y, l.rect.w, l.rect.h);
+    ctx.fillStyle = pal.textDim;
+    ctx.fillText(l.label, l.lx, l.ly);
+  }
+  ctx.restore();
 }
 
 /** Draw failed routes as red X markers. */

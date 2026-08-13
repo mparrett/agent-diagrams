@@ -26,6 +26,7 @@ import {
   deriveTheme,
   drawBoxes,
   drawDividers,
+  drawEdgeLabels,
   drawFailedRoutes,
   drawNotes,
   drawRoutes,
@@ -1609,10 +1610,12 @@ export class Diagram {
     );
 
     // Draw (failed-route markers go on top of boxes, mirroring the live editor)
-    drawRoutes(ctx, routes, CELL, pal, {
+    const labelRects = drawRoutes(ctx, routes, CELL, pal, {
       bridges: this._state.crossingBridges !== false,
+      boxes: gridBoxes,
     });
     drawBoxes(ctx, gridBoxes, CELL, pal, { shadow: shadows });
+    drawEdgeLabels(ctx, labelRects, pal);
     drawNotes(
       ctx,
       resolveNotePositions(this._state.notes, this.noteLayout, gridBoxes),
