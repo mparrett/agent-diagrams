@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes the run already in flight for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          # 1.x cannot read this repo's lockfile (v5) and fails obscurely.
+          deno-version: v2.x
+
+      # Each step is the same task a contributor runs locally, so a red check
+      # names the command that reproduces it.
+      - name: fmt
+        run: deno task fmt:check
+
+      - name: lint
+        run: deno task lint
+
+      - name: check
+        run: deno task check
+
+      # Rasterization runs headless against the vendored fonts in assets/, so
+      # no browser or system font packages are needed.
+      - name: test
+        run: deno task test
