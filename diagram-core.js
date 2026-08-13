@@ -2059,7 +2059,15 @@ function segHitsRect(p, q, r) {
 // Chip rect + text baseline for a label centered on a segment midpoint, placed
 // on the given side at the given perpendicular offset. above/below suit a
 // horizontal wire, left/right a vertical one.
-function labelPlacement(mx, my, tw, side, offset) {
+// Chip padding around an edge label. Equal on all four sides: the box is built
+// out from the text's ascent and descent rather than from a fixed height, so a
+// label with tall ascenders is not left almost touching the top edge the way a
+// baseline-relative box left it.
+const LABEL_PAD = 4;
+const LABEL_ASCENT = 0.8; // of font size; @gfx/canvas has no usable text metrics
+const LABEL_DESCENT = 0.2;
+
+function labelPlacement(mx, my, tw, side, offset, fontSize = 10) {
   let lx, ly;
   if (side === "above") {
     lx = mx - tw / 2;
@@ -2074,7 +2082,18 @@ function labelPlacement(mx, my, tw, side, offset) {
     lx = mx + offset;
     ly = my + 3;
   } // right
-  return { lx, ly, rect: { x: lx - 3, y: ly - 9, w: tw + 6, h: 13 } };
+  const ascent = fontSize * LABEL_ASCENT;
+  const descent = fontSize * LABEL_DESCENT;
+  return {
+    lx,
+    ly,
+    rect: {
+      x: lx - LABEL_PAD,
+      y: ly - ascent - LABEL_PAD,
+      w: tw + LABEL_PAD * 2,
+      h: ascent + descent + LABEL_PAD * 2,
+    },
+  };
 }
 
 // A free (unconnected) connector end — a hollow port; the editor lets you drag
@@ -2338,7 +2357,8 @@ export function drawRoutes(
   // crossing wires and better than covering another label: take a clear spot
   // when one is within reach, otherwise sit on the box and let the chip carry
   // legibility.
-  ctx.font = `${(pal.sizes || DEFAULT_SIZES).edgeLabel}px ${pal.font}`;
+  const labelFs = (pal.sizes || DEFAULT_SIZES).edgeLabel;
+  ctx.font = `${labelFs}px ${pal.font}`;
   ctx.textAlign = "left";
   const wireCross = (rect) => {
     let c = 0;
@@ -2367,9 +2387,16 @@ export function drawRoutes(
     const explicit = t.lp.side && (orient.includes(t.lp.side));
     let chosen;
     if (explicit) {
-      chosen = labelPlacement(t.mx, t.my, tw, t.lp.side, baseOff);
+      chosen = labelPlacement(t.mx, t.my, tw, t.lp.side, baseOff, labelFs);
     } else {
-      const primary = labelPlacement(t.mx, t.my, tw, orient[0], baseOff);
+      const primary = labelPlacement(
+        t.mx,
+        t.my,
+        tw,
+        orient[0],
+        baseOff,
+        labelFs,
+      );
       const overlapsLabel = (rect) => placed.some((p) => rectsOverlap(rect, p));
       const conflict = (rect) =>
         (overlapsLabel(rect) ? OVER_LABEL : 0) +
@@ -2382,7 +2409,7 @@ export function drawRoutes(
         for (const off of [baseOff, baseOff * 2, baseOff * 3]) {
           for (const side of orient) {
             if (off === baseOff && side === orient[0]) continue; // == primary
-            const cand = labelPlacement(t.mx, t.my, tw, side, off);
+            const cand = labelPlacement(t.mx, t.my, tw, side, off, labelFs);
             const score = conflict(cand.rect) + wireCross(cand.rect);
             if (score < bestScore) {
               bestScore = score;
@@ -2428,7 +2455,17 @@ export function drawEdgeLabels(ctx, labelRects, pal) {
   for (const l of labelRects) {
     if (!l.label) continue;
     ctx.fillStyle = l.chipColor;
-    ctx.fillRect(l.rect.x, l.rect.y, l.rect.w, l.rect.h);
+    // Rounded to match the boxes it sits against; radius scales with the chip
+    // so it stays a soft corner rather than a lozenge.
+    drawRoundRect(
+      ctx,
+      l.rect.x,
+      l.rect.y,
+      l.rect.w,
+      l.rect.h,
+      Math.min(4, l.rect.h / 4),
+    );
+    ctx.fill();
     ctx.fillStyle = pal.textDim;
     ctx.fillText(l.label, l.lx, l.ly);
   }
