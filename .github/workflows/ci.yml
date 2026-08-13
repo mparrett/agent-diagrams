@@ -34,5 +34,24 @@ jobs:
 
       # Rasterization runs headless against the vendored fonts in assets/, so
       # no browser or system font packages are needed.
+      #
+      # DIAGNOSTIC: one process per test file. `deno task test` segfaults (139)
+      # on ubuntu partway through diagram-api.test.js, at a different test each
+      # run, which points at native canvas state accumulating across the run
+      # rather than at one assertion. Running each file in a fresh process tells
+      # us whether that is the mechanism, and names the file if it is not.
       - name: test
-        run: deno task test
+        run: |
+          rc=0
+          for f in tests/*.test.js; do
+            echo "::group::$f"
+            if deno test --no-check --allow-read --allow-write --allow-net \
+                 --allow-env --allow-ffi --allow-run --unstable-ffi "$f"; then
+              echo "$f OK"
+            else
+              echo "$f EXIT $?"
+              rc=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $rc
