@@ -59,7 +59,12 @@ bit-identical to before the fix and editor parity is unaffected — but the
 measure and draw passes no longer share a cache key.
 
 **Canary.** `tests/raster-parity.test.js` renders the fixture with the aliases
-*off* and asserts the text is still lost. It fails when the fault disappears,
+*off* and asserts the text is still lost. It is **opt-in** — set
+`UPSTREAM_CANARY=1`, which `just upstream-check` does — because it asserts that
+an upstream bug still exists, which is a property of the environment rather than
+of this repo. It does not reproduce everywhere: on the GitHub macOS runner all 25
+renders drew, against roughly 50% for the same commit locally. As a blocking
+check it therefore reddens CI on a fault that is still present. It fails when the fault disappears,
 and its message names everything to delete. A sibling test asserts the
 production path still draws.
 
