@@ -168,7 +168,14 @@ async function canaryRenders(n, aliases) {
 }
 
 Deno.test("canary: the @gfx/canvas glyph-drop fault is still present", async () => {
-  const N = 10;
+  // N is a power question, not a taste one. This asserts "not every render drew",
+  // which is a min-statistic: it only fires when a whole batch happens to draw.
+  // Measured 2026-08-13, 30 renders per engine: the unaliased path drew 1/30 of
+  // the time before the column layout landed and 10/30 after, and batches of ten
+  // came out 1,5,4,7,5,9 — overdispersed, not independent. At N=10 a bursty batch
+  // reaches 10/10 often enough to redden CI on a fault that is still very much
+  // present. Raising N buys the margin back; it does not change what is asserted.
+  const N = 25;
   const drew = await canaryRenders(N, false);
   assert(
     drew < N,
