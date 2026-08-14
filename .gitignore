@@ -13,3 +13,6 @@ tests/parity-deno.json
 # Throwaway worktree from `just upstream-check` — removed on exit, but a killed
 # run can leave it behind
 .upstream-check-worktree/
+
+# Scratch boards: served and editable, never committed. See CLAUDE.md.
+diagrams/scratch/

@@ -66,6 +66,15 @@ production path still draws.
 **Not a complete cure.** Some run-to-run variation in rendered PNGs remains on
 dense boards (detail ink varying a few percent, text present either way).
 
+**The rate moves with layout.** Measured 2026-08-13 over 30 renders per engine,
+the unaliased path drew 1/30 before the global-column layout and 10/30 after, and
+batches of ten came out 1,5,4,7,5,9 — the renders are overdispersed rather than
+independent. The fault is still present and the workaround is still needed; what
+changed is how often a given board provokes it. Two consequences: the canary's N
+is a statistical-power question and was raised to 25 for that reason, and any
+future reading of "the fault looks fixed" should be checked against a second
+board before anything is deleted, since one board's rate is not the fault's.
+
 **Retiring it.** When `just upstream-check` reports the fault fixed: bump the
 pin, then delete `MEASURE_SUFFIX` and its four `reg(...)` calls, the
 `measureFamily` branch in `computeLayout`, the `measureAliases` option on
