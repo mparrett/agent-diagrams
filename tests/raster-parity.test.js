@@ -167,26 +167,38 @@ async function canaryRenders(n, aliases) {
   return drew;
 }
 
-Deno.test("canary: the @gfx/canvas glyph-drop fault is still present", async () => {
-  // N is a power question, not a taste one. This asserts "not every render drew",
-  // which is a min-statistic: it only fires when a whole batch happens to draw.
-  // Measured 2026-08-13, 30 renders per engine: the unaliased path drew 1/30 of
-  // the time before the column layout landed and 10/30 after, and batches of ten
-  // came out 1,5,4,7,5,9 — overdispersed, not independent. At N=10 a bursty batch
-  // reaches 10/10 often enough to redden CI on a fault that is still very much
-  // present. Raising N buys the margin back; it does not change what is asserted.
-  const N = 25;
-  const drew = await canaryRenders(N, false);
-  assert(
-    drew < N,
-    `All ${N} renders drew their details through the UNALIASED measurement ` +
-      `path, so the @gfx/canvas glyph-drop fault looks fixed.\n` +
-      `If so: delete MEASURE_SUFFIX and its aliases from diagram-api.js, the ` +
-      `measureFamily branch in computeLayout, the measureAliases option, and ` +
-      `this test. Confirm first with a version bump + \`just raster-check\`, ` +
-      `and update docs/project_notes/upstream-defects.md, which lists ` +
-      `everything to delete.`,
-  );
+// Opt-in: this asserts that an upstream BUG still exists, which is a property of
+// the environment, not of this repo's code. It does not reproduce everywhere —
+// on the GitHub macOS runner all 25 renders drew, where the same commit sits near
+// 50% locally — so as a blocking check it reddens CI on a fault that is still
+// present, which is the opposite of useful. Run it where the fault lives:
+//   UPSTREAM_CANARY=1 deno task test
+// `just upstream-check` sets it. The sibling test below stays in CI because it
+// asserts something about our code: the production path always draws.
+Deno.test({
+  name: "canary: the @gfx/canvas glyph-drop fault is still present",
+  ignore: !Deno.env.get("UPSTREAM_CANARY"),
+  fn: async () => {
+    // N is a power question, not a taste one. This asserts "not every render drew",
+    // which is a min-statistic: it only fires when a whole batch happens to draw.
+    // Measured 2026-08-13, 30 renders per engine: the unaliased path drew 1/30 of
+    // the time before the column layout landed and 10/30 after, and batches of ten
+    // came out 1,5,4,7,5,9 — overdispersed, not independent. At N=10 a bursty batch
+    // reaches 10/10 often enough to redden CI on a fault that is still very much
+    // present. Raising N buys the margin back; it does not change what is asserted.
+    const N = 25;
+    const drew = await canaryRenders(N, false);
+    assert(
+      drew < N,
+      `All ${N} renders drew their details through the UNALIASED measurement ` +
+        `path, so the @gfx/canvas glyph-drop fault looks fixed.\n` +
+        `If so: delete MEASURE_SUFFIX and its aliases from diagram-api.js, the ` +
+        `measureFamily branch in computeLayout, the measureAliases option, and ` +
+        `this test. Confirm first with a version bump + \`just raster-check\`, ` +
+        `and update docs/project_notes/upstream-defects.md, which lists ` +
+        `everything to delete.`,
+    );
+  },
 });
 
 Deno.test("the alias fix keeps the canary board's details on the page", async () => {

@@ -45,6 +45,10 @@ raster-check state="":
 # — never touches your tree. See docs/project_notes/upstream-defects.md.
 upstream-check:
     deno task upstream-check
+    # The glyph-drop canary asserts an upstream bug still exists, so it is opt-in
+    # rather than a CI gate (it does not reproduce on the GitHub runners). This is
+    # where it belongs: with the rest of the retest tooling.
+    UPSTREAM_CANARY=1 deno test --no-check --allow-all tests/raster-parity.test.js --filter "glyph-drop"
 
 # Draw a Deno module graph. Takes an entrypoint or a `deno info --json` dump.
 # e.g. `just import-deps dev-server.js "--out=diagrams/deps"`
