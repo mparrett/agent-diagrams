@@ -6,16 +6,13 @@ import { checkRaster } from "../raster-check.js";
 //
 // The measurement harness asserts the browser and the renderer agree on
 // {col,row,w,h}. These assert something it cannot see: that text the layout
-// allotted space for was actually drawn into the PNG. The open @gfx/canvas
-// bug produces perfect geometry and blank boxes, so measurement parity stays
+// allotted space for was actually drawn into the PNG. A rasterization fault
+// produces perfect geometry and blank boxes, so measurement parity stays
 // green while the artifact is unreadable.
 //
-// WHAT IS DELIBERATELY NOT ASSERTED HERE: that `details` render. They currently
-// may or may not, on the same input, run to run — the failure was reproduced on
-// a board with just two boxes, so there is no "small enough to be safe" corpus
-// to anchor on. Asserting it would produce a flaky suite that fails for reasons
-// no one changed. What IS asserted is that the *instrument* is sound and that
-// labels — the reliable path, and the documented workaround — keep rendering.
+// Details used to drop out of renders at random; the fresh-process test below
+// guards the fix. The rest asserts that the *instrument* is sound and that
+// labels keep rendering.
 //
 // Diagnose a specific board with `just raster-check [state]`, which reports per
 // box whether its text landed and exits non-zero if not.
@@ -125,28 +122,14 @@ Deno.test("checkRaster reports the board's actual structure", async () =>
     );
   }));
 
-// ─── Canary ───────────────────────────────────────────────────────────────
-// This asserts the bug is STILL THERE. It is meant to fail one day.
-//
-// The measurement aliases in diagram-api.js work around a @gfx/canvas fault we
-// could not reproduce standalone and therefore could not report upstream. A
-// workaround for an unfiled, unexplained fault is exactly the kind of thing that
-// silently outlives its cause, so instead of a "remove me later" comment, this
-// renders with the aliases OFF — the faulty path — and fails once the text
-// starts drawing anyway. A failure here is good news: it means the fault is
-// gone and MEASURE_SUFFIX and everything referencing it can be deleted.
-//
-// It renders N times because the fault is intermittent: roughly 1 render in 40
-// draws the text regardless. Requiring ALL N renders to succeed before crying
-// "fixed" puts a spurious failure somewhere around 1e-16, while a genuine
-// upstream fix trips it on the first run.
-//
-// Each render is a SEPARATE PROCESS (canary-render.js). The fault only bites the
-// first render in a process — loop in-process and every iteration after the
-// first draws happily, which reports "fixed" every single time. That is not a
-// detail worth rediscovering; it is why this test looks more expensive than it
-// ought to.
-async function canaryRenders(n, aliases) {
+// ─── Fresh-process renders ────────────────────────────────────────────────
+// Detail text used to vanish from about half of all renders, in a different
+// place each time, because the font buffers were freed under Skia (see
+// docs/project_notes/upstream-defects.md, fault 1). Each render here is a
+// separate process (canary-render.js), since fonts are registered once per
+// process. Ten renders that all draw would have happened about once in a
+// thousand runs with the bug present.
+async function freshRenders(n) {
   const script = new URL("./canary-render.js", import.meta.url).pathname;
   let drew = 0;
   for (let i = 0; i < n; i++) {
@@ -159,7 +142,6 @@ async function canaryRenders(n, aliases) {
         "--allow-ffi",
         "--unstable-ffi",
         script,
-        ...(aliases ? ["--aliases"] : []),
       ],
     }).output();
     if (new TextDecoder().decode(stdout).includes("drew")) drew++;
@@ -167,50 +149,10 @@ async function canaryRenders(n, aliases) {
   return drew;
 }
 
-// Opt-in: this asserts that an upstream BUG still exists, which is a property of
-// the environment, not of this repo's code. It does not reproduce everywhere —
-// on the GitHub macOS runner all 25 renders drew, where the same commit sits near
-// 50% locally — so as a blocking check it reddens CI on a fault that is still
-// present, which is the opposite of useful. Run it where the fault lives:
-//   UPSTREAM_CANARY=1 deno task test
-// `just upstream-check` sets it. The sibling test below stays in CI because it
-// asserts something about our code: the production path always draws.
-Deno.test({
-  name: "canary: the @gfx/canvas glyph-drop fault is still present",
-  ignore: !Deno.env.get("UPSTREAM_CANARY"),
-  fn: async () => {
-    // N is a power question, not a taste one. This asserts "not every render drew",
-    // which is a min-statistic: it only fires when a whole batch happens to draw.
-    // Measured 2026-08-13, 30 renders per engine: the unaliased path drew 1/30 of
-    // the time before the column layout landed and 10/30 after, and batches of ten
-    // came out 1,5,4,7,5,9 — overdispersed, not independent. At N=10 a bursty batch
-    // reaches 10/10 often enough to redden CI on a fault that is still very much
-    // present. Raising N buys the margin back; it does not change what is asserted.
-    const N = 25;
-    const drew = await canaryRenders(N, false);
-    assert(
-      drew < N,
-      `All ${N} renders drew their details through the UNALIASED measurement ` +
-        `path, so the @gfx/canvas glyph-drop fault looks fixed.\n` +
-        `If so: delete MEASURE_SUFFIX and its aliases from diagram-api.js, the ` +
-        `measureFamily branch in computeLayout, the measureAliases option, and ` +
-        `this test. Confirm first with a version bump + \`just raster-check\`, ` +
-        `and update docs/project_notes/upstream-defects.md, which lists ` +
-        `everything to delete.`,
-    );
-  },
-});
-
-Deno.test("the alias fix keeps the canary board's details on the page", async () => {
-  // The other half of the canary: the same board, same fresh-process conditions,
-  // through the production path must draw every time. Together the two pin the
-  // workaround as both still necessary and still effective.
+Deno.test("every fresh-process render draws the canary board's details", async () => {
   const N = 10;
-  const drew = await canaryRenders(N, true);
-  assert(
-    drew === N,
-    `measurement aliases only kept details rendering in ${drew}/${N} renders`,
-  );
+  const drew = await freshRenders(N);
+  assert(drew === N, `details drew in only ${drew}/${N} renders`);
 });
 
 Deno.test("the shipped example board keeps its labels", async () => {

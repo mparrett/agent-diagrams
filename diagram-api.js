@@ -33,7 +33,6 @@ import {
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
-  fontFamily,
   Grid,
   groupFrames,
   isColorToken,
@@ -95,30 +94,6 @@ export function paletteFromState(state) {
 // metrics and drawing must use the same font). Unlike the old WASM canvaskit,
 // native Skia shapes proportional fonts correctly, so sans now measures the same
 // here as in the browser. Falls back silently if assets are gone.
-/**
- * WORKAROUND (2026-07-31) for the @gfx/canvas glyph drop — one of three faults
- * on this library's ledger, alongside the shadowBlur displacement under
- * ctx.scale and the getImageData that doesn't reflect the canvas.
- * See docs/project_notes/upstream-defects.md; `just upstream-check` retests.
- *
- * A string measured with descriptor D on the throwaway layout canvas cannot
- * afterwards be *drawn* with descriptor D on the render canvas: fillText
- * silently produces no pixels. It cost every `details` line on boards of any
- * size, while labels (bold) and the legend/footer (never measured on the
- * scratch) drew fine. Breaking any leg of the (canvas, descriptor, string)
- * triple cures it.
- *
- * So the layout pass measures through a parallel family name backed by the same
- * font file: identical metrics, different cache key, nothing shared with the
- * draw.
- *
- * The underlying fault has no standalone reproduction, so it could not be filed
- * upstream and may be fixed without announcement. That is what the canary in
- * tests/raster-parity.test.js watches for: it renders with the aliases OFF and
- * fails once the text starts drawing anyway. When it fails, delete this.
- */
-const MEASURE_SUFFIX = "Measure";
-
 let _fontsLoaded = false;
 // Fonts.register hands Skia a pointer into the Uint8Array without copying it,
 // and Skia reads glyphs from that memory for the life of the process. Dropping
@@ -148,12 +123,6 @@ function ensureFonts() {
     // Compatibility for any older state/custom code that still names monospace.
     reg("DejaVuSansMono.ttf", "monospace");
     reg("DejaVuSansMono-Bold.ttf", "monospace");
-    // Measurement-only aliases — see MEASURE_SUFFIX. Same files, so metrics are
-    // identical to the families above and browser↔renderer parity is unaffected.
-    reg("DejaVuSansMono.ttf", "DiagramMono" + MEASURE_SUFFIX);
-    reg("DejaVuSansMono-Bold.ttf", "DiagramMono" + MEASURE_SUFFIX);
-    reg("InstrumentSans-Regular.ttf", "DiagramSans" + MEASURE_SUFFIX);
-    reg("InstrumentSans-SemiBold.ttf", "DiagramSans" + MEASURE_SUFFIX);
   } catch (e) {
     console.warn(
       "font load failed (PNG falls back to built-in font):",
@@ -1524,10 +1493,7 @@ export class Diagram {
   }
 
   // ─── Compute grid boxes ───────────────────────────────────
-  // measureAliases: false measures with the family the render also draws with,
-  // i.e. reproduces the glyph-drop fault. Exists solely for the canary test —
-  // production callers must leave it on. See MEASURE_SUFFIX.
-  _computeGridBoxes(ctx, { measureAliases = true } = {}) {
+  _computeGridBoxes(ctx) {
     const { W } = this._dims;
     const state = {
       nodes: this.nodes,
@@ -1538,9 +1504,6 @@ export class Diagram {
       font: this._state.font, // affects text width → box size
       fontSize: this._state.fontSize, // scales box geometry with the font
     };
-    if (measureAliases) {
-      state.measureFamily = fontFamily(state) + MEASURE_SUFFIX;
-    }
     return computeLayout(ctx, state, W);
   }
 
@@ -1752,7 +1715,7 @@ export class Diagram {
   // shadows: true re-enables the box drop shadow, i.e. reproduces the shadowBlur
   // displacement fault. Exists solely for the canary test — production callers
   // must leave it off. See docs/project_notes/upstream-defects.md.
-  renderToCanvas({ measureAliases = true, shadows = false } = {}) {
+  renderToCanvas({ shadows = false } = {}) {
     const pal = this.palette = paletteFromState(this._state); // pick up any state mutations
     const { DPR } = this._dims;
 
@@ -1761,9 +1724,7 @@ export class Diagram {
     // width/height (the editor canvas is larger) are thus never clipped.
     const scratch = createCanvas(10, 10);
     ensureFonts(); // before any measureText — metrics must match drawing
-    const gridBoxes = this._computeGridBoxes(scratch.getContext("2d"), {
-      measureAliases,
-    });
+    const gridBoxes = this._computeGridBoxes(scratch.getContext("2d"));
     const { W, H, COLS, ROWS } = this._fitCanvas(gridBoxes);
 
     // Cap the PNG's longest *pixel* side — a deliberately large board (now that B

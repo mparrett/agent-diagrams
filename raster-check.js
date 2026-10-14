@@ -17,8 +17,8 @@
  * in @gfx/canvas does not reflect what was drawn (it reports background where a
  * filled box plainly is), which would make every reading a false alarm. The PNG
  * is also the artifact people actually receive, so checking it is the honest
- * test. That's a third defect on this library's ledger, after the shadowBlur
- * displacement and the glyph drop itself.
+ * test. It is one of the defects on this library's ledger, alongside the
+ * shadowBlur displacement.
  *
  * Usage:
  *   deno task raster-check [--state <path>] [--json] [--quiet]

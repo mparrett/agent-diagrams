@@ -381,29 +381,18 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 
 ## Notes & limitations
 
-- **`details` text silently failing to render — worked around, not fixed.** The
-  PNG renderer could draw a box at exactly the right size and then omit its
-  `details` lines entirely: a correctly-shaped box with only its label, exit code
-  0, nothing on stderr. It is a rasterization failure in `@gfx/canvas` (geometry
-  is provably correct, and 0.5.8 does not fix it), not a layout bug here.
+- **Renders used to vary from run to run — fixed.** The renderer could drop
+  letters or whole `details` lines, draw bold text in regular, or take symbols
+  from a fallback face, differently on each run. The cause was ours: the font
+  buffers handed to `@gfx/canvas` were garbage-collected while Skia still read
+  glyphs from them. `ensureFonts` in `diagram-api.js` now keeps them alive, and
+  the same state renders to the same PNG. `deno task test` renders a board in
+  ten separate processes and fails if any loses its text; `just raster-check
+  [state]` checks one board.
 
-  The trigger: a string measured with a given font descriptor on the throwaway
-  layout canvas cannot afterwards be *drawn* with that descriptor on the render
-  canvas. The renderer now measures through parallel font families backed by the
-  same files (`MEASURE_SUFFIX` in `diagram-api.js`), so the two passes never
-  share a cache key. Metrics are identical, so layout and editor parity are
-  unchanged.
-
-  Treat this as mitigation, not a cure — the underlying fault has no standalone
-  reproduction and was never filed upstream. Run `just raster-check [state]` on
-  boards that matter; `deno task test` runs it over a corpus and also runs a
-  canary that fails when the upstream fault disappears, so the workaround gets
-  removed rather than forgotten. Some run-to-run variation in the rendered PNG
-  remains on dense boards.
-
-  This is one of three `@gfx/canvas` faults this repo carries workarounds for.
-  They are catalogued in `docs/project_notes/upstream-defects.md`; run
-  `just upstream-check` to ask whether any can be deleted yet.
+  `@gfx/canvas` still has faults this repo works around, catalogued in
+  `docs/project_notes/upstream-defects.md`; run `just upstream-check` to ask
+  whether any can be deleted yet.
 
 - Auto row spacing accounts for real node heights (tallest box per row + a routing gap), so plain `row`/`col` authoring shouldn't produce route failures. Skipped row indices add extra vertical air. Explicit `rowY` still overrides per row.
 - If a connector cell is unavailable (covered by an adjacent box), the router falls back to the nearest open connector on that side, then to the next-best side — a tight layout degrades to a less-ideal wire instead of a red ✕. A red ✕ now only appears when a box is fully walled in.

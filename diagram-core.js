@@ -999,10 +999,7 @@ export function computeLayout(ctx, state, canvasW) {
   const LAYOUT_MIN_GAP = 30;
 
   // Measure pixel dimensions (with the state's font + size — both change box size).
-  // state.measureFamily lets a caller measure through a different family name
-  // backed by the same font file — see the measurement aliases in diagram-api.js.
-  // Unset (the editor) measures with the family it draws with, as before.
-  const FONT = state.measureFamily || fontFamily(state);
+  const FONT = fontFamily(state);
   const SIZES = fontSizes(state);
   const pixDims = new Map();
   for (const node of nodes) {

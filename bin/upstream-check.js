@@ -8,20 +8,16 @@
  * a new release announces "the thing you worked around is fixed now".
  *
  * This answers that question on demand. It resolves the latest version on JSR,
- * builds a throwaway git worktree pinned to it, and re-runs the glyph-drop
- * canary probe there — both through the faulty path (which should still lose
- * text) and the production path (which should not). Your working tree is never
- * touched: the pin and the vendor setting are only ever edited inside the
- * worktree.
+ * builds a throwaway git worktree pinned to it, and re-runs the shadow probe
+ * there. Your working tree is never touched: the pin and the vendor setting are
+ * only ever edited inside the worktree.
  *
- * Exit code is 0 whatever it finds — this is a report, not a gate. The gate is
- * the canary in `deno task test`, which fails when the fault disappears.
+ * Exit code is 0 whatever it finds — this is a report, not a gate.
  *
  *   just upstream-check
  */
 
 const PKG = "@gfx/canvas";
-const RENDERS = 10; // matches the canary; the fault is intermittent
 
 const repoRoot = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -71,25 +67,6 @@ async function makeWorktree(path) {
 async function dropWorktree(path) {
   await run("git", ["worktree", "remove", "--force", path], repoRoot);
   await run("git", ["worktree", "prune"], repoRoot);
-}
-
-/** Count how many of N fresh-process renders drew their detail text. */
-async function probe(cwd, aliases) {
-  let drew = 0;
-  for (let i = 0; i < RENDERS; i++) {
-    const r = await run(Deno.execPath(), [
-      "run",
-      "--allow-read",
-      "--allow-write",
-      "--allow-env",
-      "--allow-ffi",
-      "--unstable-ffi",
-      `${cwd}/tests/canary-render.js`,
-      ...(aliases ? ["--aliases"] : []),
-    ], cwd);
-    if (r.out.includes("drew")) drew++;
-  }
-  return drew;
 }
 
 /**
@@ -144,48 +121,11 @@ try {
     Deno.removeSync(`${wt}/deno.lock`);
   } catch { /* none */ }
 
-  const faulty = await probe(wt, false);
-  const production = await probe(wt, true);
-  report = { faulty, production, shadow: await shadowProbe(wt) };
+  report = { shadow: await shadowProbe(wt) };
 } finally {
   await dropWorktree(wt);
 }
 
-const { faulty, production } = report;
-console.log("glyph drop — details lost when the layout pass measures with the");
-console.log("             same font descriptor the render then draws with");
-console.log(`  unaliased (faulty) path : ${faulty}/${RENDERS} renders drew`);
-console.log(
-  `  production path         : ${production}/${RENDERS} renders drew`,
-);
-console.log("");
-
-if (faulty === RENDERS) {
-  console.log(`VERDICT: the glyph-drop fault looks FIXED in ${latest}.`);
-  console.log(
-    "  Bump the pin, then delete MEASURE_SUFFIX and its aliases from",
-  );
-  console.log(
-    "  diagram-api.js, the measureFamily branch in computeLayout, the",
-  );
-  console.log("  measureAliases option, and the canary. Update the README and");
-  console.log("  docs/project_notes/upstream-defects.md.");
-} else if (production < RENDERS) {
-  console.log(
-    `VERDICT: the workaround is NOT holding on ${latest} ` +
-      `(${production}/${RENDERS}).`,
-  );
-  console.log("  Do not bump the pin until that is understood.");
-} else {
-  console.log(
-    `VERDICT: still broken in ${latest}; the workaround still works.`,
-  );
-  console.log(
-    "  Nothing to remove. Record the date checked in the ledger.",
-  );
-}
-
-console.log("");
 console.log("shadowBlur displacement — the drop shadow drawn far from its box");
 console.log("                          instead of around it, under ctx.scale");
 const { scaled, control } = report.shadow;

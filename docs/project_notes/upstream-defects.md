@@ -3,9 +3,10 @@
 Every entry here is a bug in `jsr:@gfx/canvas` (native Skia, from
 [DjDeveloperr/skia_canvas](https://github.com/DjDeveloperr/skia_canvas)) that
 this repo works around. None has been filed upstream — see the "reported" column
-before assuming someone is waiting on a fix. Faults 1–3 have no standalone
+before assuming someone is waiting on a fix. Faults 2 and 3 have no standalone
 reproduction, which is what has kept them unfiled; fault 4 does have one and is
-the first here that could be reported as-is.
+the first here that could be reported as-is. Fault 1 turned out to be ours and
+is kept here as a record.
 
 This file exists because a workaround for an unreported bug is invisible debt.
 Nothing about a new release announces that the thing you worked around is
@@ -14,8 +15,7 @@ indefinitely. The `{ shadow: false }` workaround carried a "re-enable if the lib
 fixes it" comment from June to the end of July, and nobody re-checked it once.
 
 **To retest: `just upstream-check`.** It resolves the latest release from JSR,
-pins a throwaway worktree to it, and re-runs the glyph-drop and shadow probes
-there. It never touches your working tree and always exits 0 — it's a report.
+pins a throwaway worktree to it, and re-runs the shadow probe there. It never touches your working tree and always exits 0 — it's a report.
 The one fault it cannot automate is called out in its output and below. Note the
 worktree is built from `HEAD`, so uncommitted probe changes aren't included.
 
@@ -41,6 +41,10 @@ The array now lives in a module-level list. With that one change the canary's
 25 unaliased renders all drew (about half did before), and a dense board
 rendered in 12 separate processes gave 12 identical PNGs (4 variants in 6
 before, with letters missing and bold set in regular).
+
+The measurement aliases, the canary, and its `UPSTREAM_CANARY` switch were
+removed the same day. A test now renders the canary board in ten separate
+processes and fails if any loses its details.
 
 Everything below is the investigation as it stood before then. The
 "measured on one canvas" trigger was real but incidental: which strings lost
@@ -95,13 +99,6 @@ changed is how often a given board provokes it. Two consequences: the canary's N
 is a statistical-power question and was raised to 25 for that reason, and any
 future reading of "the fault looks fixed" should be checked against a second
 board before anything is deleted, since one board's rate is not the fault's.
-
-**Retiring it.** When `just upstream-check` reports the fault fixed: bump the
-pin, then delete `MEASURE_SUFFIX` and its four `reg(...)` calls, the
-`measureFamily` branch in `computeLayout`, the `measureAliases` option on
-`renderToCanvas`/`_computeGridBoxes`/`checkRaster`, `tests/canary-render.js`,
-`tests/fixtures/glyph-drop-canary.json`, both canary tests, and the README's
-"Notes & limitations" entry.
 
 **Investigation.** Four standalone reproduction attempts all failed to
 isolate the fault; it appears only in full renders.
