@@ -5,6 +5,12 @@
  * 16 ANSI colors (normal 0-7 + bright 8-15), sourced from iTerm2-Color-Schemes.
  * `deriveTheme()` in diagram-core.js maps these onto diagram entities (node
  * bg/border, edge colors, text, grid). To add a scheme, paste its 18 values.
+ *
+ * Optional `accents: { <node color>: hex }` replaces a node color without
+ * touching the ANSI values edges use. Use it when two node colors come out
+ * hard to tell apart. The "every color theme keeps its node colors apart" test
+ * checks the border pairs; fills are blended 86% toward the background, so
+ * borders carry the category.
  */
 export const SCHEMES = {
   afterglow: {
@@ -27,6 +33,8 @@ export const SCHEMES = {
     brMagenta: "#9f4e85",
     brCyan: "#7dd6cf",
     brWhite: "#f5f5f5",
+    // magenta and brMagenta are the same value, so purple and pink matched.
+    accents: { pink: "#ec8fa8" },
   },
   dawnfox: {
     label: "Dawnfox",
@@ -48,6 +56,10 @@ export const SCHEMES = {
     brMagenta: "#9a80b9",
     brCyan: "#5ca7b4",
     brWhite: "#e6ebf3",
+    // blue and cyan share a hue (197° vs 189°), and brMagenta is a shade of
+    // magenta, so blue/teal and purple/pink boxes looked alike. Pink is the
+    // Nightfox dawnfox pink; blue is shifted toward indigo.
+    accents: { blue: "#3b5ea8", pink: "#d685af" },
   },
   // Grayscale light theme — every "color" is a distinct shade of gray, so node
   // categories stay distinguishable (by border darkness) while the diagram reads

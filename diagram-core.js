@@ -261,10 +261,13 @@ export function mixHex(a, b, t) {
  * derives from bg/fg.
  */
 export function deriveTheme(s) {
-  const node = (accent) => ({
-    bg: s.nodeBg || mixHex(accent, s.bg, 0.86),
-    border: accent,
-  });
+  // `accents` lets a scheme replace a node color whose ANSI source sits too
+  // close to another one (same hue, or the same value reused). Edges keep the
+  // raw palette.
+  const node = (accent, name) => {
+    const a = s.accents?.[name] ?? accent;
+    return { bg: s.nodeBg || mixHex(a, s.bg, 0.86), border: a };
+  };
   return {
     background: s.bg,
     text: s.fg,
@@ -272,13 +275,13 @@ export function deriveTheme(s) {
     title: s.brBlue || s.blue,
     gridLine: mixHex(s.fg, s.bg, 0.9),
     colors: {
-      blue: node(s.blue),
-      green: node(s.green),
-      amber: node(s.yellow),
-      purple: node(s.magenta),
-      teal: node(s.cyan),
-      red: node(s.red),
-      pink: node(s.brMagenta),
+      blue: node(s.blue, "blue"),
+      green: node(s.green, "green"),
+      amber: node(s.yellow, "amber"),
+      purple: node(s.magenta, "purple"),
+      teal: node(s.cyan, "teal"),
+      red: node(s.red, "red"),
+      pink: node(s.brMagenta, "pink"),
       gray: {
         bg: s.nodeBg || mixHex(s.brBlack, s.bg, 0.86),
         border: mixHex(s.fg, s.bg, 0.5),

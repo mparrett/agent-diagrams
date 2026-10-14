@@ -210,7 +210,7 @@ scheme. Each scheme in `themes.js` is just a raw palette (background, foreground
 
 Built-in: `afterglow` (dark), `dawnfox` (light), `monolight` (grayscale light — node categories read as distinct gray shades; edge styles stay distinguishable by dash pattern). Pick one live from the editor's
 dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To add a scheme**, paste its
-18 hex values into `SCHEMES` in `themes.js` — nothing else changes. Any
+18 hex values into `SCHEMES` in `themes.js` — nothing else changes. If two node colors come out alike (a test checks every scheme), add `accents: { <node color>: hex }` to that scheme; it replaces the node color and leaves the edge colors alone. Any
 `colors`/`edgeStyles` overrides above still win over the theme.
 
 ## CLI

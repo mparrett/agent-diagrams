@@ -9,6 +9,7 @@ import {
   createAstarState,
   DEFAULT_COSTS,
   DEFAULT_MAX_BOX_W,
+  deriveTheme,
   drawRoutes,
   fontFamily,
   fontSizes,
@@ -24,6 +25,7 @@ import {
   wrapDetails,
   wrapLabel,
 } from "../diagram-core.js";
+import { SCHEMES } from "../themes.js";
 
 function assertEquals(actual, expected, msg = "") {
   const a = JSON.stringify(actual);
@@ -1094,4 +1096,53 @@ Deno.test("an explicit labelSide keeps a host of matching orientation", () => {
     }),
   ]);
   assert(!l.horiz && l.rect.x > px(2), `expected right of the vertical run`);
+});
+
+// CIE Lab for a hex color.
+function lab(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    v /= 255;
+    return v > 0.04045 ? ((v + 0.055) / 1.055) ** 2.4 : v / 12.92;
+  });
+  const f = (t) => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047);
+  const y = f(r * 0.2126 + g * 0.7152 + b * 0.0722);
+  const z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+// Two node borders read as different categories when their hues differ, or
+// when they are far apart overall. ΔE alone misses the failure that matters:
+// dawnfox blue and cyan were ΔE 19 apart yet 8° apart in hue, and read as one
+// color on a box. A low-chroma color (gray) has no usable hue, so it only
+// needs distance.
+function distinct(a, b) {
+  const [p, q] = [lab(a), lab(b)];
+  const dE = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const chroma = (c) => Math.hypot(c[1], c[2]);
+  if (chroma(p) < 10 || chroma(q) < 10) return { ok: dE >= 15, dE, dh: NaN };
+  const hue = (c) => Math.atan2(c[2], c[1]) * 180 / Math.PI;
+  let dh = Math.abs(hue(p) - hue(q));
+  if (dh > 180) dh = 360 - dh;
+  return { ok: dh >= 12 || dE >= 25, dE, dh };
+}
+
+Deno.test("every color theme keeps its node colors apart", () => {
+  // monolight is grayscale on purpose: categories differ by border darkness.
+  for (const [name, scheme] of Object.entries(SCHEMES)) {
+    if (name === "monolight") continue;
+    const colors = Object.entries(deriveTheme(scheme).colors);
+    for (let i = 0; i < colors.length; i++) {
+      for (let j = i + 1; j < colors.length; j++) {
+        const r = distinct(colors[i][1].border, colors[j][1].border);
+        assert(
+          r.ok,
+          `${name}: ${colors[i][0]}/${colors[j][0]} borders ΔE ${
+            r.dE.toFixed(1)
+          }, hue ${r.dh.toFixed(0)}°`,
+        );
+      }
+    }
+  }
 });
