@@ -288,16 +288,14 @@ function render() {
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
-  const groupLabels = drawGroups(
-    ctx,
-    groupFrames(diagramState?.groups, BOXES, PAL),
-    PAL,
-  );
+  const frames = groupFrames(diagramState?.groups, BOXES, PAL);
+  const groupLabels = drawGroups(ctx, frames, PAL);
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
     boxes: BOXES,
     avoid: groupLabels,
+    frames: frames.map((f) => f.rect),
   }) || []; // stash for label hit-testing
   drawAlignGuides(); // smart alignment guides — under the boxes, so they peek out in the gaps
   drawGroupLabels(ctx, groupLabels, PAL);

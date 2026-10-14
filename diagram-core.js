@@ -2079,7 +2079,10 @@ const LABEL_DESCENT = 0.2;
 
 function labelPlacement(mx, my, tw, side, offset, fontSize = 10) {
   let lx, ly;
-  if (side === "above") {
+  if (side === "on") { // centered on the wire; the chip covers it
+    lx = mx - tw / 2;
+    ly = my + fontSize * (LABEL_ASCENT - LABEL_DESCENT) / 2;
+  } else if (side === "above") {
     lx = mx - tw / 2;
     ly = my - offset;
   } else if (side === "below") {
@@ -2343,13 +2346,14 @@ export function drawRoutes(
   // labelPos.side alone picks the longest segment of matching orientation.
   //
   // The default spot (above a horizontal host / right of a vertical one, 8px
-  // off) is kept unless it overlaps a placed label, a box or an avoid rect, or
-  // crosses another edge's wire. Only then are the other segments, sides and
-  // offsets searched. The offsets stop at 3x the base, because a label that
-  // wanders to find clear space stops reading as belonging to its wire.
-  // Covering another label scores worst, then a box, then another wire;
-  // brushing its own wire (at a corner) and leaving the default host cost a
-  // little, so ties keep the label where it was.
+  // off) is kept unless something other than its own wire touches or crowds
+  // it: a placed label, a box, an avoid rect, another edge's wire, or a group
+  // frame's border. Only then are the other segments, sides and offsets
+  // searched, along with a spot centered on each segment. Offsets stop at 3x
+  // the base, because a label that wanders to find clear space stops reading
+  // as belonging to its wire. Covering another label scores worst, then a
+  // box, then crossing a wire or border, then crowding one; distance from the
+  // wire, sitting on it, and leaving the default host cost a little.
   const labelFs = (pal.sizes || DEFAULT_SIZES).edgeLabel;
   ctx.font = `${labelFs}px ${pal.font}`;
   ctx.textAlign = "left";
@@ -2372,7 +2376,30 @@ export function drawRoutes(
     h: b.h * cell,
   })).concat(opts.avoid || []);
   const overlapsBox = (rect) => boxRects.some((r) => rectsOverlap(rect, r));
+  // A chip straddling a group frame's border sits on a line that is not its
+  // wire, which reads as badly as sitting on someone else's wire.
+  const frames = opts.frames || [];
+  const crossesFrame = (rect) =>
+    frames.filter((f) =>
+      rectsOverlap(rect, f) &&
+      !(rect.x >= f.x && rect.y >= f.y && rect.x + rect.w <= f.x + f.w &&
+        rect.y + rect.h <= f.y + f.h)
+    ).length;
   const OVER_LABEL = 100, OVER_BOX = 50, OVER_WIRE = 10, OFF_HOST = 2;
+  // Distance from the wire costs: a label two offsets out still reads as its
+  // wire's, one three out often does not. Sitting on the wire is unambiguous
+  // but hides a stretch of it, so it ranks between the two.
+  const FAR = [0, 2, 4], ON_WIRE = 3;
+  // A chip beside its wire is read as that wire's by nearness, so another
+  // wire or a frame border just as near makes it ambiguous. A chip on its
+  // wire touches it, and is exempt.
+  const NEAR = 3, NEAR_PX = 4;
+  const grow = (r, d) => ({
+    x: r.x - d,
+    y: r.y - d,
+    w: r.w + 2 * d,
+    h: r.h + 2 * d,
+  });
   const placed = [];
   for (const t of labelTasks) {
     const tw = ctx.measureText(t.label).width;
@@ -2414,26 +2441,37 @@ export function drawRoutes(
       const overlapsLabel = (rect) => placed.some((p) => rectsOverlap(rect, p));
       const score = (c) => {
         const w = wireCross(c.rect, t.poly);
+        const hits = w.foreign + crossesFrame(c.rect);
+        const near = c.on ? 0 : (() => {
+          const g = grow(c.rect, NEAR_PX);
+          return wireCross(g, t.poly).foreign + crossesFrame(g) - hits;
+        })();
         return (overlapsLabel(c.rect) ? OVER_LABEL : 0) +
           (overlapsBox(c.rect) ? OVER_BOX : 0) +
-          w.foreign * OVER_WIRE + w.mine +
+          hits * OVER_WIRE + near * NEAR +
+          (c.on ? ON_WIRE : w.mine + FAR[c.far ?? 0]) +
           (c.sg === host ? 0 : OFF_HOST);
       };
       const primary = place(host, sidesOf(host)[0], baseOff);
-      const pw = wireCross(primary.rect, t.poly);
-      if (
-        !overlapsLabel(primary.rect) && !overlapsBox(primary.rect) &&
-        pw.foreign === 0
-      ) {
+      // Clear means nothing but its own wire touches or crowds it.
+      if (score(primary) === wireCross(primary.rect, t.poly).mine) {
         chosen = primary;
       } else {
         // An explicit seg keeps the search on that segment.
         const pool = Number.isInteger(t.lp.seg) ? [host] : segs;
         let best = primary, bestScore = score(primary);
-        for (const off of [baseOff, baseOff * 2, baseOff * 3]) {
+        for (const sg of pool) {
+          const cand = { ...place(sg, "on", 0), on: true };
+          const sc = score(cand);
+          if (sc < bestScore) {
+            bestScore = sc;
+            best = cand;
+          }
+        }
+        for (const far of [0, 1, 2]) {
           for (const sg of pool) {
             for (const side of sidesOf(sg)) {
-              const cand = place(sg, side, off);
+              const cand = { ...place(sg, side, baseOff * (far + 1)), far };
               const sc = score(cand);
               if (sc < bestScore) {
                 bestScore = sc;

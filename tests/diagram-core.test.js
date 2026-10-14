@@ -1146,3 +1146,31 @@ Deno.test("every color theme keeps its node colors apart", () => {
     }
   }
 });
+
+Deno.test("an edge label stays off a group frame's border", () => {
+  // A horizontal run 6px above a frame's top edge: the default spot above it
+  // is clear, so only the frame border can push it. Put a foreign wire above
+  // to force the search, as on a real board.
+  const frameTop = px(12) + 6;
+  const m = measureContext();
+  const ctx = new Proxy(m, {
+    get: (t, k) => (k in t ? t[k] : () => {}),
+    set: (t, k, v) => {
+      t[k] = v;
+      return true;
+    },
+  });
+  const ls = drawRoutes(
+    ctx,
+    [
+      wire("e", [[2, 12], [20, 12]], "knowledge (R1.2)"),
+      wire("other", [[2, 11], [20, 11]]),
+    ],
+    CELL,
+    undefined,
+    { frames: [{ x: 0, y: frameTop, w: 400, h: 200 }] },
+  );
+  const r = ls.find((l) => l.edge.id === "e").rect;
+  const onBorder = r.y < frameTop && r.y + r.h > frameTop;
+  assert(!onBorder, `label straddles the frame border: ${JSON.stringify(r)}`);
+});

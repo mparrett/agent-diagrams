@@ -1820,6 +1820,7 @@ export class Diagram {
       bridges: this._state.crossingBridges !== false,
       boxes: gridBoxes,
       avoid: groupLabels,
+      frames: frames.map((f) => f.rect),
     });
     drawGroupLabels(ctx, groupLabels, pal);
     drawBoxes(ctx, gridBoxes, CELL, pal, { shadow: shadows });
