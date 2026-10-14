@@ -35,6 +35,7 @@ import {
   EDGE_WIDTHS,
   Grid,
   groupFrames,
+  innerGroups,
   isColorToken,
   makePalette,
   measureNote,
@@ -1046,6 +1047,48 @@ export class Diagram {
         g.dash = opts.dash;
       }
     }
+    // Layout: "inner" lays the members out inside the group, which sits on the
+    // parent board at its own row/col; "annotation" (stored as absent) frames
+    // them where they land.
+    if (opts.layout !== undefined) {
+      if (opts.layout !== "inner" && opts.layout !== "annotation") {
+        throw new Error(
+          `group layout must be "inner" or "annotation", got "${opts.layout}"`,
+        );
+      }
+      if (opts.layout === "inner") g.layout = "inner";
+      else delete g.layout;
+    }
+    for (const k of ["row", "col"]) {
+      if (opts[k] === undefined) continue;
+      if (!Number.isInteger(opts[k])) {
+        throw new Error(`group ${k} must be an integer, got "${opts[k]}"`);
+      }
+      g[k] = opts[k];
+    }
+    if (g.layout === "inner") {
+      if (!Number.isInteger(g.row) || !Number.isInteger(g.col)) {
+        throw new Error(
+          `inner group "${g.id}" needs a row and col on the parent board`,
+        );
+      }
+      // Stage 1: a node is laid out by at most one inner group.
+      const taken = (this._state.groups || []).filter((o) =>
+        o !== g && o.layout === "inner" &&
+        o.nodes.some((id) => g.nodes.includes(id))
+      );
+      if (taken.length) {
+        const shared = g.nodes.filter((id) =>
+          taken.some((o) => o.nodes.includes(id))
+        );
+        throw new Error(
+          `inner group "${g.id}" shares ${
+            shared.join(", ")
+          } with inner group ` +
+            `"${taken[0].id}"; a node can be in only one inner group`,
+        );
+      }
+    }
   }
 
   addGroup(id, label, nodes, opts = {}) {
@@ -1585,6 +1628,10 @@ export class Diagram {
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x + w);
       maxY = Math.max(maxY, y + h);
+    }
+    // Members of an inner group are placed by it; say which.
+    for (const g of innerGroups(this._state.groups, this.nodes)) {
+      for (const id of g.members) if (positions[id]) positions[id].group = g.id;
     }
     const content = gridBoxes.length
       ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY }

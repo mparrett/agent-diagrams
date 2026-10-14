@@ -1348,3 +1348,87 @@ Deno.test("group spacing leaves skipped rows and explicit rowY alone", () => {
     ["b", Math.round(120 / CELL)],
   );
 });
+
+// ─── Stage 1 inner groups (docs/project_notes/group-layout-stage1.md) ─────
+const inside = (outer, r) =>
+  r.x >= outer.x && r.y >= outer.y && r.x + r.w <= outer.x + outer.w &&
+  r.y + r.h <= outer.y + outer.h;
+
+Deno.test("an inner group lays out its members on their own grid", () => {
+  const { boxes, frames, px } = framed(
+    [box("a", 0, 0), box("b", 0, 1), box("c", 1, 0), box("out", 0, 0)],
+    [{
+      id: "g",
+      label: "G",
+      nodes: ["a", "b", "c"],
+      layout: "inner",
+      row: 1,
+      col: 0,
+    }],
+  );
+  const g = frames.get("g");
+  for (const id of ["a", "b", "c"]) {
+    assert(inside(g.rect, px(id)), `${id} outside its group frame`);
+  }
+  assert(g.intruders.length === 0, `intruders: ${g.intruders}`);
+  // Local rows: a and b share a row, c sits below them.
+  assert(px("a").y === px("b").y && px("c").y > px("a").y, "local rows");
+  // The plain box at parent row 0 sits above the group (parent row 1).
+  assert(px("out").y + px("out").h < labelTop(g), "parent rows");
+  assert(boxes.length === 4, "every node is laid out once");
+});
+
+Deno.test("a neighbour of an inner group stays outside its frame", () => {
+  // The group's members spread wide; its parent cell widens to hold them,
+  // so the box in the next parent column is pushed clear rather than covered.
+  const members = [0, 1, 2, 3].map((c) => box(`m${c}`, 0, c));
+  const { frames, px } = framed(
+    [...members, box("next", 0, 1)],
+    [{
+      id: "g",
+      nodes: members.map((m) => m.id),
+      layout: "inner",
+      row: 0,
+      col: 0,
+    }],
+  );
+  const g = frames.get("g").rect, n = px("next");
+  assert(n.x >= g.x + g.w, `next at ${n.x}, frame ends at ${g.x + g.w}`);
+});
+
+Deno.test("an annotation group around an inner group draws around it", () => {
+  const { frames } = framed(
+    [box("a", 0, 0), box("b", 0, 1), box("c", 1, 0)],
+    [
+      {
+        id: "in",
+        label: "In",
+        nodes: ["a", "b"],
+        layout: "inner",
+        row: 0,
+        col: 0,
+      },
+      { id: "all", label: "All", nodes: ["a", "b", "c"] },
+    ],
+  );
+  const inR = frames.get("in").rect, all = frames.get("all").rect;
+  assert(inside(all, inR), "the annotation frame should contain the inner one");
+});
+
+Deno.test("members' layout overrides are ignored inside an inner group", () => {
+  const nodes = [box("a", 0, 0), box("b", 0, 1)];
+  const groups = [{
+    id: "g",
+    nodes: ["a", "b"],
+    layout: "inner",
+    row: 0,
+    col: 0,
+  }];
+  const free = framed(nodes, groups).px("a");
+  const pinned = framed(nodes, groups, { layout: { a: { x: 900, y: 600 } } })
+    .px("a");
+  assert(
+    free.x === pinned.x && free.y === pinned.y,
+    "pinning inside an inner group waits for Stage 2",
+  );
+});

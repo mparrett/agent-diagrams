@@ -152,7 +152,12 @@ Commands:
                                        makes room for frames, but boxes are not moved: keep a group's nodes in
                                        their own rows/cols, or non-members land inside (render and
                                        status --positions name them). --color tints the frame.
+  add-group ... --inner --row=N --col=N
+                                       Inner group: its members' row/col are positions inside the group,
+                                       which is laid out as one box at row N, col N of the board. A node can
+                                       be in one inner group; boxes inside cannot be pinned yet.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
+                    [--inner|--annotation] [--row=N] [--col=N]
   remove-group <id> / list-groups
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)
   set-title [text...]        Caption drawn top-left; no argument clears it
@@ -455,7 +460,13 @@ function run() {
     case "add-group": {
       const rest = args.slice(1);
       const flags = rest.filter((a) => a.startsWith("--"));
-      rejectUnknownFlags("add-group", flags, ["--color", "--dash"]);
+      rejectUnknownFlags("add-group", flags, [
+        "--color",
+        "--dash",
+        "--inner",
+        "--row",
+        "--col",
+      ]);
       const [id, label, ...nodes] = rest.filter((a) => !a.startsWith("--"));
       if (!id || label === undefined || nodes.length === 0) {
         console.error(
@@ -467,6 +478,9 @@ function run() {
       for (const f of flags) {
         if (f.startsWith("--color=")) opts.color = f.slice(8);
         else if (f.startsWith("--dash=")) opts.dash = f.slice(7);
+        else if (f === "--inner") opts.layout = "inner";
+        else if (f.startsWith("--row=")) opts.row = int("--row", f.slice(6));
+        else if (f.startsWith("--col=")) opts.col = int("--col", f.slice(6));
       }
       const d = mutate((d) => d.addGroup(id, label, nodes, opts));
       d.render();
@@ -488,7 +502,18 @@ function run() {
       rejectUnknownFlags(
         "update-group",
         flags,
-        ["--label", "--nodes", "--add", "--remove", "--color", "--dash"],
+        [
+          "--label",
+          "--nodes",
+          "--add",
+          "--remove",
+          "--color",
+          "--dash",
+          "--inner",
+          "--annotation",
+          "--row",
+          "--col",
+        ],
       );
       const list = (v) => v.split(",").filter(Boolean);
       const opts = {};
@@ -501,7 +526,10 @@ function run() {
           opts.color = f.slice(8) === "none" ? null : f.slice(8);
         } else if (f.startsWith("--dash=")) {
           opts.dash = f.slice(7) === "none" ? null : f.slice(7);
-        }
+        } else if (f === "--inner") opts.layout = "inner";
+        else if (f === "--annotation") opts.layout = "annotation";
+        else if (f.startsWith("--row=")) opts.row = int("--row", f.slice(6));
+        else if (f.startsWith("--col=")) opts.col = int("--col", f.slice(6));
       }
       if (Object.keys(opts).length === 0) {
         console.error("Error: update-group needs at least one --flag=value");
@@ -537,7 +565,9 @@ function run() {
       console.log(`${groups.length} groups:`);
       for (const g of groups) {
         console.log(
-          `  ${g.id}  "${g.label ?? ""}"${g.color ? `  color=${g.color}` : ""}${
+          `  ${g.id}  "${g.label ?? ""}"${
+            g.layout === "inner" ? `  inner @ row=${g.row} col=${g.col}` : ""
+          }${g.color ? `  color=${g.color}` : ""}${
             g.dash ? `  dash=${g.dash}` : ""
           }  nodes: ${g.nodes.join(", ")}`,
         );

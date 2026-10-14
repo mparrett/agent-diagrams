@@ -173,6 +173,27 @@ try {
     "Auto Layout clears every override",
     same(s.layout, {}) && same(s.pinned, []),
   );
+
+  // Stage 1: an inner group's members are placed by the group.
+  await cli(
+    "add-group",
+    "g",
+    "Inner",
+    "a",
+    "b",
+    "--inner",
+    "--row=3",
+    "--col=0",
+  );
+  await wait(2000);
+  await open();
+  await drag("a", 200, 100);
+  s = read();
+  check("a box in an inner group cannot be dragged", !s.layout.a);
+  check(
+    "editor matches renderer with an inner group",
+    same(await editorBoxes(), await solved()),
+  );
 } finally {
   await browser.close();
   server.kill();

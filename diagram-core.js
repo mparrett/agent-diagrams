@@ -1073,16 +1073,40 @@ export function groupReach(groups, nodes, labelBand) {
 // Clear space kept between a group frame and the next frame or box.
 export const FRAME_GAP = 15;
 
+// Grid-box ids for inner groups on the parent board. The NUL keeps them from
+// colliding with any node id.
+const PSEUDO_PREFIX = "\u0000group:";
+
+/**
+ * The inner groups (`layout: "inner"`) that can be laid out: each with its
+ * members that exist and are not already claimed by an earlier inner group,
+ * and its parent row and column (0 when missing).
+ */
+export function innerGroups(groups, nodes) {
+  const ids = new Set(nodes.map((n) => n.id));
+  const claimed = new Set();
+  const out = [];
+  for (const g of groups || []) {
+    if (!g || g.layout !== "inner" || !Array.isArray(g.nodes)) continue;
+    const members = g.nodes.filter((id) => ids.has(id) && !claimed.has(id));
+    if (!members.length) continue;
+    for (const id of members) claimed.add(id);
+    out.push({
+      id: g.id,
+      label: g.label,
+      members,
+      row: Number.isInteger(g.row) ? g.row : 0,
+      col: Number.isInteger(g.col) ? g.col : 0,
+    });
+  }
+  return out;
+}
+
 export function computeLayout(ctx, state, canvasW) {
   // No `edges`: placement is now purely declarative from row/col. The edge
   // springs that once pulled connected boxes together are gone with the
   // repulsion pass, so connectivity no longer moves a box.
   const { nodes, rowY = {}, layout = {} } = state;
-  // Translation for auto-placed boxes, written by canvas resizes that shift
-  // content: pinned boxes, notes and dividers move by editing their own
-  // positions, auto boxes through this, so a resize never pins them.
-  const offX = Number.isFinite(state.offset?.x) ? state.offset.x : 0;
-  const offY = Number.isFinite(state.offset?.y) ? state.offset.y : 0;
   const LAYOUT_MARGIN = 40;
   const LAYOUT_MIN_GAP = 30;
 
@@ -1178,275 +1202,365 @@ export function computeLayout(ctx, state, canvasW) {
 
   // Per-node absolute overrides (from drags / layout passes). An override supplies
   // BOTH coordinates, so the node is removed from row-grouping entirely.
-  const overridden = new Set(
-    nodes.filter((n) => layout[n.id]).map((n) => n.id),
-  );
-  const isFixed = (id) => overridden.has(id);
-
-  // Effective Y per row index. Explicit rowY entries win; otherwise rows stack
-  // by the tallest box in each row plus a routing gap. (The old fixed 80px band
-  // overlapped rows whenever a box had 3+ detail lines, which blocked its S-side
-  // connectors against the box below → "Missing conn point" route failures.)
-  const ROW_GAP_PX = 45; // ≥3 grid cells of wiring room between rows
-  // Every authored row, including ones whose nodes have all been pinned.
-  //
-  // Filtering to un-pinned nodes made a fully-pinned row vanish from the stack,
-  // so the cursor never advanced past it and every row below slid up into the
-  // vacated band. Persisting a subset is what the editor does the moment a
-  // human drags a couple of boxes, so a board's vertical stack rearranged
-  // itself without its content changing.
-  //
-  // The boxes do not end up drawn on top of each other — the force pass shoves
-  // the displaced ones sideways instead — so what a human sees is rows at the
-  // wrong height and columns knocked out of line, not a visible collision.
-  //
-  // A pinned node still occupies its band, so the band is still reserved. If it
-  // was dragged far away the reservation costs some empty space, which is the
-  // right way to be wrong: a gap is recoverable by eye, a scrambled stack is
-  // not.
-  const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
-  // Group frames reach past their members; the gap between two rows widens to
-  // hold them, measured from the boxes as drawn (whole cells, up to a cell
-  // taller than measured). No groups, no change.
-  const reach = groupReach(
-    state.groups,
-    nodes,
-    Math.round(SIZES.divider * 1.4),
-  );
-  const drawn = (px) => Math.ceil(px / CELL) * CELL;
-  const frameGap = (overhang, out, inn) =>
-    out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
-  const rowYEff = new Map();
-  let rowCursor = 48 + offY, prevIdx = null;
-  for (const [i, r] of rowIdxs.entries()) {
-    // Skipped row indices are an authoring hint for extra air — honor them.
-    if (prevIdx !== null && r - prevIdx > 1) {
-      rowCursor += (r - prevIdx - 1) * ROW_GAP_PX;
-    }
-    const y = rowY[String(r)] !== undefined ? rowY[String(r)] : rowCursor;
-    rowYEff.set(r, y);
-    // Height over every node in the row, pinned included: a tall pinned box
-    // still needs the band under it kept clear, and measuring only the un-pinned
-    // ones let the next row start partway up it.
-    let maxH = 0;
-    for (const n of nodes) {
-      if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
-    }
-    // Air from skipped row indices (added at the next iteration) counts
-    // toward the frames' clearance, so a board that already skips a row
-    // between groups keeps its spacing.
-    const next = rowIdxs[i + 1];
-    const skipAir = next === undefined ? 0 : (next - r - 1) * ROW_GAP_PX;
-    const gap = Math.max(
-      ROW_GAP_PX,
-      frameGap(
-        drawn(maxH) - maxH,
-        reach.below.get(r) ?? 0,
-        next === undefined ? 0 : reach.above.get(next) ?? 0,
-      ) - skipAir,
+  // Place `nodes` by row and column: the board itself, or one inner group's
+  // members at local coordinates. Returns grid boxes.
+  function place(nodes, opts) {
+    const {
+      rowY = {},
+      layout = {},
+      groups,
+      canvasW = 0,
+      offX = 0,
+      offY = 0,
+      margin = 0,
+      top = 0,
+    } = opts;
+    const overridden = new Set(
+      nodes.filter((n) => layout[n.id]).map((n) => n.id),
     );
-    rowCursor = Math.max(rowCursor, y + maxH + gap);
-    prevIdx = r;
-  }
+    const isFixed = (id) => overridden.has(id);
 
-  // Group non-overridden nodes by effective Y pixel value
-  const rowGroups = new Map();
-  for (const node of nodes) {
-    if (overridden.has(node.id)) continue;
-    const y = rowYEff.get(node.row);
-    if (!rowGroups.has(y)) rowGroups.set(y, []);
-    rowGroups.get(y).push(node);
-  }
-
-  // Position nodes within rows
-  const positions = new Map();
-  const usableWidth = canvasW - 2 * LAYOUT_MARGIN;
-
-  // Overridden nodes get their absolute pixel position directly.
-  for (const node of nodes) {
-    if (!overridden.has(node.id)) continue;
-    const dims = pixDims.get(node.id);
-    const o = layout[node.id];
-    positions.set(node.id, { x: o.x, y: o.y, w: dims.w, h: dims.h });
-  }
-
-  // Resolve `col` to a board-global x. A column is as wide as the widest box
-  // that declares it, columns run left to right, and every node in a column
-  // shares that column's x — so two boxes with the same `col` line up whatever
-  // rows they sit in.
-  //
-  // Placement used to be a per-row spread: `col` weighted a node between its
-  // own row's min and max col, so the same `col` landed at a different x in
-  // every row, and a box slid sideways whenever a sibling joined its row. The
-  // only way to get a straight column was to pin every node by hand, which
-  // left a board that no longer reflowed at all.
-  const COL_GAP_PX = 40; // ≥ DESIRED_GAP below, so columns are already settled
-  const autoNodes = nodes.filter((n) => !overridden.has(n.id));
-
-  const colW = new Map();
-  for (const n of autoNodes) {
-    const w = pixDims.get(n.id).w;
-    colW.set(n.col, Math.max(colW.get(n.col) ?? 0, w));
-  }
-  const colIdxs = [...colW.keys()].sort((a, b) => a - b);
-
-  const colX = new Map();
-  let colCursor = 0, prevCol = null;
-  for (const [i, c] of colIdxs.entries()) {
-    // Skipped column indices are an authoring hint for extra air, the same way
-    // skipped row indices are.
-    if (prevCol !== null && c - prevCol > 1) {
-      colCursor += (c - prevCol - 1) * COL_GAP_PX;
-    }
-    colX.set(c, colCursor);
-    // The last column keeps the plain gap: colsTotal below subtracts it.
-    const next = colIdxs[i + 1];
-    const gap = next === undefined ? COL_GAP_PX : Math.max(
-      COL_GAP_PX,
-      frameGap(
-        drawn(colW.get(c)) - colW.get(c),
-        reach.right.get(c) ?? 0,
-        reach.left.get(next) ?? 0,
-      ) - (next - c - 1) * COL_GAP_PX,
+    // Effective Y per row index. Explicit rowY entries win; otherwise rows stack
+    // by the tallest box in each row plus a routing gap. (The old fixed 80px band
+    // overlapped rows whenever a box had 3+ detail lines, which blocked its S-side
+    // connectors against the box below → "Missing conn point" route failures.)
+    const ROW_GAP_PX = 45; // ≥3 grid cells of wiring room between rows
+    // Every authored row, including ones whose nodes have all been pinned.
+    //
+    // Filtering to un-pinned nodes made a fully-pinned row vanish from the stack,
+    // so the cursor never advanced past it and every row below slid up into the
+    // vacated band. Persisting a subset is what the editor does the moment a
+    // human drags a couple of boxes, so a board's vertical stack rearranged
+    // itself without its content changing.
+    //
+    // The boxes do not end up drawn on top of each other — the force pass shoves
+    // the displaced ones sideways instead — so what a human sees is rows at the
+    // wrong height and columns knocked out of line, not a visible collision.
+    //
+    // A pinned node still occupies its band, so the band is still reserved. If it
+    // was dragged far away the reservation costs some empty space, which is the
+    // right way to be wrong: a gap is recoverable by eye, a scrambled stack is
+    // not.
+    const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
+    // Group frames reach past their members; the gap between two rows widens to
+    // hold them, measured from the boxes as drawn (whole cells, up to a cell
+    // taller than measured). No groups, no change.
+    const reach = groupReach(
+      groups,
+      nodes,
+      Math.round(SIZES.divider * 1.4),
     );
-    colCursor += colW.get(c) + gap;
-    prevCol = c;
-  }
-  // Centre the whole block, so a board narrower than its canvas is not pinned
-  // to the left margin.
-  const colsTotal = Math.max(0, colCursor - COL_GAP_PX);
-  const colOffset = LAYOUT_MARGIN + Math.max(0, (usableWidth - colsTotal) / 2);
-  for (const c of colIdxs) colX.set(c, colX.get(c) + colOffset);
-
-  for (const node of autoNodes) {
-    const dims = pixDims.get(node.id);
-    // A box narrower than its column centres inside it, so the column reads as
-    // one line through the middle of its boxes rather than a ragged edge.
-    const x = colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
-    positions.set(node.id, {
-      x: Math.max(LAYOUT_MARGIN, x) + offX,
-      y: rowYEff.get(node.row),
-      w: dims.w,
-      h: dims.h,
-    });
-  }
-
-  // Columns cannot overlap each other, so the spring-repulsion pass that used
-  // to repair the spread has nothing left to fix — and its edge springs pulled
-  // connected boxes toward each other, which is exactly what knocked a declared
-  // column out of line. What it cannot express is a pinned box sitting where an
-  // auto box wants to be, so that single case keeps a sweep: the auto box
-  // yields and the column bends locally, visibly, rather than drawing one box
-  // over another.
-  for (const [, rNodes] of rowGroups) {
-    const sorted = [...rNodes]
-      .filter((n) => positions.has(n.id))
-      .sort((a, b) => positions.get(a.id).x - positions.get(b.id).x);
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = positions.get(sorted[i - 1].id);
-      const curr = positions.get(sorted[i].id);
-      const minX = prev.x + prev.w + LAYOUT_MIN_GAP;
-      if (curr.x < minX && !isFixed(sorted[i].id)) curr.x = minX;
-    }
-  }
-
-  // Convert to grid-space boxes
-  const gridBoxes = [];
-  for (const node of nodes) {
-    const pos = positions.get(node.id);
-    if (!pos) continue;
-    const dims = pixDims.get(node.id);
-    const col = Math.round(pos.x / CELL);
-    const row = Math.round(pos.y / CELL);
-    const w = Math.ceil(dims.w / CELL);
-    const h = Math.ceil(dims.h / CELL);
-    gridBoxes.push({
-      id: node.id,
-      label: node.label,
-      color: node.color,
-      outlineWidth: node.outlineWidth,
-      outlineDash: node.outlineDash,
-      details: node.details || [],
-      labelLines: dims.labelLines,
-      detailLines: dims.detailLines,
-      col,
-      row,
-      w,
-      h,
-      pixW: dims.w,
-      pixH: dims.h,
-      _origCol: col,
-      _origRow: row,
-    });
-  }
-
-  // Final separation pass, in the cell space the boxes are actually drawn in.
-  //
-  // Everything above packs rows in pixel space against `pos.w` (the exact
-  // content width), but a box is drawn `Math.ceil(pixW / CELL)` cells wide and
-  // anchored at `Math.round(pos.x / CELL)` — so a row that satisfies
-  // LAYOUT_MIN_GAP pre-snap can still overlap once snapped. The spring pass
-  // compounds it: its in-loop fixup (see the `prev.x -= overlap * 0.3` nudge
-  // above) can re-break the constraint on a neighbour it already settled, and
-  // nothing re-checks. The result was boxes drawn on top of each other by up to
-  // 75px — worst with `uniformWidth`, which leaves a dense row no gap budget.
-  //
-  // The sweep walks a row left to right behind a cursor — the rightmost column
-  // spoken for so far — and never moves a box left, so it is monotone and
-  // terminates, and boxes keep their relative order.
-  //
-  // Overridden nodes are a human's drags, so the sweep never *moves* one — but
-  // it must still see them, or it would shove an auto box straight into one. A
-  // pinned box is an immovable obstacle: an auto box that would land on one
-  // jumps past it. A pin is matched against each box's own row span, since a
-  // tall pin can straddle rows.
-  //
-  // Scope, precisely: auto boxes are laned by an equal `row`, and pins are
-  // matched by span. So this separates auto/auto within a drawn row, and
-  // auto/pin wherever their rows overlap. It does NOT separate two *auto* boxes
-  // in different rows — the row stacking upstream (maxH + ROW_GAP_PX) keeps
-  // those apart, except where an explicit `rowY` forces two rows to overlap,
-  // which is not addressed here.
-  const MIN_GAP_CELLS = Math.ceil(LAYOUT_MIN_GAP / CELL);
-  // Ascending by column, so the per-box obstacle scan below settles in one pass.
-  const pinnedBoxes = gridBoxes
-    .filter((b) => overridden.has(b.id))
-    .sort((a, b) => a.col - b.col);
-  const drawnRows = new Map();
-  for (const b of gridBoxes) {
-    if (overridden.has(b.id)) continue;
-    if (!drawnRows.has(b.row)) drawnRows.set(b.row, []);
-    drawnRows.get(b.row).push(b);
-  }
-  for (const rowBoxes of drawnRows.values()) {
-    const lane = [...rowBoxes].sort((a, b) => a.col - b.col);
-
-    let cursor = null; // rightmost column claimed so far
-    for (const b of lane) {
-      let col = cursor === null
-        ? b.col
-        : Math.max(b.col, cursor + MIN_GAP_CELLS);
-      // Only pins overlapping *this* box's own rows constrain it. Testing
-      // against the row's tallest box instead would let one tall neighbour drag
-      // every short box in the row around a pin none of them touch.
-      const obstacles = pinnedBoxes.filter(
-        (p) => p.row < b.row + b.h && b.row < p.row + p.h,
-      );
-      // Clearing the left neighbour can push a box onto an obstacle further
-      // right; obstacles ascend by column, so one pass settles it.
-      for (const o of obstacles) {
-        if (
-          col < o.col + o.w + MIN_GAP_CELLS && o.col < col + b.w + MIN_GAP_CELLS
-        ) {
-          col = o.col + o.w + MIN_GAP_CELLS;
-        }
+    const drawn = (px) => Math.ceil(px / CELL) * CELL;
+    const frameGap = (overhang, out, inn) =>
+      out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
+    const rowYEff = new Map();
+    let rowCursor = top + offY, prevIdx = null;
+    for (const [i, r] of rowIdxs.entries()) {
+      // Skipped row indices are an authoring hint for extra air — honor them.
+      if (prevIdx !== null && r - prevIdx > 1) {
+        rowCursor += (r - prevIdx - 1) * ROW_GAP_PX;
       }
-      b.col = col;
-      b._origCol = col;
-      cursor = cursor === null ? col + b.w : Math.max(cursor, col + b.w);
+      const y = rowY[String(r)] !== undefined ? rowY[String(r)] : rowCursor;
+      rowYEff.set(r, y);
+      // Height over every node in the row, pinned included: a tall pinned box
+      // still needs the band under it kept clear, and measuring only the un-pinned
+      // ones let the next row start partway up it.
+      let maxH = 0;
+      for (const n of nodes) {
+        if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
+      }
+      // Air from skipped row indices (added at the next iteration) counts
+      // toward the frames' clearance, so a board that already skips a row
+      // between groups keeps its spacing.
+      const next = rowIdxs[i + 1];
+      const skipAir = next === undefined ? 0 : (next - r - 1) * ROW_GAP_PX;
+      const gap = Math.max(
+        ROW_GAP_PX,
+        frameGap(
+          drawn(maxH) - maxH,
+          reach.below.get(r) ?? 0,
+          next === undefined ? 0 : reach.above.get(next) ?? 0,
+        ) - skipAir,
+      );
+      rowCursor = Math.max(rowCursor, y + maxH + gap);
+      prevIdx = r;
     }
+
+    // Group non-overridden nodes by effective Y pixel value
+    const rowGroups = new Map();
+    for (const node of nodes) {
+      if (overridden.has(node.id)) continue;
+      const y = rowYEff.get(node.row);
+      if (!rowGroups.has(y)) rowGroups.set(y, []);
+      rowGroups.get(y).push(node);
+    }
+
+    // Position nodes within rows
+    const positions = new Map();
+    const usableWidth = canvasW - 2 * margin;
+
+    // Overridden nodes get their absolute pixel position directly.
+    for (const node of nodes) {
+      if (!overridden.has(node.id)) continue;
+      const dims = pixDims.get(node.id);
+      const o = layout[node.id];
+      positions.set(node.id, { x: o.x, y: o.y, w: dims.w, h: dims.h });
+    }
+
+    // Resolve `col` to a board-global x. A column is as wide as the widest box
+    // that declares it, columns run left to right, and every node in a column
+    // shares that column's x — so two boxes with the same `col` line up whatever
+    // rows they sit in.
+    //
+    // Placement used to be a per-row spread: `col` weighted a node between its
+    // own row's min and max col, so the same `col` landed at a different x in
+    // every row, and a box slid sideways whenever a sibling joined its row. The
+    // only way to get a straight column was to pin every node by hand, which
+    // left a board that no longer reflowed at all.
+    const COL_GAP_PX = 40; // ≥ DESIRED_GAP below, so columns are already settled
+    const autoNodes = nodes.filter((n) => !overridden.has(n.id));
+
+    const colW = new Map();
+    for (const n of autoNodes) {
+      const w = pixDims.get(n.id).w;
+      colW.set(n.col, Math.max(colW.get(n.col) ?? 0, w));
+    }
+    const colIdxs = [...colW.keys()].sort((a, b) => a - b);
+
+    const colX = new Map();
+    let colCursor = 0, prevCol = null;
+    for (const [i, c] of colIdxs.entries()) {
+      // Skipped column indices are an authoring hint for extra air, the same way
+      // skipped row indices are.
+      if (prevCol !== null && c - prevCol > 1) {
+        colCursor += (c - prevCol - 1) * COL_GAP_PX;
+      }
+      colX.set(c, colCursor);
+      // The last column keeps the plain gap: colsTotal below subtracts it.
+      const next = colIdxs[i + 1];
+      const gap = next === undefined ? COL_GAP_PX : Math.max(
+        COL_GAP_PX,
+        frameGap(
+          drawn(colW.get(c)) - colW.get(c),
+          reach.right.get(c) ?? 0,
+          reach.left.get(next) ?? 0,
+        ) - (next - c - 1) * COL_GAP_PX,
+      );
+      colCursor += colW.get(c) + gap;
+      prevCol = c;
+    }
+    // Centre the whole block, so a board narrower than its canvas is not pinned
+    // to the left margin.
+    const colsTotal = Math.max(0, colCursor - COL_GAP_PX);
+    const colOffset = margin + Math.max(0, (usableWidth - colsTotal) / 2);
+    for (const c of colIdxs) colX.set(c, colX.get(c) + colOffset);
+
+    for (const node of autoNodes) {
+      const dims = pixDims.get(node.id);
+      // A box narrower than its column centres inside it, so the column reads as
+      // one line through the middle of its boxes rather than a ragged edge.
+      const x = colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
+      positions.set(node.id, {
+        x: Math.max(margin, x) + offX,
+        y: rowYEff.get(node.row),
+        w: dims.w,
+        h: dims.h,
+      });
+    }
+
+    // Columns cannot overlap each other, so the spring-repulsion pass that used
+    // to repair the spread has nothing left to fix — and its edge springs pulled
+    // connected boxes toward each other, which is exactly what knocked a declared
+    // column out of line. What it cannot express is a pinned box sitting where an
+    // auto box wants to be, so that single case keeps a sweep: the auto box
+    // yields and the column bends locally, visibly, rather than drawing one box
+    // over another.
+    for (const [, rNodes] of rowGroups) {
+      const sorted = [...rNodes]
+        .filter((n) => positions.has(n.id))
+        .sort((a, b) => positions.get(a.id).x - positions.get(b.id).x);
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = positions.get(sorted[i - 1].id);
+        const curr = positions.get(sorted[i].id);
+        const minX = prev.x + prev.w + LAYOUT_MIN_GAP;
+        if (curr.x < minX && !isFixed(sorted[i].id)) curr.x = minX;
+      }
+    }
+
+    // Convert to grid-space boxes
+    const gridBoxes = [];
+    for (const node of nodes) {
+      const pos = positions.get(node.id);
+      if (!pos) continue;
+      const dims = pixDims.get(node.id);
+      const col = Math.round(pos.x / CELL);
+      const row = Math.round(pos.y / CELL);
+      const w = Math.ceil(dims.w / CELL);
+      const h = Math.ceil(dims.h / CELL);
+      gridBoxes.push({
+        id: node.id,
+        label: node.label,
+        color: node.color,
+        outlineWidth: node.outlineWidth,
+        outlineDash: node.outlineDash,
+        details: node.details || [],
+        labelLines: dims.labelLines,
+        detailLines: dims.detailLines,
+        col,
+        row,
+        w,
+        h,
+        pixW: dims.w,
+        pixH: dims.h,
+        _origCol: col,
+        _origRow: row,
+      });
+    }
+
+    // Final separation pass, in the cell space the boxes are actually drawn in.
+    //
+    // Everything above packs rows in pixel space against `pos.w` (the exact
+    // content width), but a box is drawn `Math.ceil(pixW / CELL)` cells wide and
+    // anchored at `Math.round(pos.x / CELL)` — so a row that satisfies
+    // LAYOUT_MIN_GAP pre-snap can still overlap once snapped. The spring pass
+    // compounds it: its in-loop fixup (see the `prev.x -= overlap * 0.3` nudge
+    // above) can re-break the constraint on a neighbour it already settled, and
+    // nothing re-checks. The result was boxes drawn on top of each other by up to
+    // 75px — worst with `uniformWidth`, which leaves a dense row no gap budget.
+    //
+    // The sweep walks a row left to right behind a cursor — the rightmost column
+    // spoken for so far — and never moves a box left, so it is monotone and
+    // terminates, and boxes keep their relative order.
+    //
+    // Overridden nodes are a human's drags, so the sweep never *moves* one — but
+    // it must still see them, or it would shove an auto box straight into one. A
+    // pinned box is an immovable obstacle: an auto box that would land on one
+    // jumps past it. A pin is matched against each box's own row span, since a
+    // tall pin can straddle rows.
+    //
+    // Scope, precisely: auto boxes are laned by an equal `row`, and pins are
+    // matched by span. So this separates auto/auto within a drawn row, and
+    // auto/pin wherever their rows overlap. It does NOT separate two *auto* boxes
+    // in different rows — the row stacking upstream (maxH + ROW_GAP_PX) keeps
+    // those apart, except where an explicit `rowY` forces two rows to overlap,
+    // which is not addressed here.
+    const MIN_GAP_CELLS = Math.ceil(LAYOUT_MIN_GAP / CELL);
+    // Ascending by column, so the per-box obstacle scan below settles in one pass.
+    const pinnedBoxes = gridBoxes
+      .filter((b) => overridden.has(b.id))
+      .sort((a, b) => a.col - b.col);
+    const drawnRows = new Map();
+    for (const b of gridBoxes) {
+      if (overridden.has(b.id)) continue;
+      if (!drawnRows.has(b.row)) drawnRows.set(b.row, []);
+      drawnRows.get(b.row).push(b);
+    }
+    for (const rowBoxes of drawnRows.values()) {
+      const lane = [...rowBoxes].sort((a, b) => a.col - b.col);
+
+      let cursor = null; // rightmost column claimed so far
+      for (const b of lane) {
+        let col = cursor === null
+          ? b.col
+          : Math.max(b.col, cursor + MIN_GAP_CELLS);
+        // Only pins overlapping *this* box's own rows constrain it. Testing
+        // against the row's tallest box instead would let one tall neighbour drag
+        // every short box in the row around a pin none of them touch.
+        const obstacles = pinnedBoxes.filter(
+          (p) => p.row < b.row + b.h && b.row < p.row + p.h,
+        );
+        // Clearing the left neighbour can push a box onto an obstacle further
+        // right; obstacles ascend by column, so one pass settles it.
+        for (const o of obstacles) {
+          if (
+            col < o.col + o.w + MIN_GAP_CELLS &&
+            o.col < col + b.w + MIN_GAP_CELLS
+          ) {
+            col = o.col + o.w + MIN_GAP_CELLS;
+          }
+        }
+        b.col = col;
+        b._origCol = col;
+        cursor = cursor === null ? col + b.w : Math.max(cursor, col + b.w);
+      }
+    }
+    return gridBoxes;
   }
 
+  // Inner groups (Stage 1, docs/project_notes/group-layout-stage1.md): lay out
+  // each one's members on their own grid, then place the group on the parent
+  // board as a single box. A node belongs to at most one inner group; later
+  // claims are ignored. Members' layout overrides are ignored: pinning inside
+  // an inner group waits for Stage 2.
+  const inner = innerGroups(state.groups, nodes);
+  const memberOf = new Map();
+  for (const g of inner) for (const id of g.members) memberOf.set(id, g);
+  const labelBand = Math.round(SIZES.divider * 1.4);
+  const localBoxes = new Map();
+  const pseudo = [];
+  for (const g of inner) {
+    const members = nodes.filter((n) => memberOf.get(n.id) === g);
+    const boxes = place(members, { groups: [] });
+    const minC = Math.min(...boxes.map((b) => b.col));
+    const minR = Math.min(...boxes.map((b) => b.row));
+    const maxC = Math.max(...boxes.map((b) => b.col + b.w));
+    const maxR = Math.max(...boxes.map((b) => b.row + b.h));
+    // One cell holds GROUP_PAD (12px) on each side; the top takes enough
+    // cells for the pad plus half the label band, which straddles the border.
+    const padTop = Math.ceil(
+      (GROUP_PAD + (g.label ? labelBand / 2 : 0)) / CELL,
+    );
+    const pad = Math.ceil(GROUP_PAD / CELL);
+    const id = PSEUDO_PREFIX + g.id;
+    localBoxes.set(id, { boxes, minC, minR, pad, padTop });
+    pixDims.set(id, {
+      w: (maxC - minC + 2 * pad) * CELL,
+      h: (maxR - minR + pad + padTop) * CELL,
+      labelLines: [],
+      detailLines: [],
+    });
+    pseudo.push({ id, row: g.row, col: g.col });
+  }
+
+  // The parent board: plain nodes, plus one box per inner group. Annotation
+  // groups that list inner members span that group's box instead.
+  const outer = [...nodes.filter((n) => !memberOf.has(n.id)), ...pseudo];
+  const outerGroups = (state.groups || [])
+    .filter((g) => g && g.layout !== "inner" && Array.isArray(g.nodes))
+    .map((g) => ({
+      ...g,
+      nodes: [
+        ...new Set(
+          g.nodes.map((id) =>
+            memberOf.has(id) ? PSEUDO_PREFIX + memberOf.get(id).id : id
+          ),
+        ),
+      ],
+    }));
+  const placed = place(outer, {
+    rowY,
+    layout,
+    groups: outerGroups,
+    canvasW,
+    offX: Number.isFinite(state.offset?.x) ? state.offset.x : 0,
+    offY: Number.isFinite(state.offset?.y) ? state.offset.y : 0,
+    margin: LAYOUT_MARGIN,
+    top: 48,
+  });
+
+  const gridBoxes = [];
+  for (const b of placed) {
+    const local = localBoxes.get(b.id);
+    if (!local) {
+      gridBoxes.push(b);
+      continue;
+    }
+    for (const m of local.boxes) {
+      const col = b.col + local.pad + (m.col - local.minC);
+      const row = b.row + local.padTop + (m.row - local.minR);
+      gridBoxes.push({ ...m, col, row, _origCol: col, _origRow: row });
+    }
+  }
   return gridBoxes;
 }
 

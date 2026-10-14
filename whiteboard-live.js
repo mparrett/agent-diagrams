@@ -42,6 +42,7 @@ import {
   edgeSides,
   Grid,
   groupFrames,
+  innerGroups,
   makePalette,
   measureNote,
   nodeBoxSize,
@@ -967,6 +968,14 @@ cvs.addEventListener("pointerdown", (e) => {
     return;
   }
   if (hit.kind === "box") {
+    const inner = innerGroupOf(hit.box.id);
+    if (inner) {
+      setStatus(
+        `${hit.box.id} is laid out by inner group "${inner}"; move the group ` +
+          `with update-group ${inner} --row/--col`,
+      );
+      return;
+    }
     const gc = Math.floor(p.x / CELL), gr = Math.floor(p.y / CELL);
     drag = { b: hit.box, oc: gc - hit.box.col, or: gr - hit.box.row };
     hoverBoxId = null;
@@ -3482,6 +3491,11 @@ function openBoxMenu(id, x, y) {
       : {
         label: "Pin",
         action: () => {
+          const inner = innerGroupOf(id);
+          if (inner) {
+            setStatus(`${id} is laid out by inner group "${inner}"`);
+            return;
+          }
           pinnedSet.add(id);
           pinsDirty = true;
           render();
@@ -3965,9 +3979,17 @@ function localLayout() {
   return layout;
 }
 
+// The inner group laying out node `id`, if any. Its members' positions come
+// from the group, so they cannot be dragged or pinned (Stage 1).
+function innerGroupOf(id) {
+  return innerGroups(diagramState?.groups, diagramState?.nodes || [])
+    .find((g) => g.members.includes(id))?.id;
+}
+
 // Record each box a person moved since the last solve as a pending placement.
 function recordMoves() {
   for (const b of BOXES) {
+    if (innerGroupOf(b.id)) continue;
     const base = baseline.get(b.id);
     if (base && (b.col !== base.col || b.row !== base.row)) {
       pendingLayout.set(b.id, { x: b.col * CELL, y: b.row * CELL });

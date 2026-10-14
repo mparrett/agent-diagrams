@@ -1,6 +1,6 @@
 # Group layout: Stage 1 design (draft)
 
-Status: draft for review, 2026-10-14. Stage 0 (spacing for frames) is in `group-layout.md`.
+Status: built 2026-10-14. Where it differs from the plan below, the code follows "As built" at the end. Stage 0 (spacing for frames) is in `group-layout.md`.
 
 ## Goal
 
@@ -72,3 +72,15 @@ Routing stays global and unchanged: every box is an obstacle wherever it ends up
 2. **Box widths shared across inner groups?** Recommended: one pass for the whole board keeps widths consistent. The alternative lets each group pick its own widths.
 3. **Member pins:** reject in Stage 1 (recommended), or build the relative-position model now?
 4. **Edges to a group itself** (`add-edge api agents`), as D2 allows: not in Stage 1.
+
+## As built
+
+Decisions taken: the editor change landed first (986d5ab, plus 41a75bb for canvas resizes); box sizes are computed once for the whole board; pins inside inner groups are rejected; edges to a group itself are out.
+
+- **Group pins:** `layout[groupId]` is not implemented. A group is placed by its `row`/`col` only; dragging a member in the editor is refused with a status message naming the group. The editor cannot drag a group as a whole yet.
+- **Placement:** `computeLayout`'s placement half became an inner `place()`, run once per inner group at local coordinates (no margin, no centring) and once for the board. On the board, each inner group is a box with an id that cannot collide with a node id.
+- **Padding:** the group's box is its members' drawn extent plus one cell on each side (holds `GROUP_PAD`) and enough cells on top for the pad and half the label band. Members keep cell-aligned positions inside it.
+- **Annotation groups:** annotation groups listing inner members span that group's box on the board, so they draw around it and Stage 0 spacing still applies. Inside an inner group, layout uses no groups.
+- **Overrides:** members' layout overrides are ignored, and the editor no longer records moves for inner members from Align or Expand.
+- **Read-back:** `status --positions` adds `group` to each member.
+- **Checks:** boards without inner groups render byte-identical to before. Editor↔renderer parity: 0 mismatches. `just editor-check` covers a refused member drag and editor/renderer agreement with an inner group.

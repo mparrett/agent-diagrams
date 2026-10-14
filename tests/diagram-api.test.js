@@ -906,3 +906,39 @@ Deno.test("a resize with no shift leaves every box where it was", () =>
       `centring moved the box: ${before.x},${before.y} → ${after.x},${after.y}`,
     );
   }));
+
+Deno.test("inner groups need a parent row/col and exclusive members", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 0, col: 1 },
+      ],
+    });
+    const d = Diagram.load(path);
+    const err = (fn) => {
+      try {
+        fn();
+      } catch (e) {
+        return e.message;
+      }
+      return "";
+    };
+    assert(
+      err(() => d.addGroup("g", "G", ["a"], { layout: "inner" }))
+        .includes("row and col"),
+      "an inner group without a parent row/col must be rejected",
+    );
+    d.addGroup("g", "G", ["a", "b"], { layout: "inner", row: 2, col: 3 });
+    assert(
+      err(() =>
+        d.addGroup("h", "H", ["b"], { layout: "inner", row: 0, col: 0 })
+      )
+        .includes("only one inner group"),
+      "a node in two inner groups must be rejected",
+    );
+    d.save();
+    const sp = Diagram.load(path).solvePositions();
+    assert(sp.positions.a.group === "g", "members report their inner group");
+  }));
