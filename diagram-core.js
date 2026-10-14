@@ -3349,6 +3349,7 @@ export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
         : edge - into * (st.band / 2);
       const ly = cy + (asc - desc) / 2;
       labels.push({
+        id: f.id,
         label: f.label,
         color: stroke,
         font,

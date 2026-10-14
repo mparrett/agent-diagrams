@@ -160,4 +160,41 @@ export const STATES = [
       }],
     },
   },
+  {
+    // Nested inner groups, a member pinned relative to its innermost group and
+    // a child group pinned relative to its parent.
+    name: "nested-groups-pinned",
+    state: {
+      width: 1200,
+      nodes: [
+        { id: "web", label: "Web", color: "blue", row: 0, col: 0 },
+        { id: "api", label: "API Gateway", color: "green", row: 0, col: 0 },
+        { id: "auth", label: "Auth Service", color: "amber", row: 0, col: 0 },
+        { id: "db", label: "Database", color: "purple", row: 0, col: 1 },
+      ],
+      groups: [
+        {
+          id: "core",
+          label: "Core",
+          layout: "inner",
+          nodes: ["api", "svc"],
+          row: 1,
+          col: 0,
+        },
+        {
+          id: "svc",
+          label: "Services",
+          layout: "inner",
+          nodes: ["auth", "db"],
+          row: 1,
+          col: 0,
+        },
+      ],
+      innerLayout: {
+        svc: { db: { x: 30, y: 75 } },
+        core: { svc: { x: 45, y: 90 } },
+      },
+      edges: [{ from: "web", to: "api" }, { from: "api", to: "auth" }],
+    },
+  },
 ];

@@ -107,6 +107,10 @@ const coarsePointer = matchMedia("(pointer: coarse)").matches; // finger-sized h
 let hoverFrame = null; // 'e' | 's' | 'se' when over a board-frame resize handle
 let hoverResize = null; // { box, dir:'se' } when over a box's resize corner
 let labelRects = []; // [{edge, rect}] from the last drawRoutes — edge-label hit targets
+// Inner groups' drag handles from the last render, innermost first:
+// [{ id, rect (frame), label (chip rect | null) }].
+let groupHandles = [];
+let hoverGroup = null; // inner group id whose label or border is under the cursor
 // Nodes the human manually placed (a subset of the full layout snapshot). Pure
 // metadata — drives the pin marker; positions still come from the layout map.
 let pinnedSet = new Set();
@@ -135,6 +139,10 @@ let baseline = new Map(); // id -> {col,row} at the last solve
 // position of a box nobody touched.
 const pendingLayout = new Map();
 const pendingFree = new Set();
+// Relative pins not yet saved: id -> { group, pos }, filed under the id's
+// direct inner parent.
+const pendingInner = new Map();
+let holdSaves = false; // test hook: keep placements pending
 let pendingReload = false; // an inbound change arrived mid-drag
 let persistTimer = null;
 
@@ -298,6 +306,7 @@ function render() {
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
+  groupHandles = innerGroupHandles(frames, groupLabels);
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
@@ -974,15 +983,24 @@ cvs.addEventListener("pointerdown", (e) => {
     updateCursor();
     return;
   }
+  if (hit.kind === "group") {
+    const under = new Set(groupNodes(hit.group));
+    drag = {
+      kind: "group",
+      id: hit.group,
+      gc: Math.floor(p.x / CELL),
+      gr: Math.floor(p.y / CELL),
+      dc: 0,
+      dr: 0,
+      from: BOXES.filter((b) => under.has(b.id))
+        .map((b) => ({ b, col: b.col, row: b.row })),
+    };
+    hoverBoxId = null;
+    hoverEdge = null;
+    updateCursor();
+    return;
+  }
   if (hit.kind === "box") {
-    const inner = innerGroupOf(hit.box.id);
-    if (inner) {
-      setStatus(
-        `${hit.box.id} is laid out by inner group "${inner}"; move the group ` +
-          `with update-group ${inner} --row/--col`,
-      );
-      return;
-    }
     const gc = Math.floor(p.x / CELL), gr = Math.floor(p.y / CELL);
     drag = { b: hit.box, oc: gc - hit.box.col, or: gr - hit.box.row };
     hoverBoxId = null;
@@ -1167,6 +1185,20 @@ cvs.addEventListener("pointermove", (e) => {
       edge.labelPos = lp;
       render(); // routing is unchanged; only label placement moves
     }
+    return;
+  }
+  if (drag?.kind === "group") { // preview: the members (and so the frame) follow
+    didDrag = true;
+    const { gc, gr } = cellAt(e);
+    if (gc - drag.gc === drag.dc && gr - drag.gr === drag.dr) return;
+    drag.dc = gc - drag.gc;
+    drag.dr = gr - drag.gr;
+    for (const m of drag.from) {
+      m.b.col = m.col + drag.dc;
+      m.b.row = m.row + drag.dr;
+    }
+    rebuild();
+    render();
     return;
   }
   if (drag?.kind === "endpoint" || drag?.kind === "create") {
@@ -1397,6 +1429,23 @@ cvs.addEventListener("pointerup", (e) => {
     }
     return;
   }
+  // Group drop: pin the group where it landed; its members re-solve inside it.
+  if (drag?.kind === "group") {
+    const { id, dc, dr } = drag, moved = didDrag && (dc || dr);
+    drag = null;
+    updateCursor();
+    if (moved) {
+      const gb = BOXES.groupBoxes?.get(id);
+      if (gb) placeAt(id, gb.col + dc, gb.row + dr);
+      resolveBoxes();
+      schedulePersist();
+    } else render();
+    if (pendingReload) {
+      pendingReload = false;
+      mergeReload();
+    }
+    return;
+  }
   // Pan drop: pure view change — nothing to persist. render() so a no-move tap on
   // empty space repaints after updateTapSelection cleared any tap-selection.
   if (drag?.kind === "pan") {
@@ -1411,6 +1460,7 @@ cvs.addEventListener("pointerup", (e) => {
   }
   const wasDragging = !!drag;
   const wasNote = drag?.kind === "note";
+  const drag0 = drag;
   if (wasDragging && !wasNote) {
     if (e.pointerType !== "touch") hoverBoxId = drag.b.id; // cursor still over the dropped box (touch: selection drives nubs)
     if (!pinnedSet.has(drag.b.id)) {
@@ -1422,6 +1472,11 @@ cvs.addEventListener("pointerup", (e) => {
   updateCursor();
   if (wasDragging) {
     if (!wasNote) {
+      const b = drag0.b, base = baseline.get(b.id);
+      if (
+        innerGroupOf(b.id) && base &&
+        (b.col !== base.col || b.row !== base.row)
+      ) placeAt(b.id, b.col, b.row);
       recordMoves();
       resolveBoxes();
     } else render();
@@ -1634,6 +1689,32 @@ function nodeAtPoint(p) {
   ) || null;
 }
 
+// Each inner group's frame and label chip are drag handles; innermost first,
+// so a nested group wins over its parent.
+function innerGroupHandles(frames, labels) {
+  const tree = innerTree();
+  const chip = new Map(labels.map((l) => [l.id, l]));
+  return frames
+    .filter((f) => tree.has(f.id))
+    .map((f) => ({ id: f.id, rect: f.rect, label: chip.get(f.id) ?? null }))
+    .sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h);
+}
+const inRect = (p, r) =>
+  p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+// Inner group whose label chip is under a canvas point, or null.
+function groupLabelAt(p) {
+  return groupHandles.find((h) => h.label && inRect(p, h.label))?.id ?? null;
+}
+// Inner group whose frame border band is under a canvas point, or null. The
+// interior is left to member drags.
+function groupBorderAt(p) {
+  const t = screenTol(coarsePointer ? 8 : 4, CELL / 2);
+  return groupHandles.find(({ rect: r }) =>
+    inRect(p, { x: r.x - t, y: r.y - t, w: r.w + 2 * t, h: r.h + 2 * t }) &&
+    !inRect(p, { x: r.x + t, y: r.y + t, w: r.w - 2 * t, h: r.h - 2 * t })
+  )?.id ?? null;
+}
+
 // Note under a canvas-space point, or null. Notes draw on top of boxes, so
 // they're tested before boxes/edges. Last-drawn wins on overlap (topmost).
 function noteAt(p) {
@@ -1688,6 +1769,11 @@ function hitTest(p, { includeNub = !connectMode } = {}) {
   const endpoint = endpointAt(p);
   if (endpoint) return { kind: "endpoint", p, endpoint, edge: endpoint.edge };
 
+  // A group's chip and border band come before the connect nubs, which reach
+  // a few pixels past a member's sides.
+  const group = connectMode ? null : groupLabelAt(p) ?? groupBorderAt(p);
+  if (group) return { kind: "group", p, group };
+
   const nub = includeNub ? createNubAt(p) : null;
   if (nub) return { kind: "nub", p, nub, box: nub.box };
 
@@ -1735,13 +1821,15 @@ function updateHover(e) {
   const overPin = hit.kind === "pin";
   const fr = hit.kind === "frame" ? hit.frame : null;
   const rz = hit.kind === "boxresize" ? hit.box.id : null;
+  const grp = hit.kind === "group" ? hit.group : null;
   if (
     noteId !== hoverNoteId || boxIdOf(b) !== hoverBoxId ||
     !sameEdge(edge, hoverEdge) || !!labelEdge !== hoverLabel ||
     overPin !== hoverPin || epKey(ep) !== epKey(hoverEndpoint) ||
     nubKey(nub) !== nubKey(hoverNub) || fr !== hoverFrame ||
-    rz !== (hoverResize?.box.id ?? null)
+    rz !== (hoverResize?.box.id ?? null) || grp !== hoverGroup
   ) {
+    hoverGroup = grp;
     hoverNoteId = noteId;
     hoverBoxId = boxIdOf(b);
     hoverEdge = edge;
@@ -1787,7 +1875,8 @@ function updateCursor() {
     ? "pointer" // connect nub → drag out to create
     : hoverPin
     ? "pointer" // pin marker → click to unpin
-    : (hoverNoteId !== null || hoverBoxId !== null || hoverLabel)
+    : (hoverNoteId !== null || hoverBoxId !== null || hoverLabel ||
+        hoverGroup !== null)
     ? "move" // draggable → reposition
     : hoverEdge
     ? "pointer" // clickable → opens editor
@@ -2001,20 +2090,22 @@ document.getElementById("bConnect").onclick = () => setMode("connect");
 // auto-layout" means dropping every override, after which nothing is manually
 // placed, so the pin set must clear too — which is exactly Auto Layout. Removed
 // rather than duplicated; see Auto Layout / Auto Layout (keep pins) below.
-document.getElementById("bAlignH").onclick = () => {
-  if (coreSnapAlign("h", BOXES, COLS, ROWS)) {
+// Align moves boxes that share one parent: the board's. Members of inner
+// groups are skipped.
+function alignBoard(axis) {
+  const top = BOXES.filter((b) => !innerGroupOf(b.id));
+  const skipped = BOXES.length - top.length;
+  if (coreSnapAlign(axis, top, COLS, ROWS)) {
     recordMoves();
     resolveBoxes();
     schedulePersist();
   }
-};
-document.getElementById("bAlignV").onclick = () => {
-  if (coreSnapAlign("v", BOXES, COLS, ROWS)) {
-    recordMoves();
-    resolveBoxes();
-    schedulePersist();
+  if (skipped) {
+    setStatus(`aligned board boxes; skipped ${skipped} in inner groups`);
   }
-};
+}
+document.getElementById("bAlignH").onclick = () => alignBoard("h");
+document.getElementById("bAlignV").onclick = () => alignBoard("v");
 // ── Expand / Contract ─────────────────────────────────────────────
 // A shared slider between the layout at session start (level 0) and the fully
 // force-spread layout (level 1) and one stop past it (1.5), in 50% steps. Expand
@@ -2126,7 +2217,8 @@ document.getElementById("bContract").onclick = () => {
 function resolveAuto(freeIds) {
   for (const id of freeIds) {
     pendingLayout.delete(id);
-    if (diagramState.layout?.[id]) pendingFree.add(id);
+    pendingInner.delete(id);
+    if (hasPin(id)) pendingFree.add(id);
   }
   pinsDirty = true;
   resolveBoxes();
@@ -2194,9 +2286,19 @@ document.getElementById("bGrowCanvas").onclick = async () => {
     render();
   }
 };
+// Every id that can carry a pin: boxes, inner groups, and whatever disk pins.
+function placeableIds() {
+  return new Set([
+    ...BOXES.map((b) => b.id),
+    ...innerTree().keys(),
+    ...Object.keys(diagramState.layout || {}),
+    ...Object.values(diagramState.innerLayout || {})
+      .flatMap((pins) => Object.keys(pins || {})),
+  ]);
+}
 document.getElementById("bAutoLayout").onclick = () => {
   pinnedSet.clear();
-  resolveAuto(new Set(BOXES.map((b) => b.id)));
+  resolveAuto(placeableIds());
   setStatus("auto-layout: re-solved, pins cleared");
 };
 // Auto Layout (keep pins): re-flow only the unpinned nodes; pinned nodes keep
@@ -2204,7 +2306,7 @@ document.getElementById("bAutoLayout").onclick = () => {
 // place a few anchors by hand, then re-solve everything else around them.
 document.getElementById("bAutoLayoutKeep").onclick = () => {
   const freeIds = new Set(
-    BOXES.filter((b) => !pinnedSet.has(b.id)).map((b) => b.id),
+    [...placeableIds()].filter((id) => !pinnedSet.has(id)),
   );
   if (freeIds.size === 0) {
     setStatus("all nodes pinned — nothing to re-flow");
@@ -3362,6 +3464,7 @@ function openContextMenuFor(clientX, clientY) {
   if (hit.kind === "box" || hit.kind === "pin") {
     return openBoxMenu(hit.box.id, clientX, clientY);
   }
+  if (hit.kind === "group") return openGroupMenu(hit.group, clientX, clientY);
   if (hit.kind === "label" || hit.kind === "edge" || hit.kind === "endpoint") {
     return openEdgeMenu(hit.edge, clientX, clientY);
   }
@@ -3556,11 +3659,7 @@ function openBoxMenu(id, x, y) {
       : {
         label: "Pin",
         action: () => {
-          const inner = innerGroupOf(id);
-          if (inner) {
-            setStatus(`${id} is laid out by inner group "${inner}"`);
-            return;
-          }
+          if (innerGroupOf(id)) return pinWhereItIs(id);
           pinnedSet.add(id);
           pinsDirty = true;
           render();
@@ -3570,6 +3669,31 @@ function openBoxMenu(id, x, y) {
       },
     null,
     { label: "Delete", danger: true, action: () => deleteNode(id) },
+  ]);
+}
+
+// Pin a member or an inner group at its solved position.
+function pinWhereItIs(id) {
+  const b = BOXES.groupBoxes?.get(id) ?? BOXES.find((x) => x.id === id);
+  if (!b) return;
+  placeAt(id, b.col, b.row);
+  resolveBoxes();
+  schedulePersist();
+  setStatus("pinned");
+}
+
+function openGroupMenu(id, x, y) {
+  openCtxMenu(x, y, [
+    pinnedSet.has(id)
+      ? {
+        label: "Unpin group",
+        action: () => {
+          pinnedSet.delete(id);
+          resolveAuto(new Set([id]));
+          setStatus("unpinned — re-laid out");
+        },
+      }
+      : { label: "Pin group", action: () => pinWhereItIs(id) },
   ]);
 }
 
@@ -3908,6 +4032,13 @@ init();
 // Exposes a couple of internal handles so Playwright can drive the editors
 // without screen-coordinate math; has zero effect in normal use.
 if (new URLSearchParams(location.search).has("test")) {
+  const toClient = (bx, by) => {
+    const rect = cvs.getBoundingClientRect();
+    return {
+      x: rect.left + (bx - view.panX) * view.zoom * (rect.width / VIEW_W),
+      y: rect.top + (by - view.panY) * view.zoom * (rect.height / VIEW_H),
+    };
+  };
   window.__wb = {
     openEdgeEditor,
     openNodeEditor,
@@ -4017,6 +4148,22 @@ if (new URLSearchParams(location.search).has("test")) {
       nodeAt({ clientX, clientY })?.id ?? null,
     hitKindAtClient: (clientX, clientY) =>
       hitTest(canvasCoords({ clientX, clientY })).kind,
+    // Client-space points on an inner group's drag handles: the center of its
+    // label chip, and the middle of its frame's left border.
+    groupLabelCenter: (id) => {
+      const r = groupHandles.find((h) => h.id === id)?.label;
+      return r ? toClient(r.x + r.w / 2, r.y + r.h / 2) : null;
+    },
+    groupBorderPoint: (id) => {
+      const r = groupHandles.find((h) => h.id === id)?.rect;
+      return r ? toClient(r.x, r.y + r.h / 2) : null;
+    },
+    // Keep placements pending (no saves) while true; false saves them.
+    holdSaves: (on) => {
+      holdSaves = on;
+      if (!on) schedulePersist();
+    },
+    conflicted: () => banner.style.display === "block",
   };
 }
 
@@ -4055,14 +4202,82 @@ function localLayout() {
   return layout;
 }
 
-// The innermost inner group laying out node `id`, if any. Its members' positions
-// come from the group at every depth, so they cannot be dragged or pinned.
+// The relative pins the editor lays out with, the same way.
+function localInnerLayout() {
+  const il = {};
+  for (const [g, pins] of Object.entries(diagramState.innerLayout || {})) {
+    il[g] = { ...pins };
+    for (const id of pendingFree) delete il[g][id];
+  }
+  for (const [id, { group, pos }] of pendingInner) {
+    (il[group] ||= {})[id] = pos;
+  }
+  return il;
+}
+
+// Inner groups by id, from the current state.
+function innerTree(state = diagramState) {
+  return new Map(
+    innerGroups(state?.groups, state?.nodes || []).map((g) => [g.id, g]),
+  );
+}
+
+// The innermost inner group laying out node `id`, if any. A member is pinned
+// relative to it, and Align and Expand leave it alone.
 function innerGroupOf(id) {
   return innerGroups(diagramState?.groups, diagramState?.nodes || [])
     .find((g) => g.members.includes(id))?.id;
 }
 
-// Record each box a person moved since the last solve as a pending placement.
+// The inner group directly holding a node or a group, or null for the board.
+function parentOf(id, tree = innerTree()) {
+  if (tree.has(id)) return tree.get(id).parent;
+  for (const g of tree.values()) if (g.members.includes(id)) return g.id;
+  return null;
+}
+
+// Node ids under inner group `gid`, at any depth.
+function groupNodes(gid, tree = innerTree()) {
+  const g = tree.get(gid);
+  return g
+    ? [...g.members, ...g.children.flatMap((c) => groupNodes(c, tree))]
+    : [];
+}
+
+// Whether disk holds a pin for `id`, absolute or relative.
+function hasPin(id) {
+  return !!diagramState.layout?.[id] ||
+    Object.values(diagramState.innerLayout || {})
+      .some((pins) => pins && Object.hasOwn(pins, id));
+}
+
+// Pin a node or inner group with its top-left at absolute cell (col, row): on
+// the board in `layout`, inside a group in `innerLayout` relative to the
+// group's origin from the last solve.
+function placeAt(id, col, row) {
+  const group = parentOf(id);
+  if (group === null) {
+    pendingLayout.set(id, { x: col * CELL, y: row * CELL });
+  } else {
+    const o = BOXES.groupBoxes?.get(group)?.origin;
+    if (!o) return;
+    pendingInner.set(id, {
+      group,
+      pos: {
+        x: Math.max(0, (col - o.col) * CELL),
+        y: Math.max(0, (row - o.row) * CELL),
+      },
+    });
+  }
+  pendingFree.delete(id);
+  if (!pinnedSet.has(id)) {
+    pinnedSet.add(id);
+    pinsDirty = true;
+  }
+}
+
+// Record each board-level box a person moved since the last solve as a pending
+// placement. Members keep their relative pins.
 function recordMoves() {
   for (const b of BOXES) {
     if (innerGroupOf(b.id)) continue;
@@ -4080,7 +4295,11 @@ function recordMoves() {
 function resolveBoxes() {
   BOXES = computeLayout(
     ctx,
-    { ...diagramState, layout: localLayout() },
+    {
+      ...diagramState,
+      layout: localLayout(),
+      innerLayout: localInnerLayout(),
+    },
     diagramState.width || 1500,
   );
   fitGridToBoxes();
@@ -4101,9 +4320,10 @@ async function persistLayout() {
     schedulePersist();
     return;
   }
+  if (holdSaves) return;
   if (
-    pendingLayout.size === 0 && pendingFree.size === 0 && !pinsDirty &&
-    !noteDirty && !dimsDirty
+    pendingLayout.size === 0 && pendingFree.size === 0 &&
+    pendingInner.size === 0 && !pinsDirty && !noteDirty && !dimsDirty
   ) return; // nothing changed (positions, pins, notes, or board size)
   // Only what changed. This used to send every box, which turned one drag into
   // a fixed position for the whole board; that was needed while the spring
@@ -4111,7 +4331,12 @@ async function persistLayout() {
   // deterministic from row/col now, so the editor and the PNG agree without it.
   const sentLayout = new Map(pendingLayout);
   const sentFree = new Set(pendingFree);
+  const sentInner = new Map(pendingInner);
   const layout = Object.fromEntries(sentLayout);
+  const innerLayout = {};
+  for (const [id, { group, pos }] of sentInner) {
+    (innerLayout[group] ||= {})[id] = pos;
+  }
   const pinned = [...pinnedSet];
   newNonce();
   persistInFlight = true;
@@ -4121,6 +4346,7 @@ async function persistLayout() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         layout,
+        innerLayout,
         free: [...sentFree],
         pinned,
         noteLayout: noteLayoutLocal,
@@ -4141,9 +4367,21 @@ async function persistLayout() {
       for (const id of sentFree) delete disk[id];
       for (const [id, pos] of sentLayout) disk[id] = pos;
       diagramState.layout = disk;
+      const il = {};
+      for (const [g, pins] of Object.entries(diagramState.innerLayout || {})) {
+        il[g] = { ...pins };
+        for (const id of sentFree) delete il[g][id];
+      }
+      for (const [g, pins] of Object.entries(innerLayout)) {
+        il[g] = { ...il[g], ...pins };
+      }
+      diagramState.innerLayout = il;
       diagramState.pinned = pinned;
       for (const [id, pos] of sentLayout) {
         if (pendingLayout.get(id) === pos) pendingLayout.delete(id);
+      }
+      for (const [id, pin] of sentInner) {
+        if (pendingInner.get(id) === pin) pendingInner.delete(id);
       }
       for (const id of sentFree) pendingFree.delete(id);
       setStatus("saved (rev " + j.rev + ")");
@@ -4183,6 +4421,7 @@ async function mergeReload() {
   setDiagramTitle(fresh.title);
   ensureEdgeIds(fresh.edges);
   const prevDisk = diagramState.layout || {};
+  const prevInner = diagramState.innerLayout || {};
   diagramState = fresh;
   EDGES_DEF = fresh.edges;
   pinnedSet = new Set(fresh.pinned || []);
@@ -4198,18 +4437,27 @@ async function mergeReload() {
   // Keep the human's unsaved placements on top of disk's. A conflict is
   // someone else moving the same box: its override on disk changed under ours.
   let conflict = false;
-  const ids = new Set(fresh.nodes.map((n) => n.id));
+  const tree = innerTree(fresh);
+  const ids = new Set([...fresh.nodes.map((n) => n.id), ...tree.keys()]);
   for (const id of [...pendingLayout.keys()]) {
     if (!ids.has(id)) pendingLayout.delete(id); // node deleted: drop the drag
     else if (
       JSON.stringify(fresh.layout?.[id]) !== JSON.stringify(prevDisk[id])
     ) conflict = true;
   }
+  for (const [id, { group }] of [...pendingInner]) {
+    // Gone, or moved to another group: the relative pin no longer applies.
+    if (!ids.has(id) || parentOf(id, tree) !== group) pendingInner.delete(id);
+    else if (
+      JSON.stringify(fresh.innerLayout?.[group]?.[id]) !==
+        JSON.stringify(prevInner[group]?.[id])
+    ) conflict = true;
+  }
   for (const id of [...pendingFree]) if (!ids.has(id)) pendingFree.delete(id);
   lastRev = fresh.rev ?? lastRev;
   BOXES = computeLayout(
     ctx,
-    { ...fresh, layout: localLayout() },
+    { ...fresh, layout: localLayout(), innerLayout: localInnerLayout() },
     fresh.width || 1500,
   );
   snapshotBaseline();

@@ -45,6 +45,10 @@ const cli = (...a) =>
 const read = () => JSON.parse(Deno.readTextFileSync(S));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Relative pins as "group/id" strings.
+const innerPins = (s) =>
+  Object.entries(s.innerLayout ?? {})
+    .flatMap(([g, pins]) => Object.keys(pins).map((id) => `${g}/${id}`));
 async function solved() {
   const o = await cli("status", "--json");
   const j = JSON.parse(new TextDecoder().decode(o.stdout));
@@ -92,12 +96,15 @@ try {
     });
     await wait(1200);
   };
-  const drag = async (id, dx, dy) => {
-    const c = JSON.parse(
+  const at = async (hook, id) =>
+    JSON.parse(
       await page.evaluate(
-        `JSON.stringify(window.__wb.boxCenter(${JSON.stringify(id)}))`,
+        `JSON.stringify(window.__wb.${hook}(${JSON.stringify(id)}))`,
       ),
     );
+  const drag = (id, dx, dy) => dragFrom(at("boxCenter", id), dx, dy);
+  const dragFrom = async (point, dx, dy) => {
+    const c = await point;
     await page.mouse.move(c.x, c.y);
     await page.mouse.down();
     for (let i = 1; i <= 8; i++) {
@@ -187,9 +194,15 @@ try {
   );
   await wait(2000);
   await open();
-  await drag("a", 200, 100);
+  await page.evaluate(`document.getElementById("zoomFit").click()`);
+  await wait(200);
+  await drag("b", 60, 0);
   s = read();
-  check("a box in an inner group cannot be dragged", !s.layout.a);
+  check(
+    "dragging a member pins it relative to its group",
+    same(innerPins(s), ["g/b"]) && !s.layout.b && s.pinned.includes("b"),
+    JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
+  );
   check(
     "editor matches renderer with an inner group",
     same(await editorBoxes(), await solved()),
@@ -202,7 +215,8 @@ try {
   check(
     "Expand adds 60px per side without pinning",
     s.width === before.width + 120 && s.height === before.height + 120 &&
-      same(s.layout, before.layout),
+      same(s.layout, before.layout) &&
+      same(s.innerLayout, before.innerLayout),
     `${before.width}x${before.height} -> ${s.width}x${s.height}`,
   );
   check(
@@ -341,18 +355,81 @@ try {
   );
   await wait(2000);
   await open();
-  await drag("e", 200, 100);
-  s = read();
-  check(
-    "a box two levels deep cannot be dragged",
-    s.groups.some((g) => g.id === "mid" && g.nodes.includes("low")) &&
-      !s.layout.e && !(s.pinned ?? []).includes("e"),
-    JSON.stringify({ layout: s.layout, groups: s.groups.map((g) => g.id) }),
-  );
   check(
     "editor matches renderer with nested groups",
     same(await editorBoxes(), await solved()),
   );
+
+  // Stage 2b: members and groups are dragged and pinned.
+  await page.evaluate(`document.getElementById("zoomFit").click()`);
+  await wait(200);
+  const parity = async (name) => {
+    const ed = await editorBoxes(), rd = await solved();
+    check(
+      name,
+      same(ed, rd),
+      same(ed, rd)
+        ? ""
+        : `editor ${JSON.stringify(ed)} renderer ${JSON.stringify(rd)}`,
+    );
+  };
+  let prev = read();
+  await drag("e", 40, 40);
+  s = read();
+  check(
+    "dragging a member two levels deep pins it under its innermost group",
+    same(innerPins(s), [...innerPins(prev), "low/e"]) &&
+      same(s.layout, prev.layout),
+    JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
+  );
+  await parity("editor matches renderer after a member drag");
+
+  prev = read();
+  await dragFrom(at("groupLabelCenter", "g"), 240, 0);
+  s = read();
+  check(
+    "dragging a root group by its label pins it on the board",
+    same(Object.keys(s.layout), [...Object.keys(prev.layout), "g"]) &&
+      same(s.innerLayout, prev.innerLayout) && s.pinned.includes("g"),
+    JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
+  );
+  await parity("editor matches renderer after a group drag");
+
+  prev = read();
+  await dragFrom(at("groupBorderPoint", "low"), 60, 0);
+  s = read();
+  check(
+    "dragging a child group by its border pins it in its parent",
+    same(innerPins(s), [...innerPins(prev), "mid/low"]) &&
+      same(s.layout, prev.layout) && s.pinned.includes("low"),
+    JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
+  );
+  await parity("editor matches renderer after a child group drag");
+
+  // A drag still pending when an agent changes the same relative pin.
+  await page.evaluate(`window.__wb.holdSaves(true)`);
+  await drag("e", 0, 40);
+  prev = read();
+  prev.innerLayout.low.e = { x: 15, y: 15 };
+  prev.rev += 1;
+  Deno.writeTextFileSync(S, JSON.stringify(prev, null, 2));
+  await wait(2000);
+  check(
+    "a concurrent change to the same relative pin is a conflict",
+    JSON.parse(await page.evaluate(`JSON.stringify(window.__wb.conflicted())`)),
+  );
+  await page.evaluate(`window.__wb.holdSaves(false)`);
+  await wait(1500);
+
+  await page.evaluate(`document.getElementById("bAutoLayout").click()`);
+  await wait(1500);
+  s = read();
+  check(
+    "Auto Layout clears relative pins too",
+    same(s.layout, {}) && innerPins(s).length === 0 && same(s.pinned, []),
+    JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
+  );
+  await parity("editor matches renderer after Auto Layout");
 } finally {
   await browser.close();
   server.kill();
