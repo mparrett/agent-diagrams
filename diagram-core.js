@@ -134,13 +134,20 @@ const BASE_LABEL_PX = 13;
 // state.maxNodeW; declared here because fontSizes() runs at module load.
 export const DEFAULT_MAX_BOX_W = 340;
 
-// How much more area an auto-sized box may take to keep its title on one
-// line. The ladder otherwise picks the smallest box, and a two-word title is
-// often cheapest wrapped ("Message / history"), which reads worse than the
-// box size it saves. 1.5 is the smallest value that takes the 7-cell rung's
-// two-line box to the 12-cell rung's one-line box for a short title. Override
-// per board with state.titleSlack; 1 turns the preference off.
-export const DEFAULT_TITLE_SLACK = 1.5;
+// How much more area an auto-sized box may take to avoid wrapping its text.
+// The ladder otherwise picks the smallest box, and a short title or detail
+// line is often cheapest wrapped ("Message / history", "sales / help /
+// team"), which reads worse than the box size it saves. 1.5 is the smallest
+// value that takes the 7-cell rung's two-line box to the 12-cell rung's
+// one-line box for a short title.
+//
+// It does not reach a detail that wraps inside a minimum-height box: that
+// wrap costs no height, so unwrapping it is a pure 12/7 = 1.71x width step.
+// A default of 1.75 would allow it, but then ordinary assorted titles spread
+// over four ladder widths instead of three, undoing the shared box edges the
+// ladder is for. Boards that prefer unwrapped details set state.wrapSlack
+// (1.75 covers that step); 1 turns the preference off.
+export const DEFAULT_WRAP_SLACK = 1.5;
 
 export function fontSizes(state = {}) {
   const fs = Number.isFinite(state.fontSize) && state.fontSize > 0
@@ -180,9 +187,9 @@ export function fontSizes(state = {}) {
       maxW: Number.isFinite(state.maxNodeW)
         ? (state.maxNodeW > 0 ? r(state.maxNodeW) : Infinity)
         : r(DEFAULT_MAX_BOX_W),
-      titleSlack: Number.isFinite(state.titleSlack) && state.titleSlack >= 1
-        ? state.titleSlack
-        : DEFAULT_TITLE_SLACK,
+      wrapSlack: Number.isFinite(state.wrapSlack) && state.wrapSlack >= 1
+        ? state.wrapSlack
+        : DEFAULT_WRAP_SLACK,
     },
   };
 }
@@ -809,7 +816,7 @@ export function nodeBoxSize(
 
   const cands = boxCandidates(ctx, node, font, sizes);
   return cands.length
-    ? bestCandidate(cands, sizes.box.titleSlack ?? DEFAULT_TITLE_SLACK)
+    ? bestCandidate(cands, sizes.box.wrapSlack ?? DEFAULT_WRAP_SLACK)
     : sizeAt(ctx, node, 0, font, sizes);
 }
 
@@ -871,6 +878,8 @@ export function boxCandidates(
       area: s.w * s.h,
       aspect,
       clipped: isClipped(node, s),
+      // Lines added by wrapping details (each authored line can wrap to 3).
+      detailWraps: s.detailLines.length - (node.details || []).length,
       retained: retainedChars(s),
       feasible: aspect >= BOX_ASPECT_MIN && aspect <= BOX_ASPECT_MAX,
     });
@@ -924,20 +933,28 @@ function retainedChars(sized) {
  * whole reason the ceiling exists — the previous fixed 340 wrapped text rather
  * than cutting it, and losing that would be a step backwards.
  */
-function bestCandidate(cands, titleSlack = DEFAULT_TITLE_SLACK) {
+function bestCandidate(cands, wrapSlack = DEFAULT_WRAP_SLACK) {
   const smallest = (pool) => pool.reduce((a, b) => (b.area < a.area ? b : a));
-  // The smallest box, unless a one-line title is available for at most
-  // titleSlack times its area. Compared in drawn cells, which is what the
-  // board spends: content pixels made "Message history" look 1.69x dearer on
-  // one line when its drawn box is 1.43x.
+  // Among boxes costing at most wrapSlack times the smallest, take the one
+  // with the fewest title lines, then the fewest wrapped detail lines, then
+  // the smallest. Area is compared in drawn cells, which is what the board
+  // spends: content pixels made "Message history" look 1.69x dearer on one
+  // line when its drawn box is 1.43x.
   const cells = (c) => Math.ceil(c.w / CELL) * Math.ceil(c.h / CELL);
   const pick = (pool) => {
     const best = smallest(pool);
-    if (best.labelLines.length <= 1) return best;
-    const oneLine = pool.filter((c) =>
-      c.labelLines.length === 1 && cells(c) <= cells(best) * titleSlack
-    );
-    return oneLine.length ? smallest(oneLine) : best;
+    const limit = cells(best) * wrapSlack;
+    return pool
+      .filter((c) => cells(c) <= limit)
+      .reduce((a, b) => {
+        if (b.labelLines.length !== a.labelLines.length) {
+          return b.labelLines.length < a.labelLines.length ? b : a;
+        }
+        if (b.detailWraps !== a.detailWraps) {
+          return b.detailWraps < a.detailWraps ? b : a;
+        }
+        return b.area < a.area ? b : a;
+      });
   };
   const keeps = cands.filter((c) => !c.clipped);
   const inBand = keeps.filter((c) => c.feasible);
@@ -1049,9 +1066,12 @@ export function computeLayout(ctx, state, canvasW) {
           if ((popularity.get(w) || 0) <= curCount) continue;
           const alt = sizeAt(ctx, node, w, FONT, SIZES);
           // Uniformity is never worth losing text for, nor worth re-wrapping
-          // a title the chooser paid titleSlack to keep on one line.
+          // text the chooser paid wrapSlack to keep unwrapped.
           if (!curClipped && isClipped(node, alt)) continue;
-          if (alt.labelLines.length > cur.labelLines.length) continue;
+          if (
+            alt.labelLines.length > cur.labelLines.length ||
+            alt.detailLines.length > cur.detailLines.length
+          ) continue;
           // Nor worth leaving the aspect band the chooser just enforced: a
           // narrower rung is taller *and* smaller in area, so the tolerance
           // test alone waves through the tall thin columns the band rejects.

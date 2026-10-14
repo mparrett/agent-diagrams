@@ -437,10 +437,11 @@ Deno.test("box width never shrinks as its label grows", () => {
   // text. The box got *smaller* as the label got longer, dropping three
   // quarters of it, which is worse than having no ceiling at all.
   //
-  // One shrink is allowed: where the title gains a line. A title is kept on
-  // one line while that costs at most titleSlack times the area, so the word
-  // that no longer fits on any affordable line wraps it into a narrower,
-  // taller box. No text is lost there, which the second assertion holds.
+  // One shrink is allowed: where the title gains a line. Text is kept
+  // unwrapped while that costs at most wrapSlack times the area, so the word
+  // that no longer fits on any affordable line wraps the title into a
+  // narrower, taller box. No text is lost there, which the second assertion
+  // holds.
   const words =
     "Reconcile the fork and upstream ownership status before the release goes out to the wider team"
       .split(" ");
@@ -1191,15 +1192,15 @@ Deno.test("a short title stays on one line when the wider box costs little", () 
     }, 4000).find((b) => b.id === "a");
   // The stub measurer floors both boxes at the minimum height, so the
   // one-line box costs 180/105 = 1.71x here (1.43x with real fonts).
-  const kept = box({ titleSlack: 2 });
+  const kept = box({ wrapSlack: 2 });
   assert(
     kept.labelLines.length === 1,
     `slack 2 should keep it whole: ${JSON.stringify(kept.labelLines)}`,
   );
-  const wrapped = box({ titleSlack: 1 });
+  const wrapped = box({ wrapSlack: 1 });
   assert(
     wrapped.labelLines.length === 2 && wrapped.pixW < kept.pixW,
-    `titleSlack 1 is the old smallest-area pick: ${
+    `wrapSlack 1 is the old smallest-area pick: ${
       JSON.stringify(wrapped.labelLines)
     } at ${wrapped.pixW}`,
   );
@@ -1215,7 +1216,7 @@ Deno.test("the uniformity pass does not re-wrap a title kept on one line", () =>
   }));
   const boxes = computeLayout(ctx, {
     edges: [],
-    titleSlack: 2,
+    wrapSlack: 2,
     nodes: [...peers, {
       id: "t",
       label: "Portal: Knowledge area",
@@ -1227,5 +1228,33 @@ Deno.test("the uniformity pass does not re-wrap a title kept on one line", () =>
   assert(
     t.labelLines.length === 1,
     `title re-wrapped onto a popular width: ${JSON.stringify(t.labelLines)}`,
+  );
+});
+
+Deno.test("a short detail line stays whole when the wider box costs little", () => {
+  const ctx = measureContext();
+  const box = (state) =>
+    computeLayout(ctx, {
+      edges: [],
+      ...state,
+      nodes: [{
+        id: "a",
+        label: "Customer",
+        details: ["sales / help team"],
+        row: 0,
+        col: 0,
+      }],
+    }, 4000).find((b) => b.id === "a");
+  const kept = box({ wrapSlack: 2 });
+  assert(
+    kept.detailLines.length === 1,
+    `slack 2 should keep the detail whole: ${JSON.stringify(kept.detailLines)}`,
+  );
+  const wrapped = box({ wrapSlack: 1 });
+  assert(
+    wrapped.detailLines.length > 1 && wrapped.pixW < kept.pixW,
+    `wrapSlack 1 is the smallest-area pick: ${
+      JSON.stringify(wrapped.detailLines)
+    } at ${wrapped.pixW}`,
   );
 });
