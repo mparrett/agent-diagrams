@@ -1150,11 +1150,11 @@ export class Diagram {
   // Connector anchoring mode: "align" (overlap-band de-kinker, default) or
   // "center" (every auto connector fans symmetrically about the side center).
   // "align"/null are stored as the absent default to keep state minimal.
-  // Whether each wire starts with a dot at its source; off draws it from the
-  // box edge. Stored only when off.
-  setConnectorDots(on) {
-    if (on) delete this._state.connectorDots;
-    else this._state.connectorDots = false;
+  // Whether each wire has a start marker (a dot at its source); off draws it
+  // from the box edge. Stored only when off.
+  setStartMarkers(on) {
+    if (on) delete this._state.startMarkers;
+    else this._state.startMarkers = false;
   }
 
   setConnectorAnchor(mode) {
@@ -2225,7 +2225,7 @@ export class Diagram {
     // Draw (failed-route markers go on top of boxes, mirroring the live editor)
     const labelRects = drawRoutes(ctx, routes, CELL, pal, {
       bridges: this._state.crossingBridges !== false,
-      connectorDots: this._state.connectorDots !== false,
+      startMarkers: this._state.startMarkers !== false,
       boxes: gridBoxes,
       avoid: groupLabels,
       frames: frames.map((f) => f.rect),

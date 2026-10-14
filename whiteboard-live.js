@@ -317,7 +317,7 @@ function render() {
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
-    connectorDots: diagramState.connectorDots !== false,
+    startMarkers: diagramState.startMarkers !== false,
     boxes: BOXES,
     avoid: groupLabels,
     frames: frames.map((f) => f.rect),
@@ -2438,16 +2438,16 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
-// Connector dots — a dot where each wire leaves its box, or none.
-const connectorDotsBox = document.getElementById("connectorDots");
-connectorDotsBox.addEventListener("change", async () => {
-  const on = connectorDotsBox.checked;
-  if (on) delete diagramState.connectorDots;
-  else diagramState.connectorDots = false;
+// Start markers — the dot where each wire leaves its box, or none.
+const startMarkersBox = document.getElementById("startMarkers");
+startMarkersBox.addEventListener("change", async () => {
+  const on = startMarkersBox.checked;
+  if (on) delete diagramState.startMarkers;
+  else diagramState.startMarkers = false;
   render();
   newNonce();
   try {
-    const r = await fetch(API + "/connectordots", {
+    const r = await fetch(API + "/startmarkers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on, baseRev: lastRev, nonce: lastSentNonce }),
@@ -2455,11 +2455,11 @@ connectorDotsBox.addEventListener("change", async () => {
     if (r.ok) {
       lastRev = (await r.json()).rev;
       setStatus(
-        "connector dots: " + (on ? "on" : "off") + " (rev " + lastRev + ")",
+        "start markers: " + (on ? "on" : "off") + " (rev " + lastRev + ")",
       );
-    } else setStatus("connector-dots save rejected: HTTP " + r.status);
+    } else setStatus("start-markers save rejected: HTTP " + r.status);
   } catch (e) {
-    setStatus("connector-dots save failed: " + e.message);
+    setStatus("start-markers save failed: " + e.message);
   }
 });
 
@@ -4029,7 +4029,7 @@ async function init() {
   initSliders();
   fontSizeInput.value = diagramState.fontSize || "";
   centerConnectorsBox.checked = diagramState.connectorAnchor === "center";
-  connectorDotsBox.checked = diagramState.connectorDots !== false;
+  startMarkersBox.checked = diagramState.startMarkers !== false;
 
   // Need canvas context for text measurement
   initCanvas();

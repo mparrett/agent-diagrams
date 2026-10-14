@@ -2045,7 +2045,7 @@ Deno.test("groupBoxes reports the origin innerLayout pins are measured from", ()
   assert(at("a").col === o.col + 4 && at("a").row === o.row + 2, "a offset");
 });
 
-Deno.test("connectorDots off drops the start dot and starts at the box edge", () => {
+Deno.test("startMarkers off drops the start dot and starts at the box edge", () => {
   const boxes = [
     { id: "a", col: 3, row: 8, w: 5, h: 3 },
     { id: "b", col: 31, row: 8, w: 5, h: 3 },
@@ -2053,7 +2053,7 @@ Deno.test("connectorDots off drops the start dot and starts at the box edge", ()
   const { routes } = routeOnce(boxes, [
     { from: "a", to: "b", fromEdge: "E", toEdge: "W" },
   ]);
-  const draw = (connectorDots) => {
+  const draw = (startMarkers) => {
     const log = { arcs: 0, starts: [] };
     const { ctx } = recordingContext();
     Object.assign(ctx, {
@@ -2069,7 +2069,7 @@ Deno.test("connectorDots off drops the start dot and starts at the box edge", ()
       rotate() {},
       translate() {},
     });
-    drawRoutes(ctx, routes, CELL, undefined, { connectorDots });
+    drawRoutes(ctx, routes, CELL, undefined, { startMarkers });
     return log;
   };
   const on = draw(true), off = draw(false);

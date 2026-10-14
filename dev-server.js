@@ -423,9 +423,9 @@ const WRITE_OPS = {
     domainStatus: 400,
     apply: (dd, b) => dd.setConnectorAnchor(b.mode ?? null), // "align"|"center"|null
   },
-  "/connectordots": {
+  "/startmarkers": {
     domainStatus: 400,
-    apply: (dd, b) => dd.setConnectorDots(b.on !== false),
+    apply: (dd, b) => dd.setStartMarkers(b.on !== false),
   },
 };
 

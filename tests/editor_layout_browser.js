@@ -432,15 +432,15 @@ try {
   await parity("editor matches renderer after Auto Layout");
 
   const dots = async () => {
-    await page.evaluate(`document.getElementById("connectorDots").click()`);
+    await page.evaluate(`document.getElementById("startMarkers").click()`);
     await wait(800);
-    return read().connectorDots;
+    return read().startMarkers;
   };
   check(
-    "Connector dots off saves connectorDots: false",
+    "Start markers off saves startMarkers: false",
     await dots() === false,
   );
-  check("Connector dots on clears it", await dots() === undefined);
+  check("Start markers on clears it", await dots() === undefined);
 } finally {
   await browser.close();
   server.kill();

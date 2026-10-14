@@ -113,7 +113,7 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
                                            //   = explicit. Name palette colors so the swatches follow
                                            //   the theme (hex works but does not). See Colors below.
   "output":  "diagram.png",                // optional output filename
-  "connectorDots": true,                   // optional: false draws wires from the box edge, no start dot
+  "startMarkers": true,                    // optional: false draws wires from the box edge, no start marker
   "connectorAnchor": "align",              // optional: "align" (default — straight runs) or
                                            //   "center" (fan connectors symmetric about each side's center)
 
@@ -424,7 +424,7 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 - Auto row spacing accounts for real node heights (tallest box per row + a routing gap), so plain `row`/`col` authoring shouldn't produce route failures. Skipped row indices add extra vertical air. Explicit `rowY` still overrides per row.
 - If a connector cell is unavailable (covered by an adjacent box), the router falls back to the nearest open connector on that side, then to the next-best side — a tight layout degrades to a less-ideal wire instead of a red ✕. A red ✕ now only appears when a box is fully walled in.
 - Connector placement is optimized automatically: each box side's connectors are ordered by where their counterpart sits (barycentric port assignment), so wires leave a box already pointing toward their destination — fewer crossings, shorter runs. It recomputes from the current layout on every render; explicit `--fromConn`/`--toConn` pins always win.
-- `connectorDots` (state field, or `set-connector-dots <on|off>`): `false` drops the dot at the start of each wire and draws the wire from the box edge.
+- `startMarkers` (state field, or `set-start-markers <on|off>`): `false` drops each wire's start marker (the dot where it leaves its box) and draws the wire from the box edge. The editor's "Start markers" checkbox sets the same field.
 - `connectorAnchor` (state field, editor "Center connectors" toggle, or `set-connector-anchor <align|center>`) chooses how auto connectors anchor on a side. `align` (default) anchors on the overlap band between the two boxes so a lone edge between offset-but-aligned boxes runs perfectly straight (the de-kinker). `center` instead fans every side's connectors symmetrically about its center — a lone edge lands dead-center, multiple straddle it evenly — at the cost of a jog on edges into/out of offset boxes.
 - Auto edge-side selection is heuristic; pin specific sides/connectors with `--fromEdge`/`--toEdge`/`--fromConn`/`--toConn` (or the live editor) when you need exact control. In the editor, hovering a box reveals one nub per connector slot on each side; drag from a slot (pins `fromEdge`+`fromConn`) onto a target slot (pins `toEdge`+`toConn`).
 - **Parallel edges** between the same node pair are allowed — they land on distinct connector slots. Each edge has a stable `id` (`from~to`, suffixed `~2`, `~3`…) that is its identity for edits/reverse/retarget; the `id` stays put even as endpoints move. Legacy diagrams without ids are backfilled deterministically on load and materialized on the next save. The editor addresses edges by `id` internally; the CLI accepts `--id=` (see `list-edges`).
