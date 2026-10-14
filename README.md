@@ -185,7 +185,7 @@ Built-in edge styles: `default`, `solid`, `dashed`, `dotted`, `thin`, `alert`.
 
 **Box outlines.** `update-node <id> --outlineDash=dashed|dotted` and `--outlineWidth=thin|medium|thick` restyle a single box's border, for example to mark an undecided owner; `--outlineReset` clears both.
 
-**Edge label placement.** Labels auto-place on the wire's longest segment and, by default, relocate only when two label chips would collide (otherwise byte-identical to before). Pin one with `"labelPos": { "side": "above"|"below"|"left"|"right", "offset": <px>, "seg": <segmentIndex> }` — or `update-edge <from> <to> --labelSide=below --labelOffset=24`, also in the editor's edge popover. `--labelReset` returns it to auto.
+**Edge label placement.** A label sits along the longest horizontal segment it fits on, else beside the longest segment. It moves to another segment, side, or offset only when its default spot would cover another label, a box, a group label, or another edge's wire. Pin one with `"labelPos": { "side": "above"|"below"|"left"|"right", "offset": <px>, "seg": <segmentIndex> }` — or `update-edge <from> <to> --labelSide=below --labelOffset=24`, also in the editor's edge popover. `--labelReset` returns it to auto. Dragging a label in the editor pins its segment too, so it stays where it was dropped.
 
 Add your own (or override the defaults) right in the state file:
 

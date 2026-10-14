@@ -2319,64 +2319,48 @@ export function drawRoutes(
       drawArrowhead(ctx, pts[n - 1].x, pts[n - 1].y, color, arrowAngle);
     }
 
-    // Edge label — defer placement to pass 2 (below) so labels can avoid each
-    // other and wires. Pick the host segment now (longest by default; an
-    // explicit labelPos.seg pins it — midpoint vertices tend to sit at corners
-    // hard against a box).
+    // Edge label — placed in pass 2 (below), once every wire is known, so
+    // labels can avoid each other and other wires.
     const label = route.edge.label;
     if (label) {
-      const lp = route.edge.labelPos || {};
-      let bi = 0, bestLen = -1;
-      for (let i = 0; i < n - 1; i++) {
-        const segLen = Math.abs(pts[i + 1].x - pts[i].x) +
-          Math.abs(pts[i + 1].y - pts[i].y);
-        if (segLen > bestLen) {
-          bestLen = segLen;
-          bi = i;
-        }
-      }
-      if (Number.isInteger(lp.seg) && lp.seg >= 0 && lp.seg < n - 1) {
-        bi = lp.seg;
-      }
-      const a = pts[bi], b = pts[bi + 1];
-      const horiz = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
       labelTasks.push({
         route,
         label,
-        lp,
-        horiz,
-        mx: (a.x + b.x) / 2,
-        my: (a.y + b.y) / 2,
+        lp: route.edge.labelPos || {},
+        pts,
+        poly: allPolys.indexOf(pts),
       });
     }
   }
 
-  // Pass 2 — place labels. An explicit labelPos.side/offset is honored verbatim.
-  // Otherwise the historical position (above a horizontal wire / right of a
-  // vertical one, 8px off) is used as-is UNLESS its chip overlaps an
-  // already-placed label or a box — only then do we search mirrored sides /
-  // larger offsets, breaking ties by fewest wire crossings. So diagrams without
-  // label collisions render byte-identically to before.
+  // Pass 2 — place labels. The host is the longest horizontal segment the chip
+  // fits along, else the longest segment: text set along a wire reads as that
+  // wire's, while text beside a vertical run floats in the gap next to it,
+  // often on top of some other wire. An explicit labelPos.seg pins the host;
+  // labelPos.side alone picks the longest segment of matching orientation.
   //
-  // The candidate set is deliberately small (two sides x three offsets, so at
-  // most 3x the base 8px), because a label that wanders to find clear space
-  // stops reading as belonging to its wire. Overlapping a box scores worse than
-  // crossing wires and better than covering another label: take a clear spot
-  // when one is within reach, otherwise sit on the box and let the chip carry
-  // legibility.
+  // The default spot (above a horizontal host / right of a vertical one, 8px
+  // off) is kept unless it overlaps a placed label, a box or an avoid rect, or
+  // crosses another edge's wire. Only then are the other segments, sides and
+  // offsets searched. The offsets stop at 3x the base, because a label that
+  // wanders to find clear space stops reading as belonging to its wire.
+  // Covering another label scores worst, then a box, then another wire;
+  // brushing its own wire (at a corner) and leaving the default host cost a
+  // little, so ties keep the label where it was.
   const labelFs = (pal.sizes || DEFAULT_SIZES).edgeLabel;
   ctx.font = `${labelFs}px ${pal.font}`;
   ctx.textAlign = "left";
-  const wireCross = (rect) => {
-    let c = 0;
-    for (const poly of allPolys) {
-      for (
-        let i = 0;
-        i < poly.length - 1;
-        i++
-      ) if (segHitsRect(poly[i], poly[i + 1], rect)) c++;
-    }
-    return c;
+  const wireCross = (rect, own) => {
+    let foreign = 0, mine = 0;
+    allPolys.forEach((poly, pi) => {
+      for (let i = 0; i < poly.length - 1; i++) {
+        if (segHitsRect(poly[i], poly[i + 1], rect)) {
+          if (pi === own) mine++;
+          else foreign++;
+        }
+      }
+    });
+    return { foreign, mine };
   };
   const boxRects = (opts.boxes || []).map((b) => ({
     x: b.col * cell,
@@ -2385,42 +2369,73 @@ export function drawRoutes(
     h: b.h * cell,
   })).concat(opts.avoid || []);
   const overlapsBox = (rect) => boxRects.some((r) => rectsOverlap(rect, r));
-  const OVER_LABEL = 100, OVER_BOX = 50; // wire crossings score 1 each
+  const OVER_LABEL = 100, OVER_BOX = 50, OVER_WIRE = 10, OFF_HOST = 2;
   const placed = [];
   for (const t of labelTasks) {
     const tw = ctx.measureText(t.label).width;
     const baseOff = Number.isFinite(t.lp.offset) ? t.lp.offset : 8;
-    const orient = t.horiz ? ["above", "below"] : ["right", "left"];
-    const explicit = t.lp.side && (orient.includes(t.lp.side));
-    let chosen;
-    if (explicit) {
-      chosen = labelPlacement(t.mx, t.my, tw, t.lp.side, baseOff, labelFs);
+    const segs = [];
+    for (let i = 0; i < t.pts.length - 1; i++) {
+      const a = t.pts[i], b = t.pts[i + 1];
+      segs.push({
+        i,
+        horiz: Math.abs(b.x - a.x) >= Math.abs(b.y - a.y),
+        len: Math.abs(b.x - a.x) + Math.abs(b.y - a.y),
+        mx: (a.x + b.x) / 2,
+        my: (a.y + b.y) / 2,
+      });
+    }
+    const longest = (list) =>
+      list.reduce((best, sg) => (!best || sg.len > best.len ? sg : best), null);
+    const sideHoriz = t.lp.side === "above" || t.lp.side === "below";
+    const sideVert = t.lp.side === "left" || t.lp.side === "right";
+    let host;
+    if (Number.isInteger(t.lp.seg) && segs[t.lp.seg]) host = segs[t.lp.seg];
+    else if (sideHoriz || sideVert) {
+      host = longest(segs.filter((sg) => sg.horiz === sideHoriz)) ||
+        longest(segs);
     } else {
-      const primary = labelPlacement(
-        t.mx,
-        t.my,
-        tw,
-        orient[0],
-        baseOff,
-        labelFs,
-      );
+      host = longest(
+        segs.filter((sg) => sg.horiz && sg.len >= tw + LABEL_PAD * 2 + 8),
+      ) || longest(segs);
+    }
+    const sidesOf = (sg) => sg.horiz ? ["above", "below"] : ["right", "left"];
+    const place = (sg, side, off) => ({
+      ...labelPlacement(sg.mx, sg.my, tw, side, off, labelFs),
+      sg,
+    });
+    let chosen;
+    if (t.lp.side && sidesOf(host).includes(t.lp.side)) {
+      chosen = place(host, t.lp.side, baseOff);
+    } else {
       const overlapsLabel = (rect) => placed.some((p) => rectsOverlap(rect, p));
-      const conflict = (rect) =>
-        (overlapsLabel(rect) ? OVER_LABEL : 0) +
-        (overlapsBox(rect) ? OVER_BOX : 0);
-      if (conflict(primary.rect) === 0) {
+      const score = (c) => {
+        const w = wireCross(c.rect, t.poly);
+        return (overlapsLabel(c.rect) ? OVER_LABEL : 0) +
+          (overlapsBox(c.rect) ? OVER_BOX : 0) +
+          w.foreign * OVER_WIRE + w.mine +
+          (c.sg === host ? 0 : OFF_HOST);
+      };
+      const primary = place(host, sidesOf(host)[0], baseOff);
+      const pw = wireCross(primary.rect, t.poly);
+      if (
+        !overlapsLabel(primary.rect) && !overlapsBox(primary.rect) &&
+        pw.foreign === 0
+      ) {
         chosen = primary;
       } else {
-        let best = primary,
-          bestScore = conflict(primary.rect) + wireCross(primary.rect);
+        // An explicit seg keeps the search on that segment.
+        const pool = Number.isInteger(t.lp.seg) ? [host] : segs;
+        let best = primary, bestScore = score(primary);
         for (const off of [baseOff, baseOff * 2, baseOff * 3]) {
-          for (const side of orient) {
-            if (off === baseOff && side === orient[0]) continue; // == primary
-            const cand = labelPlacement(t.mx, t.my, tw, side, off, labelFs);
-            const score = conflict(cand.rect) + wireCross(cand.rect);
-            if (score < bestScore) {
-              bestScore = score;
-              best = cand;
+          for (const sg of pool) {
+            for (const side of sidesOf(sg)) {
+              const cand = place(sg, side, off);
+              const sc = score(cand);
+              if (sc < bestScore) {
+                bestScore = sc;
+                best = cand;
+              }
             }
           }
         }
@@ -2437,9 +2452,10 @@ export function drawRoutes(
     labelRects.push({
       edge: t.route.edge,
       rect: chosen.rect,
-      mx: t.mx,
-      my: t.my,
-      horiz: t.horiz,
+      mx: chosen.sg.mx,
+      my: chosen.sg.my,
+      horiz: chosen.sg.horiz,
+      seg: chosen.sg.i,
       label: t.label,
       lx: chosen.lx,
       ly: chosen.ly,

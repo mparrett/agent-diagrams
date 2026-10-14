@@ -980,6 +980,7 @@ cvs.addEventListener("pointerdown", (e) => {
       mx: hit.label.mx,
       my: hit.label.my,
       horiz: hit.label.horiz,
+      seg: hit.label.seg,
     };
     hoverBoxId = null;
     hoverEdge = null;
@@ -1141,8 +1142,9 @@ cvs.addEventListener("pointermove", (e) => {
     offset = Math.max(0, Math.min(400, Math.round(offset)));
     const edge = diagramState.edges.find((x) => x.id === drag.id);
     if (edge) {
+      // Pin the segment the label was on, so it stays where it was dropped.
       const lp = { side, offset };
-      if (Number.isInteger(edge.labelPos?.seg)) lp.seg = edge.labelPos.seg; // preserve a pinned segment
+      if (Number.isInteger(drag.seg)) lp.seg = drag.seg;
       edge.labelPos = lp;
       render(); // routing is unchanged; only label placement moves
     }

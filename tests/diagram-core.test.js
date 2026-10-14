@@ -9,6 +9,7 @@ import {
   createAstarState,
   DEFAULT_COSTS,
   DEFAULT_MAX_BOX_W,
+  drawRoutes,
   fontFamily,
   fontSizes,
   Grid,
@@ -1045,4 +1046,52 @@ Deno.test("snapAlign leaves a lone off-axis box untouched", () => {
     50,
     "outlier must not move",
   );
+});
+
+// drawRoutes against a context that measures text and ignores drawing calls.
+function labelPlacements(routes) {
+  const m = measureContext();
+  const ctx = new Proxy(m, {
+    get: (t, k) => (k in t ? t[k] : () => {}),
+    set: (t, k, v) => {
+      t[k] = v;
+      return true;
+    },
+  });
+  return drawRoutes(ctx, routes, CELL);
+}
+const wire = (id, cells, label, labelPos) => ({
+  edge: { id, from: "a", to: "b", label, labelPos },
+  path: cells.map(([x, y]) => ({ x, y })),
+  color: "#888",
+});
+const px = (c) => c * CELL + CELL / 2;
+
+Deno.test("an edge label sits on a horizontal run it fits, not beside a longer vertical one", () => {
+  const [l] = labelPlacements([
+    wire("e", [[2, 2], [2, 20], [12, 20]], "ingest"),
+  ]);
+  assert(l.horiz && l.seg === 1, `host seg ${l.seg}, horiz ${l.horiz}`);
+});
+
+Deno.test("an edge label moves off another edge's wire", () => {
+  const ls = labelPlacements([
+    wire("v", [[2, 2], [2, 20]], "abc"),
+    wire("h", [[3, 11], [10, 11]]),
+  ]);
+  const l = ls.find((x) => x.edge.id === "v");
+  assert(
+    l.rect.x + l.rect.w < px(2),
+    `label should flip left of its wire, got x=${l.rect.x}`,
+  );
+});
+
+Deno.test("an explicit labelSide keeps a host of matching orientation", () => {
+  const [l] = labelPlacements([
+    wire("e", [[2, 2], [2, 20], [12, 20]], "ingest", {
+      side: "right",
+      offset: 8,
+    }),
+  ]);
+  assert(!l.horiz && l.rect.x > px(2), `expected right of the vertical run`);
 });
