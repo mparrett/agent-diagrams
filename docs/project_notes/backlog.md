@@ -9,7 +9,6 @@ Open work, roughly in priority order within each section. Remove an item when it
 
 ## Routing and groups
 
-- **Wires cross group labels.** Routing does not avoid group labels, and labels inside or outside a frame have no background chip.
 - **Frame-crossing cost.** Routing does not penalize crossing a frame border, so wires cross frames freely and run along them.
 - **Labels wider than their frame** overhang it; frames and group boxes are not sized by measured text.
 - **Edges to a group** (`add-edge api agents`). `remove-group` will need a rule for edges that end at the removed group.

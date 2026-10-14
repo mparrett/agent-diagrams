@@ -1765,7 +1765,13 @@ export function computeLayout(ctx, state, canvasW) {
  * Stamp BLOCKED, NEAR, and CONN cells on the grid for the given boxes.
  * Returns connMap: Map<string, {gx, gy, exitDir}>.
  */
-export function buildGrid(grid, boxes, costs) {
+// Per-cell cost of routing a wire through a group label (`costs.label`).
+// High enough that a wire goes round a label rather than through it, but not
+// blocked, so a label can never make a route impossible.
+export const LABEL_COST = 120;
+
+// `avoid`: px rects (group labels) wires should route round.
+export function buildGrid(grid, boxes, costs, avoid = []) {
   grid.reset();
   const connMap = new Map();
 
@@ -1789,7 +1795,20 @@ export function buildGrid(grid, boxes, costs) {
     }
   }
 
-  // 3. Place connection points
+  // 3. Labels to route round: a cost on every free cell they touch.
+  const labelCost = costs.label ?? LABEL_COST;
+  for (const r of avoid) {
+    const c0 = Math.floor(r.x / CELL), c1 = Math.ceil((r.x + r.w) / CELL);
+    const r0 = Math.floor(r.y / CELL), r1 = Math.ceil((r.y + r.h) / CELL);
+    for (let gy = r0; gy < r1; gy++) {
+      for (let gx = c0; gx < c1; gx++) {
+        if (!grid.ok(gx, gy) || grid.get(gx, gy) === T_BLOCKED) continue;
+        grid.addCost(gx, gy, labelCost);
+      }
+    }
+  }
+
+  // 4. Place connection points
   for (const b of boxes) {
     for (const edge of ["N", "E", "S", "W"]) {
       const n = connCount(b, edge);
@@ -3309,13 +3328,77 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE, board = {}) {
 }
 
 /**
+ * Where each frame's label goes, outermost frame first: the text position
+ * (`lx`, `ly`), its rect (`x, y, w, h`), font, color and whether it needs a
+ * chip. Measures text but draws nothing, so routing can avoid the labels
+ * before anything is painted.
+ */
+export function groupLabelRects(ctx, frames, pal = DEFAULT_PALETTE) {
+  const S = pal.sizes || DEFAULT_SIZES;
+  const labels = [];
+  const order = [...(frames || [])].sort((a, b) =>
+    b.rect.w * b.rect.h - a.rect.w * a.rect.h
+  );
+  for (const f of order) {
+    if (!f.label) continue;
+    const { x, y, w, h } = f.rect;
+    const c = f.color ? resolveColorToken(pal, f.color) : null;
+    const st = f.labelStyle ?? groupLabelStyle(f, {}, S);
+    const font = `${st.weight} ${st.size}px ${pal.font}`;
+    ctx.font = font;
+    const tw = ctx.measureText(f.label).width;
+    const asc = st.size * LABEL_ASCENT, desc = st.size * LABEL_DESCENT;
+    const lx = st.align === "left"
+      ? x + 12
+      : st.align === "right"
+      ? x + w - 12 - tw
+      : x + (w - tw) / 2;
+    // Vertical centre: on the border, half a band past it, or inside below
+    // it with half a pad of air.
+    const edge = st.side === "top" ? y : y + h;
+    const into = st.side === "top" ? 1 : -1;
+    const cy = st.mode === "border"
+      ? edge
+      : st.mode === "inside"
+      ? edge + into * (GROUP_PAD / 2 + st.band / 2)
+      : edge - into * (st.band / 2);
+    const ly = cy + (asc - desc) / 2;
+    // The chip hides what runs under the label (the border line, or a wire
+    // that cannot avoid it), so it takes the colour the label sits on: the
+    // board, under each frame's translucent fill that holds the label,
+    // outermost first. A label on the border sits outside its own fill.
+    let chipColor = pal.background;
+    for (const o of order) {
+      const r = o.rect;
+      if (!o.color || (o === f && st.mode !== "inside")) continue;
+      if (lx < r.x || lx > r.x + r.w || cy < r.y || cy > r.y + r.h) continue;
+      try {
+        chipColor = mixHex(chipColor, resolveColorToken(pal, o.color).bg, 0.5);
+      } catch { /* a non-hex colour: keep the colour so far */ }
+    }
+    labels.push({
+      id: f.id,
+      label: f.label,
+      color: c ? c.border : pal.textDim,
+      font,
+      chipColor,
+      lx,
+      ly,
+      x: lx - 4,
+      y: ly - asc - 2,
+      w: tw + 8,
+      h: asc + desc + 4,
+    });
+  }
+  return labels;
+}
+
+/**
  * Paint the frames from groupFrames. Returns each label's placement, for
  * drawGroupLabels (after the wires, so no wire runs through a label) and for
  * the edge-label placer to keep clear of.
  */
 export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
-  const S = pal.sizes || DEFAULT_SIZES;
-  const labels = [];
   // Outermost first, so an inner frame's fill and border sit on top.
   const order = [...(frames || [])].sort((a, b) =>
     b.rect.w * b.rect.h - a.rect.w * a.rect.h
@@ -3337,44 +3420,8 @@ export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
-    if (f.label) {
-      const st = f.labelStyle ?? groupLabelStyle(f, {}, S);
-      const font = `${st.weight} ${st.size}px ${pal.font}`;
-      ctx.font = font;
-      const tw = ctx.measureText(f.label).width;
-      const asc = st.size * LABEL_ASCENT, desc = st.size * LABEL_DESCENT;
-      const lx = st.align === "left"
-        ? x + 12
-        : st.align === "right"
-        ? x + w - 12 - tw
-        : x + (w - tw) / 2;
-      // Vertical centre: on the border, half a band past it, or inside below
-      // it with half a pad of air.
-      const edge = st.side === "top" ? y : y + h;
-      const into = st.side === "top" ? 1 : -1;
-      const cy = st.mode === "border"
-        ? edge
-        : st.mode === "inside"
-        ? edge + into * (GROUP_PAD / 2 + st.band / 2)
-        : edge - into * (st.band / 2);
-      const ly = cy + (asc - desc) / 2;
-      labels.push({
-        id: f.id,
-        label: f.label,
-        color: stroke,
-        font,
-        // Only a label on the border needs a chip to hide the border line.
-        chip: st.mode === "border",
-        lx,
-        ly,
-        x: lx - 4,
-        y: ly - asc - 2,
-        w: tw + 8,
-        h: asc + desc + 4,
-      });
-    }
   }
-  return labels;
+  return groupLabelRects(ctx, frames, pal);
 }
 
 /** Paint group labels from drawGroups, over the wires. */
@@ -3384,10 +3431,8 @@ export function drawGroupLabels(ctx, labels, pal = DEFAULT_PALETTE) {
   ctx.textAlign = "left";
   for (const l of labels || []) {
     ctx.font = l.font ?? `bold ${S.divider}px ${pal.font}`;
-    if (l.chip !== false) {
-      ctx.fillStyle = pal.background;
-      ctx.fillRect(l.x, l.y, l.w, l.h);
-    }
+    ctx.fillStyle = l.chipColor ?? pal.background;
+    ctx.fillRect(l.x, l.y, l.w, l.h);
     ctx.fillStyle = l.color;
     ctx.fillText(l.label, l.lx, l.ly);
   }

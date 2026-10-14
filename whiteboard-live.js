@@ -44,6 +44,7 @@ import {
   edgeSides,
   Grid,
   groupFrames,
+  groupLabelRects,
   innerGroups,
   legendEntries,
   makePalette,
@@ -262,7 +263,13 @@ function zoomAtClient(clientX, clientY, factor) {
 // ================================================================
 function rebuild() {
   grid = new Grid(COLS, ROWS);
-  connMap = buildGrid(grid, BOXES, costs);
+  // Wires route round group labels; measure them as render() will draw them.
+  const labels = groupLabelRects(
+    ctx,
+    groupFrames(diagramState?.groups, BOXES, PAL, diagramState),
+    PAL,
+  );
+  connMap = buildGrid(grid, BOXES, costs, labels);
   routes = routeEdges(astarState, grid, EDGES_DEF, BOXES, connMap, costs, PAL, {
     centerConnectors: diagramState.connectorAnchor === "center",
     edgeWidth: diagramState.edgeWidth,

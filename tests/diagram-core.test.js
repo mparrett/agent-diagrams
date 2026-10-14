@@ -2094,3 +2094,30 @@ Deno.test("group frames follow the board's corners default", () => {
   const sq = radii({ corners: "square" });
   assert(JSON.stringify(sq) === "[0]", JSON.stringify(sq));
 });
+
+Deno.test("wires route round group labels when they can", () => {
+  const boxes = [
+    { id: "a", col: 3, row: 8, w: 5, h: 3 },
+    { id: "b", col: 31, row: 8, w: 5, h: 3 },
+  ];
+  const edges = [{ from: "a", to: "b", fromEdge: "E", toEdge: "W" }];
+  // A label across the straight run between the two boxes.
+  const label = { x: 15 * CELL, y: 9 * CELL, w: 6 * CELL, h: CELL };
+  const route = (avoid) => {
+    const grid = new Grid(44, 24);
+    const costs = { ...DEFAULT_COSTS };
+    const connMap = buildGrid(grid, boxes, costs, avoid);
+    return routeEdges(
+      createAstarState(44, 24),
+      grid,
+      edges,
+      boxes,
+      connMap,
+      costs,
+    )[0].path;
+  };
+  const crosses = (path) =>
+    path.some((p) => p.x >= 15 && p.x < 21 && p.y === 9);
+  assert(crosses(route([])), "without the label the wire runs straight");
+  assert(!crosses(route([label])), "with it, the wire goes round");
+});

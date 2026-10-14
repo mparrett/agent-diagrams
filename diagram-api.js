@@ -2188,7 +2188,7 @@ export class Diagram {
     // Build routing grid + route (layout already computed above)
     const grid = new Grid(COLS, ROWS);
     const costs = { ...DEFAULT_COSTS, ...(this._state.costs || {}) };
-    const connMap = buildGrid(grid, gridBoxes, costs);
+    const connMap = buildGrid(grid, gridBoxes, costs, groupLabels);
     const astarState = createAstarState(COLS, ROWS);
     const routes = routeEdges(
       astarState,
