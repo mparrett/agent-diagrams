@@ -211,9 +211,20 @@ function boardForPath(p) {
 async function watch() {
   // One watcher covers the default board's dir and the repo diagrams/ tree
   // (recursive, so boards created later are picked up automatically).
-  const dirs = DIAGRAMS_DIR.startsWith(STATE_DIR)
-    ? [STATE_DIR]
-    : [STATE_DIR, DIAGRAMS_DIR];
+  // A missing directory (a board moved or deleted) is skipped with a warning:
+  // watchFs throws on it, which used to take the whole server down.
+  const dirs =
+    (DIAGRAMS_DIR.startsWith(STATE_DIR)
+      ? [STATE_DIR]
+      : [STATE_DIR, DIAGRAMS_DIR]).filter((d) => {
+        try {
+          return Deno.statSync(d).isDirectory;
+        } catch {
+          console.warn(`not watching ${d}: no such directory`);
+          return false;
+        }
+      });
+  if (!dirs.length) return;
   const watcher = Deno.watchFs(dirs);
   const pending = new Map(); // board name → Set("state"|"png")
   let timer = null;
@@ -551,7 +562,12 @@ async function handler(req) {
 }
 
 scanBoards();
-watch();
+watch().catch((e) => {
+  console.error(
+    "file watcher stopped; live reload is off until restart:",
+    e instanceof Error ? e.message : e,
+  );
+});
 console.log(
   `agent-diagrams dev server → http://localhost:${PORT}/whiteboard.html (viewer, live)`,
 );
