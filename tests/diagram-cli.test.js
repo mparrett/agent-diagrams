@@ -460,6 +460,36 @@ Deno.test("CLI: group label flags and set-group-style", async () =>
     assert(r.code !== 0, "no flags must fail");
   }));
 
+Deno.test("CLI: add-node and update-node --shape", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const node = (id) =>
+      JSON.parse(Deno.readTextFileSync(path)).nodes.find((n) => n.id === id);
+
+    let r = await runCli(path, [
+      "add-node",
+      "db",
+      "DB",
+      "blue",
+      "1",
+      "0",
+      "rows",
+      "--shape=cylinder",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals([node("db").shape, node("db").details], ["cylinder", [
+      "rows",
+    ]]);
+
+    r = await runCli(path, ["update-node", "a", "--shape=person"]);
+    assert(r.code === 0, r.err);
+    assertEquals(node("a").shape, "person");
+
+    r = await runCli(path, ["update-node", "a", "--shape=blob"]);
+    assert(r.code !== 0, "an unknown shape must fail");
+  }));
+
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

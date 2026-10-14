@@ -5,7 +5,6 @@ Open work, roughly in priority order within each section. Remove an item when it
 ## Next
 
 - **Intermittent raster test failure.** `raster-parity.test.js`, "the checker tells drawn text from blank space", fails in about half of full-suite runs and passes alone. The font-buffer fix holds under the GC test; the cause is unknown and may mean text can drop in long-running processes. Blocks a clean PR.
-- **Node shapes:** `cylinder` for stores and `person` for actors. Connector anchors must follow the outline.
 
 ## Routing and groups
 

@@ -156,6 +156,7 @@ Commands:
   update-node <id> [--label=...] [--color=NAME|SEMANTIC] [--row=N] [--col=N] [--details=a,b,c] [--minW=px|0] [--w=cells|0] [--h=cells|0]
                           [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square]
                           [--outlineReset]   box outline; --outlineReset clears all three back to the board default
+                          [--shape=box|cylinder|person]   cylinder for a store, person for an actor (also add-node --shape=)
   update-edge <from> <to> [--style=...] [--label=...] [--fromEdge=N|S|E|W] [--toEdge=...] [--fromConn=C|C-1|...] [--toConn=...]
                           [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=NAME|SEMANTIC] [--styleReset]   style axes
                           [--cost-step=N] [--cost-turn=N] [--cost-near=N] [--cost-overlap=N] [--cost-reset]   per-edge routing bias
@@ -269,7 +270,9 @@ function run() {
 
   switch (cmd) {
     case "add-node": {
-      const [, id, label, color, rowStr, colStr, ...details] = args;
+      const [, id, label, color, rowStr, colStr, ...rest] = args;
+      const shapeArg = rest.find((a) => a.startsWith("--shape="));
+      const details = rest.filter((a) => !a.startsWith("--shape="));
       if (!id || !label || !color || !rowStr || !colStr) {
         console.error(
           "Error: add-node requires <id> <label> <color> <row> <col> [details...]",
@@ -279,7 +282,14 @@ function run() {
       const row = int("add-node <row>", rowStr);
       const col = int("add-node <col>", colStr);
       const d = mutate((d) =>
-        d.addNode(id, { label, color, details, row, col })
+        d.addNode(id, {
+          label,
+          color,
+          details,
+          row,
+          col,
+          shape: shapeArg?.slice(8),
+        })
       );
       d.render();
       console.log(`Added node "${id}" (rev ${d.rev})`);
@@ -866,6 +876,7 @@ function run() {
           "--outlineDash",
           "--corners",
           "--outlineReset",
+          "--shape",
         ],
       );
       const opts = {};
@@ -890,6 +901,8 @@ function run() {
           opts.outlineDash = arg.slice(14);
         } else if (arg.startsWith("--corners=")) {
           opts.corners = arg.slice(10);
+        } else if (arg.startsWith("--shape=")) {
+          opts.shape = arg.slice(8);
         } else if (arg === "--outlineReset") {
           opts.outlineWidth = null;
           opts.outlineDash = null;

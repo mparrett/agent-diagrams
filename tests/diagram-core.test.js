@@ -7,6 +7,7 @@ import {
   computeBridgeBreaks,
   computeLayout,
   createAstarState,
+  cylinderRy,
   DEFAULT_COSTS,
   DEFAULT_MAX_BOX_W,
   DEFAULT_SIZES,
@@ -23,6 +24,7 @@ import {
   MIN_BOX_H,
   MIN_BOX_W,
   nodeBoxHeight,
+  nodeBoxSize,
   routeEdges,
   simplifyPath,
   snapAlign,
@@ -2147,4 +2149,60 @@ Deno.test("wires keep off a frame border they would run along", () => {
     path.filter((p) => p.y === 9 && p.x >= 12 && p.x <= 26).length;
   assert(along(route([])) > 10, "without the frame the wire runs on row 9");
   assert(along(route([frame])) === 0, "with it, the wire keeps off the border");
+});
+
+// ─── Node shapes ────────────────────────────────────────────────────
+
+Deno.test("shapes size their boxes for caps and the person icon", () => {
+  const ctx = measureContext();
+  const node = (shape) =>
+    nodeBoxSize(ctx, {
+      id: "a",
+      label: "Store",
+      details: ["one", "two", "three"],
+      shape,
+    });
+  const box = node(undefined), cyl = node("cylinder"), person = node("person");
+  assert(
+    cyl.h - box.h === 3 * cylinderRy(DEFAULT_SIZES),
+    `cylinder ${cyl.h} vs box ${box.h}`,
+  );
+  assert(person.h > box.h, `person ${person.h} vs box ${box.h}`);
+  assert(cyl.w === box.w, "a shape does not change the width");
+});
+
+Deno.test("wires reach a cylinder's cap and a person's figure", () => {
+  const target = { id: "t", col: 10, row: 10, w: 12, h: 6 };
+  const start = (shape, x) => {
+    const b = { ...target, shape, label: "T" };
+    const route = {
+      edge: { from: "s", to: "t" },
+      path: [{ x, y: 4 }, { x, y: 9 }],
+      color: "#888",
+    };
+    const ends = [];
+    const { ctx } = recordingContext();
+    Object.assign(ctx, {
+      arc() {},
+      ellipse() {},
+      quadraticCurveTo() {},
+      fillRect() {},
+      strokeRect() {},
+      rotate() {},
+      translate() {},
+      lineTo(px, py) {
+        ends.push({ x: px, y: py });
+      },
+    });
+    drawRoutes(ctx, [route], CELL, undefined, { boxes: [b] });
+    return ends[0].y;
+  };
+  const top = 9 * CELL + CELL / 2;
+  assert(start(undefined, 16) === top, "a box keeps the cell centre");
+  assert(start("cylinder", 16) > top, "the centre of a cap is its top");
+  assert(
+    start("cylinder", 11) > start("cylinder", 16),
+    "an off-centre slot reaches further down the cap",
+  );
+  assert(start("person", 16) > top, "a person's wire reaches the figure");
 });

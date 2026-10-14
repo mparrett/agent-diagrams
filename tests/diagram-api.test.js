@@ -1103,6 +1103,32 @@ Deno.test("setEdgeStyle sets, clears and validates the board edge width", () =>
     assert(!("edgeWidth" in d._state), "null clears it");
   }));
 
+Deno.test("node shape sets, clears and validates", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [{ ...NODE_A }] });
+    const d = Diagram.load(path);
+    d.addNode("db", {
+      label: "DB",
+      color: "blue",
+      row: 1,
+      col: 0,
+      shape: "cylinder",
+    });
+    const shape = (id) => d.nodes.find((n) => n.id === id).shape;
+    assert(shape("db") === "cylinder", "add-node sets it");
+    d.updateNode("a", { shape: "person" });
+    assert(shape("a") === "person", "update sets it");
+    assertThrowsWith(
+      () => d.updateNode("a", { shape: "hexagon" }),
+      'Invalid shape "hexagon"',
+      "unknown shape",
+    );
+    assert(shape("a") === "person", "a rejected shape writes nothing");
+    d.updateNode("a", { shape: "box" });
+    assert(!("shape" in d.nodes.find((n) => n.id === "a")), "box clears it");
+  }));
+
 Deno.test("updateNode sets, clears and validates corners", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;

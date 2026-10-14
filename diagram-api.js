@@ -45,6 +45,7 @@ import {
   legendEntries,
   makePalette,
   measureNote,
+  NODE_SHAPES,
   OUTLINE_WIDTHS,
   resolveNotePositions,
   routeEdges,
@@ -662,6 +663,10 @@ export class Diagram {
       col: opts.col,
     };
     if (opts.minW) node.minW = opts.minW;
+    if (opts.shape != null && opts.shape !== "box") {
+      this._validateEnum(opts.shape, NODE_SHAPES, "shape");
+      node.shape = opts.shape;
+    }
     this.nodes.push(node);
   }
 
@@ -735,6 +740,13 @@ export class Diagram {
       }
       if (n > 0) node[dim] = Math.round(n);
       else delete node[dim];
+    }
+    if (opts.shape !== undefined) { // "box" or null → the default box
+      if (opts.shape !== null) {
+        this._validateEnum(opts.shape, NODE_SHAPES, "shape");
+      }
+      if (opts.shape && opts.shape !== "box") node.shape = opts.shape;
+      else delete node.shape;
     }
     // Box style axes: a token sets it, null clears it (back to the board-wide
     // default, else medium solid round).

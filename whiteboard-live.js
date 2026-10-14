@@ -2681,6 +2681,12 @@ async function applyNodeFields(id, fields, { reflow = false } = {}) {
   }
 }
 
+const SHAPE_OPTS = [
+  { value: "box", label: "Box" },
+  { value: "cylinder", label: "Cylinder" },
+  { value: "person", label: "Person" },
+];
+
 function renderNodeControls(n) {
   mount(
     "neColor",
@@ -2705,6 +2711,18 @@ function renderNodeControls(n) {
       (v) => applyNodeFields(editingId, { outlineDash: v }),
     ),
   );
+  mount(
+    "neShape",
+    buildChipGroup(
+      SHAPE_OPTS,
+      n.shape ?? "box",
+      // A shape changes the box's height, so re-solve the layout.
+      (v) =>
+        applyNodeFields(editingId, { shape: v === "box" ? null : v }, {
+          reflow: true,
+        }),
+    ),
+  );
 }
 
 // Edit an existing node. Text applies on change (blur/Enter); chips apply on click.
@@ -2718,6 +2736,7 @@ function openNodeEditor(id, clientX, clientY) {
     details: (n.details || []).slice(),
     outlineWidth: n.outlineWidth ?? null,
     outlineDash: n.outlineDash ?? null,
+    shape: n.shape ?? null,
   };
   neLabel.value = n.label || "";
   neDetails.value = (n.details || []).join("\n");
@@ -2788,6 +2807,7 @@ document.getElementById("neReset").onclick = async () => {
     details: s.details,
     outlineWidth: s.outlineWidth,
     outlineDash: s.outlineDash,
+    shape: s.shape,
   }, { reflow: true });
   neLabel.value = s.label || "";
   neDetails.value = (s.details || []).join("\n");

@@ -794,6 +794,55 @@ export function measureNodeWidth(
   return contentWidth(ctx, [node.label], node.details || [], node, font, sizes);
 }
 
+// Node shapes. A box is the default; a cylinder (a store) draws elliptical
+// caps top and bottom; a person (an actor) draws an icon above its label and
+// no frame.
+export const NODE_SHAPES = { box: true, cylinder: true, person: true };
+
+// Vertical radius of a cylinder's caps.
+export function cylinderRy(sizes = DEFAULT_SIZES) {
+  return Math.round(sizes.label * 0.55);
+}
+
+// Height of a person's icon.
+function personIconH(sizes) {
+  return Math.round(sizes.label * 2.6);
+}
+
+/**
+ * Where a person's icon and text sit in its box: the icon and text are
+ * centred together. `gapTop` / `gapBottom` are the empty space between the
+ * box's top or bottom edge and what is drawn, which wire ends cross so they
+ * meet the figure rather than its invisible box.
+ */
+export function personLayout(b, sizes = DEFAULT_SIZES, cell = CELL) {
+  const iconH = personIconH(sizes);
+  const labelLines = b.labelLines || [b.label];
+  const detailLines = b.detailLines || b.details;
+  const textH = nodeBoxHeight(detailLines, sizes, labelLines.length);
+  const slack = Math.max(0, b.h * cell - iconH - textH) / 2;
+  return {
+    iconY: b.row * cell + slack,
+    iconH,
+    gapTop: slack + iconH * 0.06,
+    gapBottom: slack + sizes.box.padBottom * 0.75,
+  };
+}
+
+/**
+ * Space a shape adds around the text block, in px: a cylinder's top cap
+ * (its full depth, so the text clears the cap's front edge) and the bulge of
+ * its bottom cap; a person's icon above the label.
+ */
+export function shapeInsets(shape, sizes = DEFAULT_SIZES) {
+  if (shape === "cylinder") {
+    const ry = cylinderRy(sizes);
+    return { top: 2 * ry, bottom: ry };
+  }
+  if (shape === "person") return { top: personIconH(sizes), bottom: 0 };
+  return { top: 0, bottom: 0 };
+}
+
 export function nodeBoxHeight(details, sizes = DEFAULT_SIZES, labelLines = 1) {
   const b = sizes.box;
   const detailH = details && details.length > 0
@@ -848,8 +897,10 @@ function sizeAt(ctx, node, targetPx, font, sizes) {
     contentWidth(ctx, labelLines, detailLines, node, font, sizes),
     target,
   );
+  const ins = shapeInsets(node.shape, sizes);
   const h = Math.max(
-    nodeBoxHeight(detailLines, sizes, labelLines.length),
+    nodeBoxHeight(detailLines, sizes, labelLines.length) + ins.top +
+      ins.bottom,
     MIN_BOX_H,
     node.h > 0 ? node.h * CELL : 0,
   );
@@ -1499,6 +1550,7 @@ export function computeLayout(ctx, state, canvasW) {
         outlineWidth: node.outlineWidth ?? state.outlineWidth,
         outlineDash: node.outlineDash ?? state.outlineDash,
         corners: node.corners ?? state.corners,
+        shape: node.shape,
         details: node.details || [],
         labelLines: dims.labelLines,
         detailLines: dims.detailLines,
@@ -2774,6 +2826,35 @@ export function drawRoutes(
         dy = Math.sign(pts[1].y - pts[0].y);
       pts[0] = { x: pts[0].x - dx * cell / 2, y: pts[0].y - dy * cell / 2 };
     }
+    // A wire meeting a shape's top or bottom reaches what is drawn: a
+    // cylinder's curved cap, a person's figure or text.
+    if (opts.boxes && pts.length > 1) {
+      const S = pal.sizes || DEFAULT_SIZES;
+      const ry = cylinderRy(S);
+      const toCap = (id, p, q) => {
+        const b = opts.boxes.find((o) => o.id === id);
+        if (!b || p.x !== q.x) return p;
+        const fromAbove = q.y < p.y; // the wire meets the box's top
+        let gap = 0;
+        if (b.shape === "cylinder") {
+          const rx = b.w * cell / 2, cx = b.col * cell + rx;
+          const t = Math.min(1, Math.abs(p.x - cx) / rx);
+          gap = ry * (1 - Math.sqrt(1 - t * t));
+        } else if (b.shape === "person") {
+          const pl = personLayout(b, S, cell);
+          gap = fromAbove ? pl.gapTop : pl.gapBottom;
+        }
+        return { x: p.x, y: p.y + (fromAbove ? gap : -gap) };
+      };
+      if (!route.srcFree) pts[0] = toCap(route.edge.from, pts[0], pts[1]);
+      if (!route.tgtFree) {
+        pts[pts.length - 1] = toCap(
+          route.edge.to,
+          pts[pts.length - 1],
+          pts[pts.length - 2],
+        );
+      }
+    }
     allPolys.push(pts);
     drawn.push({ route, pts });
   }
@@ -3142,31 +3223,48 @@ export function drawBoxes(
     const h = b.h * cell;
     const color = resolveColorToken(pal, b.color);
     const r = boxCornerRadius(b);
+    const S = pal.sizes || DEFAULT_SIZES;
+    const ins = shapeInsets(b.shape, S);
+    const outline = () =>
+      b.shape === "cylinder"
+        ? drawCylinder(ctx, x, y, w, h, cylinderRy(S))
+        : drawRoundRect(ctx, x, y, w, h, r);
 
-    ctx.save();
-    // The drop shadow is decorative. The browser editor renders it correctly,
-    // but native Skia (@gfx/canvas) renders shadowBlur displaced under
-    // ctx.scale(DPR) — a phantom fill that overdraws neighbouring labels — so
-    // the PNG renderer passes { shadow: false }. Re-enable if the lib fixes it.
-    if (shadow) {
-      ctx.shadowColor = withAlpha(color.border, SHADOW_ALPHA);
-      ctx.shadowBlur = 12;
+    const person = b.shape === "person" ? personLayout(b, S, cell) : null;
+    if (person) {
+      drawPerson(ctx, x + w / 2, person.iconY, person.iconH, color, b);
+    } else {
+      ctx.save();
+      // The drop shadow is decorative. The browser editor renders it correctly,
+      // but native Skia (@gfx/canvas) renders shadowBlur displaced under
+      // ctx.scale(DPR) — a phantom fill that overdraws neighbouring labels — so
+      // the PNG renderer passes { shadow: false }. Re-enable if the lib fixes it.
+      if (shadow) {
+        ctx.shadowColor = withAlpha(color.border, SHADOW_ALPHA);
+        ctx.shadowBlur = 12;
+      }
+      ctx.fillStyle = color.bg;
+      outline();
+      ctx.fill();
+      ctx.restore();
+
+      ctx.strokeStyle = withAlpha(color.border, OUTLINE_ALPHA);
+      ctx.lineWidth = OUTLINE_WIDTHS[b.outlineWidth] ?? 2;
+      ctx.setLineDash(resolveDash(b.outlineDash));
+      outline();
+      ctx.stroke();
+      if (b.shape === "cylinder") {
+        // The top cap's front edge.
+        const ry = cylinderRy(S);
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + ry, w / 2, ry, 0, 0, Math.PI);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
-    ctx.fillStyle = color.bg;
-    drawRoundRect(ctx, x, y, w, h, r);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.strokeStyle = withAlpha(color.border, OUTLINE_ALPHA);
-    ctx.lineWidth = OUTLINE_WIDTHS[b.outlineWidth] ?? 2;
-    ctx.setLineDash(resolveDash(b.outlineDash));
-    drawRoundRect(ctx, x, y, w, h, r);
-    ctx.stroke();
-    ctx.setLineDash([]);
 
     // Label — one or two wrapped title lines (labelLines from computeLayout; a
     // raw box without it falls back to its single label).
-    const S = pal.sizes || DEFAULT_SIZES;
     const labelLines = b.labelLines || [b.label];
     // Pre-wrapped by computeLayout; a raw box without them falls back to its
     // unwrapped details, which is what a hand-built box or an older caller has.
@@ -3174,9 +3272,12 @@ export function drawBoxes(
     // Center the text block vertically: the box may be taller than its content
     // (aspect floor / explicit height / wrapped title), so push the block down
     // by half the slack instead of letting it hug the top.
-    const slackY =
-      Math.max(0, h - nodeBoxHeight(detailLines, S, labelLines.length)) / 2;
-    let labelY = y + slackY + S.box.padTop + S.box.labelBaseline;
+    const textH = h - ins.top - ins.bottom;
+    const slackY = person
+      ? person.iconY - y
+      : Math.max(0, textH - nodeBoxHeight(detailLines, S, labelLines.length)) /
+        2;
+    let labelY = y + ins.top + slackY + S.box.padTop + S.box.labelBaseline;
     ctx.fillStyle = pal.text;
     ctx.font = `bold ${S.label}px ${pal.font}`;
     ctx.textAlign = "left";
@@ -3202,6 +3303,40 @@ export function drawBoxes(
       });
     }
   }
+}
+
+// A cylinder's outline: the body with its bottom cap, and the back of the top
+// cap. drawBoxes strokes the top cap's front edge separately.
+function drawCylinder(ctx, x, y, w, h, ry) {
+  const cx = x + w / 2, rx = w / 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y + ry);
+  ctx.lineTo(x, y + h - ry);
+  ctx.ellipse(cx, y + h - ry, rx, ry, 0, Math.PI, 0, true);
+  ctx.lineTo(x + w, y + ry);
+  ctx.ellipse(cx, y + ry, rx, ry, 0, 0, Math.PI, true);
+  ctx.closePath();
+}
+
+// A person: a head and shoulders, `iconH` tall, centred on cx from top y.
+function drawPerson(ctx, cx, y, iconH, color, b) {
+  const head = iconH * 0.22, sw = iconH * 0.4, bodyH = iconH * 0.42;
+  const outline = () => {
+    ctx.beginPath();
+    ctx.arc(cx, y + iconH * 0.06 + head, head, 0, Math.PI * 2);
+    ctx.moveTo(cx + sw, y + iconH);
+    ctx.ellipse(cx, y + iconH, sw, bodyH, 0, 0, Math.PI, true);
+    ctx.closePath();
+  };
+  ctx.fillStyle = color.bg;
+  outline();
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(color.border, OUTLINE_ALPHA);
+  ctx.lineWidth = OUTLINE_WIDTHS[b.outlineWidth] ?? 2;
+  ctx.setLineDash(resolveDash(b.outlineDash));
+  outline();
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 /**
