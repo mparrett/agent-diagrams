@@ -312,6 +312,56 @@ Deno.test("CLI: set-legend parses entries, auto, and off", async () =>
     assert(r.err.includes("chartreuse"), r.err);
   }));
 
+Deno.test("CLI: set-box-style and update-node --corners", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path));
+    const board = () => {
+      const s = read();
+      return [s.outlineWidth, s.outlineDash, s.corners];
+    };
+
+    let r = await runCli(path, [
+      "set-box-style",
+      "--outlineWidth=thin",
+      "--outlineDash=dashed",
+      "--corners=square",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals(board(), ["thin", "dashed", "square"]);
+    assert(r.out.includes("thin dashed square"), r.out);
+
+    r = await runCli(path, ["set-box-style", "--reset", "--corners=square"]);
+    assert(r.code === 0, r.err);
+    assertEquals(board(), [undefined, undefined, "square"]);
+
+    r = await runCli(path, ["set-box-style", "--corners=bevel"]);
+    assert(r.code !== 0, "an unknown corners token must fail");
+    assert(r.err.includes("round, square"), r.err);
+
+    r = await runCli(path, ["set-box-style", "--corner=square"]);
+    assert(r.code !== 0, "a typo'd flag must fail");
+
+    r = await runCli(path, ["set-box-style"]);
+    assert(r.code !== 0, "no flags must fail");
+
+    r = await runCli(path, [
+      "update-node",
+      "a",
+      "--corners=round",
+      "--outlineDash=dotted",
+    ]);
+    assert(r.code === 0, r.err);
+    let a = read().nodes.find((n) => n.id === "a");
+    assertEquals([a.corners, a.outlineDash], ["round", "dotted"]);
+
+    r = await runCli(path, ["update-node", "a", "--outlineReset"]);
+    assert(r.code === 0, r.err);
+    a = read().nodes.find((n) => n.id === "a");
+    assertEquals([a.corners, a.outlineDash], [undefined, undefined]);
+  }));
+
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

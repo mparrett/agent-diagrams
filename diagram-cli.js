@@ -133,7 +133,8 @@ Commands:
   move-node <id> <row> <col>
   free-node <id>                       Drop the node's layout override + unpin → returns it to auto-layout
   update-node <id> [--label=...] [--color=NAME|SEMANTIC] [--row=N] [--col=N] [--details=a,b,c] [--minW=px|0] [--w=cells|0] [--h=cells|0]
-                          [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--outlineReset]   box outline
+                          [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square]
+                          [--outlineReset]   box outline; --outlineReset clears all three back to the board default
   update-edge <from> <to> [--style=...] [--label=...] [--fromEdge=N|S|E|W] [--toEdge=...] [--fromConn=C|C-1|...] [--toConn=...]
                           [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=NAME|SEMANTIC] [--styleReset]   style axes
                           [--cost-step=N] [--cost-turn=N] [--cost-near=N] [--cost-overlap=N] [--cost-reset]   per-edge routing bias
@@ -169,6 +170,9 @@ Commands:
                              auto = one swatch per color in use, labeled with its name; off hides it;
                              entries take palette names, so they follow the theme
                              (e.g. amber="Ops builds" pink:dashed="owner TBD")
+  set-box-style [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square] [--reset]
+                             Board-wide box defaults; a box's own update-node value wins. --reset clears all
+                             three (back to medium, solid, round); it runs first, so flags after it still apply
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
@@ -599,6 +603,43 @@ function run() {
       break;
     }
 
+    case "set-box-style": {
+      const flags = args.slice(1);
+      rejectUnknownFlags("set-box-style", flags, [
+        "--outlineWidth",
+        "--outlineDash",
+        "--corners",
+        "--reset",
+      ]);
+      const opts = flags.includes("--reset")
+        ? { outlineWidth: null, outlineDash: null, corners: null }
+        : {};
+      for (const arg of flags) {
+        if (arg.startsWith("--outlineWidth=")) {
+          opts.outlineWidth = arg.slice(15);
+        } else if (arg.startsWith("--outlineDash=")) {
+          opts.outlineDash = arg.slice(14);
+        } else if (arg.startsWith("--corners=")) {
+          opts.corners = arg.slice(10);
+        }
+      }
+      if (Object.keys(opts).length === 0) {
+        console.error(
+          "Error: set-box-style needs --outlineWidth=, --outlineDash=, --corners= or --reset",
+        );
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setBoxStyle(opts));
+      d.render();
+      const s = d._state;
+      console.log(
+        `box style: ${s.outlineWidth ?? "medium"} ${s.outlineDash ?? "solid"} ${
+          s.corners ?? "round"
+        } (rev ${d.rev})`,
+      );
+      break;
+    }
+
     case "set-title":
     case "set-footer": {
       // No argument clears it — the same shape as `set-font-size reset`.
@@ -713,6 +754,7 @@ function run() {
           "--h",
           "--outlineWidth",
           "--outlineDash",
+          "--corners",
           "--outlineReset",
         ],
       );
@@ -736,9 +778,12 @@ function run() {
           opts.outlineWidth = arg.slice(15);
         } else if (arg.startsWith("--outlineDash=")) {
           opts.outlineDash = arg.slice(14);
+        } else if (arg.startsWith("--corners=")) {
+          opts.corners = arg.slice(10);
         } else if (arg === "--outlineReset") {
           opts.outlineWidth = null;
           opts.outlineDash = null;
+          opts.corners = null;
         }
       }
       if (Object.keys(opts).length === 0) {

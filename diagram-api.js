@@ -20,6 +20,7 @@ import {
   buildGrid,
   CELL,
   computeLayout,
+  CORNER_RADII,
   createAstarState,
   DASH_TOKENS,
   DEFAULT_COSTS,
@@ -627,20 +628,27 @@ export class Diagram {
       if (n > 0) node[dim] = Math.round(n);
       else delete node[dim];
     }
-    // Outline axes: a token sets it, null clears it (back to the 2px solid default).
-    if (opts.outlineWidth !== undefined) {
-      if (opts.outlineWidth === null) delete node.outlineWidth;
-      else {
-        this._validateEnum(opts.outlineWidth, OUTLINE_WIDTHS, "outlineWidth");
-        node.outlineWidth = opts.outlineWidth;
-      }
+    // Box style axes: a token sets it, null clears it (back to the board-wide
+    // default, else medium solid round).
+    this._applyBoxStyle(node, opts);
+  }
+
+  // Set or clear (null) each box-style token present in `opts` on `target`
+  // (a node, or the state for the board-wide defaults). Validates all three
+  // before writing any, so a bad token leaves `target` unchanged.
+  _applyBoxStyle(target, opts) {
+    const axes = [
+      ["outlineWidth", OUTLINE_WIDTHS],
+      ["outlineDash", DASH_TOKENS],
+      ["corners", CORNER_RADII],
+    ];
+    for (const [key, map] of axes) {
+      if (opts[key] != null) this._validateEnum(opts[key], map, key);
     }
-    if (opts.outlineDash !== undefined) {
-      if (opts.outlineDash === null) delete node.outlineDash;
-      else {
-        this._validateEnum(opts.outlineDash, DASH_TOKENS, "outlineDash");
-        node.outlineDash = opts.outlineDash;
-      }
+    for (const [key] of axes) {
+      if (opts[key] === undefined) continue;
+      if (opts[key] === null) delete target[key];
+      else target[key] = opts[key];
     }
   }
 
@@ -1352,6 +1360,13 @@ export class Diagram {
       this._state.fontSize = n;
     }
     this.palette = paletteFromState(this._state);
+  }
+
+  // Board-wide box style defaults (top-level `outlineWidth`, `outlineDash`,
+  // `corners`). A box without its own token takes these. Same shape as
+  // updateNode's: a token sets the axis, null clears it, undefined leaves it.
+  setBoxStyle(opts) {
+    this._applyBoxStyle(this._state, opts);
   }
 
   // Board (export-frame) dimensions B. The editor's auto-grow and the canvas

@@ -986,3 +986,61 @@ Deno.test("fit-canvas stores the size the PNG is drawn at", () =>
       `stored ${d._state.width}x${d._state.height}, drawn ${drawn.width}x${drawn.height}`,
     );
   }));
+
+Deno.test("setBoxStyle sets, clears and validates the board-wide defaults", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
+    const style = () => [
+      d._state.outlineWidth,
+      d._state.outlineDash,
+      d._state.corners,
+    ];
+
+    d.setBoxStyle({ outlineWidth: "thin", corners: "square" });
+    assert(
+      JSON.stringify(style()) === JSON.stringify(["thin", undefined, "square"]),
+      `set: ${style()}`,
+    );
+    d.setBoxStyle({ outlineDash: "dotted", corners: null });
+    assert(
+      JSON.stringify(style()) === JSON.stringify(["thin", "dotted", undefined]),
+      `clear: ${style()}`,
+    );
+
+    // A bad token on one axis leaves every axis as it was.
+    assertThrowsWith(
+      () => d.setBoxStyle({ outlineWidth: "medium", corners: "bevel" }),
+      'Invalid corners "bevel"',
+      "unknown corners token",
+    );
+    assertThrowsWith(
+      () => d.setBoxStyle({ outlineDash: "constructor" }),
+      "Invalid outlineDash",
+      "inherited Object member",
+    );
+    assert(
+      JSON.stringify(style()) === JSON.stringify(["thin", "dotted", undefined]),
+      `unchanged after a rejected call: ${style()}`,
+    );
+  }));
+
+Deno.test("updateNode sets, clears and validates corners", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [{ ...NODE_A }] });
+    const d = Diagram.load(path);
+    const node = () => d.nodes.find((n) => n.id === "a");
+
+    d.updateNode("a", { corners: "square" });
+    assert(node().corners === "square", "set");
+    assertThrowsWith(
+      () => d.updateNode("a", { corners: "pointy" }),
+      "Invalid corners",
+      "unknown corners token",
+    );
+    assert(node().corners === "square", "a rejected token keeps the old one");
+    d.updateNode("a", { corners: null });
+    assert(!("corners" in node()), "null clears it");
+  }));

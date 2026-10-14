@@ -19,6 +19,7 @@ import {
   BOARD_MARGIN_BOTTOM,
   boardExtent,
   boardExtentForContent,
+  boxCornerRadius,
   boxOverlaps,
   buildGrid,
   CELL,
@@ -543,6 +544,11 @@ function pinMarkerAt(p) {
   return null;
 }
 
+// Radius for a ring drawn 3px outside a box: square boxes get square rings.
+function ringRadius(b) {
+  return boxCornerRadius(b) ? 8 : 0;
+}
+
 // Hover chrome: ring the box, or glow the edge, under the cursor. Editor-only —
 // drawn after the core draw calls, never inside diagram-core.
 function drawHoverOverlay() {
@@ -559,7 +565,7 @@ function drawHoverOverlay() {
     ctx.strokeStyle = PAL.colors[b.color]?.border || "#58a6ff";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x - 3, y - 3, w + 6, h + 6, 8);
+    ctx.roundRect(x - 3, y - 3, w + 6, h + 6, ringRadius(b));
     ctx.stroke();
     // SE resize handle — emphasized when the cursor is on it.
     ctx.fillStyle = "#1f6feb";
@@ -708,7 +714,7 @@ function drawEndpointOverlay() {
         b.row * CELL - 3,
         b.w * CELL + 6,
         b.h * CELL + 6,
-        8,
+        ringRadius(b),
       );
       ctx.stroke();
     }
@@ -2543,7 +2549,7 @@ function renderNodeControls(n) {
     "neOutlineWidth",
     buildChipGroup(
       WIDTH_OPTS,
-      n.outlineWidth ?? "medium",
+      n.outlineWidth ?? diagramState.outlineWidth ?? "medium",
       (v) => applyNodeFields(editingId, { outlineWidth: v }),
     ),
   );
@@ -2551,7 +2557,7 @@ function renderNodeControls(n) {
     "neOutlineDash",
     buildChipGroup(
       DASH_OPTS,
-      n.outlineDash ?? "solid",
+      n.outlineDash ?? diagramState.outlineDash ?? "solid",
       (v) => applyNodeFields(editingId, { outlineDash: v }),
     ),
   );

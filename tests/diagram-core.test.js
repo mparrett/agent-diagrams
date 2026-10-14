@@ -11,6 +11,7 @@ import {
   DEFAULT_MAX_BOX_W,
   DEFAULT_SIZES,
   deriveTheme,
+  drawBoxes,
   drawRoutes,
   fontFamily,
   fontSizes,
@@ -1431,4 +1432,124 @@ Deno.test("members' layout overrides are ignored inside an inner group", () => {
     free.x === pinned.x && free.y === pinned.y,
     "pinning inside an inner group waits for Stage 2",
   );
+});
+
+// ─── Box style defaults and corners ─────────────────────────────────
+
+Deno.test("box style tokens resolve node, then board, then built-in", () => {
+  const boxes = computeLayout(measureContext(), {
+    outlineWidth: "thin",
+    outlineDash: "dashed",
+    corners: "square",
+    edges: [],
+    nodes: [
+      { id: "plain", label: "Plain", color: "blue", row: 0, col: 0 },
+      {
+        id: "own",
+        label: "Own",
+        color: "blue",
+        row: 0,
+        col: 1,
+        outlineWidth: "thick",
+        outlineDash: "dotted",
+        corners: "round",
+      },
+      { id: "member", label: "Member", color: "blue", row: 0, col: 0 },
+    ],
+    groups: [{
+      id: "g",
+      label: "G",
+      nodes: ["member"],
+      layout: "inner",
+      row: 1,
+      col: 0,
+    }],
+  }, 4000);
+  const style = (id) => {
+    const b = boxes.find((x) => x.id === id);
+    return [b.outlineWidth, b.outlineDash, b.corners];
+  };
+  assertEquals(style("plain"), ["thin", "dashed", "square"]);
+  assertEquals(style("own"), ["thick", "dotted", "round"]);
+  assertEquals(style("member"), ["thin", "dashed", "square"]);
+
+  const bare = computeLayout(measureContext(), {
+    edges: [],
+    nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
+  }, 4000)[0];
+  assertEquals(
+    [bare.outlineWidth, bare.outlineDash, bare.corners],
+    [undefined, undefined, undefined],
+    "no token anywhere leaves drawBoxes its built-in default",
+  );
+});
+
+// Records every arcTo radius and the lineWidth/dash in force at each stroke.
+function recordingContext() {
+  const log = { radii: [], strokes: [] };
+  let lineWidth = 1, dash = [];
+  const ctx = measureContext();
+  Object.assign(ctx, {
+    save() {},
+    restore() {},
+    beginPath() {},
+    closePath() {},
+    moveTo() {},
+    lineTo() {},
+    fill() {},
+    fillText() {},
+    arcTo(_x1, _y1, _x2, _y2, r) {
+      log.radii.push(r);
+    },
+    setLineDash(d) {
+      dash = d;
+    },
+    stroke() {
+      log.strokes.push({ lineWidth, dash });
+    },
+  });
+  Object.defineProperty(ctx, "lineWidth", {
+    set(v) {
+      lineWidth = v;
+    },
+    get() {
+      return lineWidth;
+    },
+  });
+  return { ctx, log };
+}
+
+Deno.test("drawBoxes draws square corners at radius 0 and round at 6", () => {
+  const draw = (box) => {
+    const { ctx, log } = recordingContext();
+    drawBoxes(
+      ctx,
+      [{
+        id: "a",
+        label: "A",
+        color: "blue",
+        col: 1,
+        row: 1,
+        w: 8,
+        h: 4,
+        ...box,
+      }],
+      CELL,
+      undefined,
+      { shadow: false },
+    );
+    return log;
+  };
+  const square = draw({ corners: "square", outlineWidth: "thin" });
+  assert(square.radii.length > 0, "the box outline was drawn");
+  assert(square.radii.every((r) => r === 0), `radii ${square.radii}`);
+  assertEquals(square.strokes[0], { lineWidth: 1, dash: [] });
+
+  for (const corners of ["round", undefined, "constructor"]) {
+    const log = draw({ corners });
+    assert(
+      log.radii.length > 0 && log.radii.every((r) => r === 6),
+      `${corners}: radii ${log.radii}`,
+    );
+  }
 });

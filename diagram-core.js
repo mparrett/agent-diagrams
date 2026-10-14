@@ -65,6 +65,8 @@ export const DEFAULT_EDGE_STYLES = {
 export const EDGE_WIDTHS = { thin: 1.25, medium: 2, thick: 3.25 };
 export const OUTLINE_WIDTHS = { thin: 1, medium: 2, thick: 3 };
 export const DASH_TOKENS = { solid: [], dashed: [6, 3], dotted: [2, 3] };
+// Box corner radius in px, per `corners` token.
+export const CORNER_RADII = { round: 6, square: 0 };
 
 /**
  * Resolve a dash value to the [on, off] array Skia requires.
@@ -1401,8 +1403,10 @@ export function computeLayout(ctx, state, canvasW) {
         id: node.id,
         label: node.label,
         color: node.color,
-        outlineWidth: node.outlineWidth,
-        outlineDash: node.outlineDash,
+        // A node's own outline/corner tokens win; else the board-wide default.
+        outlineWidth: node.outlineWidth ?? state.outlineWidth,
+        outlineDash: node.outlineDash ?? state.outlineDash,
+        corners: node.corners ?? state.corners,
         details: node.details || [],
         labelLines: dims.labelLines,
         detailLines: dims.detailLines,
@@ -2869,6 +2873,13 @@ export function withAlpha(color, alpha) {
 const OUTLINE_ALPHA = 0xbb / 255;
 const SHADOW_ALPHA = 0x44 / 255;
 
+// Corner radius for a grid box; anything but a known token draws round.
+export function boxCornerRadius(b) {
+  return Object.prototype.hasOwnProperty.call(CORNER_RADII, b.corners)
+    ? CORNER_RADII[b.corners]
+    : CORNER_RADII.round;
+}
+
 export function drawBoxes(
   ctx,
   boxes,
@@ -2881,6 +2892,7 @@ export function drawBoxes(
     const w = b.w * cell;
     const h = b.h * cell;
     const color = resolveColorToken(pal, b.color);
+    const r = boxCornerRadius(b);
 
     ctx.save();
     // The drop shadow is decorative. The browser editor renders it correctly,
@@ -2892,14 +2904,14 @@ export function drawBoxes(
       ctx.shadowBlur = 12;
     }
     ctx.fillStyle = color.bg;
-    drawRoundRect(ctx, x, y, w, h, 6);
+    drawRoundRect(ctx, x, y, w, h, r);
     ctx.fill();
     ctx.restore();
 
     ctx.strokeStyle = withAlpha(color.border, OUTLINE_ALPHA);
     ctx.lineWidth = OUTLINE_WIDTHS[b.outlineWidth] ?? 2;
     ctx.setLineDash(resolveDash(b.outlineDash));
-    drawRoundRect(ctx, x, y, w, h, 6);
+    drawRoundRect(ctx, x, y, w, h, r);
     ctx.stroke();
     ctx.setLineDash([]);
 
