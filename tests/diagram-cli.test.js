@@ -374,3 +374,43 @@ Deno.test("CLI: init --empty writes a board with no sample nodes", async () =>
     const s = JSON.parse(Deno.readTextFileSync(path));
     assertEquals([s.nodes.length, s.edges.length], [0, 0]);
   }));
+
+// Run the render hint `init` prints, from the directory it was printed in.
+async function initAndRunHint(cwd, initArgs) {
+  const init = await new Deno.Command(Deno.execPath(), {
+    args: ["run", ...PERMS, CLI, ...initArgs, "init"],
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const out = new TextDecoder().decode(init.stdout);
+  assert(init.code === 0, new TextDecoder().decode(init.stderr));
+  const hint = out.trim().split("\n").at(-1).trim();
+  const [deno, ...rest] = hint.split(/\s+/);
+  assert(deno === "deno", `unexpected hint: ${hint}`);
+  const run = await new Deno.Command(Deno.execPath(), {
+    args: rest,
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  assert(run.code === 0, `${hint}\n${new TextDecoder().decode(run.stderr)}`);
+  return hint;
+}
+
+Deno.test("CLI: init's render hint works from another directory", async () =>
+  await withTempDir(async (dir) => {
+    await initAndRunHint(dir, []);
+    await Deno.stat(`${dir}/diagram.png`);
+  }));
+
+Deno.test("CLI: init's render hint in the tool repo keeps --state", async () =>
+  await withTempDir(async (dir) => {
+    const repo = new URL("..", import.meta.url).pathname;
+    const hint = await initAndRunHint(repo, [
+      "--state",
+      `${dir}/diagram-state.json`,
+    ]);
+    assert(hint.startsWith("deno task render"), hint);
+    await Deno.stat(`${dir}/diagram.png`);
+  }));

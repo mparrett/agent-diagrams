@@ -23,12 +23,16 @@ Mermaid/Graphviz are great but their auto-layout is hard to nudge and the output
 
 ```bash
 # scaffold a starter diagram in the current directory
-deno run --allow-read --allow-write diagram-cli.js init
+deno run --allow-read --allow-write --allow-net --allow-env \
+  --allow-ffi --unstable-ffi diagram-cli.js init
 
 # edit diagram-state.json, then render
-deno run --allow-read --allow-write render-diagram.js
+deno run --allow-read --allow-write --allow-net --allow-env \
+  --allow-ffi --unstable-ffi render-diagram.js
 # → writes diagram.png
 ```
+
+The renderer, `@gfx/canvas`, needs env and FFI access, and net on its first run to fetch its native library.
 
 Or use the `deno task` shortcuts defined in `deno.json`:
 

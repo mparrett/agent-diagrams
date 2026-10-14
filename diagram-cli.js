@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-env=DIAGRAM_STATE
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi --unstable-ffi
 /**
  * CLI tool for manipulating diagram state and rendering.
  *
@@ -6,21 +6,11 @@
  * DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the bundled
  * diagrams/example board. (`init` always scaffolds in the cwd.)
  *
- * Usage:
- *   deno run --allow-write --allow-read diagram-cli.js add-node <id> <label> <color> <row> <col> [details...]
- *   deno run --allow-write --allow-read diagram-cli.js add-edge <from> <to> <style> [label]
- *   deno run --allow-write --allow-read diagram-cli.js remove-node <id>
- *   deno run --allow-write --allow-read diagram-cli.js remove-edge <from> <to>
- *   deno run --allow-write --allow-read diagram-cli.js move-node <id> <row> <col>
- *   deno run --allow-write --allow-read diagram-cli.js free-node <id>
- *   deno run --allow-write --allow-read diagram-cli.js update-node <id> [--label=...] [--color=...] [--row=N] [--col=N] [--details=a,b,c] [--minW=px|0] [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted]
- *   deno run --allow-write --allow-read diagram-cli.js update-edge <from> <to> [--style=...] [--label=...] [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=...] [--fromEdge=...] [--toEdge=...] [--fromConn=...] [--toConn=...]
- *   deno run --allow-write --allow-read diagram-cli.js render
- *   deno run --allow-write --allow-read diagram-cli.js spread
- *   deno run --allow-write --allow-read diagram-cli.js snap-h
- *   deno run --allow-write --allow-read diagram-cli.js snap-v
- *   deno run --allow-write --allow-read diagram-cli.js list-nodes
- *   deno run --allow-write --allow-read diagram-cli.js list-edges
+ * Usage: `deno task cli <command>`, or from any directory
+ *   deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi \
+ *     --unstable-ffi /path/to/diagram-cli.js <command>
+ * The renderer (@gfx/canvas) needs env, FFI and, on first run, net to fetch
+ * its native library. `usage()` below lists the commands.
  */
 
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
@@ -90,6 +80,10 @@ function rejectUnknownFlags(command, flags, known) {
     }
   }
 }
+
+// What render-diagram.js needs; matches the `render` task in deno.json.
+const RUN_FLAGS =
+  "--allow-read --allow-write --allow-net --allow-env --allow-ffi --unstable-ffi";
 
 const STARTER_STATE = {
   title: "Untitled Diagram",
@@ -214,12 +208,10 @@ if (cmd === "init") {
   const toolDir = dirname(fromFileUrl(import.meta.url));
   const inRepo = Deno.cwd() === toolDir;
   const needsStateFlag = target !== resolve(Deno.cwd(), "diagram-state.json");
-  const renderCmd = inRepo
+  const renderCmd = (inRepo
     ? "deno task render"
-    : `deno run --allow-read --allow-write ${
-      join(toolDir, "render-diagram.js")
-    }` +
-      (needsStateFlag ? ` --state=${target}` : "");
+    : `deno run ${RUN_FLAGS} ${join(toolDir, "render-diagram.js")}`) +
+    (needsStateFlag ? ` --state=${target}` : "");
   console.log(`Wrote starter ${target}\nEdit it, then render:\n  ${renderCmd}`);
   Deno.exit(0);
 }

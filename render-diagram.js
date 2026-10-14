@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-write --allow-read --allow-env=DIAGRAM_STATE
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi --unstable-ffi
 // Render a diagram-state.json to PNG.
 // State file: --state <path> (or --state=<path>) > DIAGRAM_STATE env >
 // ./diagram-state.json in the cwd > the bundled diagrams/example board.
