@@ -170,7 +170,7 @@ Commands:
   set-canvas <w> <h> [--anchor=nw|n|ne|e|se|s|sw|w|c]   Set board bounds B (anchor = where content sticks; nw grows right/down)
   expand-canvas [--left=px] [--right=px] [--up=px] [--down=px]   Grow/shrink B per side (negative trims; left/up slide content)
   fit-canvas                 Trim board bounds B to hug boxes, notes and group frames (slides the diagram to a
-                             uniform margin and writes a layout override for every node, so run it last)
+                             uniform margin; auto-placed boxes stay auto)
   render
   spread                     Force-directed box spreading (bakes positions into layout)
   snap-h                     Snap-align box centers horizontally

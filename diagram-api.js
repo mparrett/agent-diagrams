@@ -1366,19 +1366,20 @@ export class Diagram {
   // then set B to the renderer's exact grid extent so frame == PNG. The one-click
   // "trim canvas". No-op on an empty board.
   // Fits the boxes plus notes and group frames, so trimming never clips an
-  // annotation. The renderer still grows B for boxes, so B is at least that.
+  // annotation.
   fitCanvasToContent(margin = 40) {
     const sp = this.solvePositions();
     if (sp.content.w <= 0) return;
     const c = sp.extent;
     const sdx = Math.round((margin - c.x) / CELL) * CELL,
       sdy = Math.round((margin - c.y) / CELL) * CELL;
-    this._resizeCanvas(20000, 20000, sdx, sdy); // translate under an oversized B (validation trivially passes)
-    const e = this.solvePositions().extent; // then tighten to what is drawn
-    const g = this._gridExtent();
-    const fit = boardExtentForContent(e);
-    this._state.width = Math.max(g.W, fit.W);
-    this._state.height = Math.max(g.H, fit.H);
+    const fit = boardExtentForContent({
+      x: c.x + sdx,
+      y: c.y + sdy,
+      w: c.w,
+      h: c.h,
+    });
+    this._resizeCanvas(Math.ceil(fit.W), Math.ceil(fit.H), sdx, sdy);
   }
 
   // Grow B to a target rect (board px, e.g. the editor's visible viewport), clamped
@@ -1396,15 +1397,6 @@ export class Diagram {
     const newW = Math.ceil((x1 - x0) / CELL) * CELL,
       newH = Math.ceil((y1 - y0) / CELL) * CELL;
     this._resizeCanvas(newW, newH, -x0, -y0);
-  }
-
-  // The renderer's exact content extent (grid cells, not pixel bbox) + the 40/50
-  // margins — i.e. what _fitCanvas grows to. Used to set B so frame == PNG.
-  _gridExtent() {
-    const scratch = createCanvas(10, 10);
-    ensureFonts();
-    const gb = this._computeGridBoxes(scratch.getContext("2d"));
-    return boardExtent(gb);
   }
 
   // Core resize: shift all absolutely-positioned content by (dx,dy) and set B to
@@ -1435,35 +1427,48 @@ export class Diagram {
         );
       }
     }
-    if (dx || dy) {
-      // Snap the shift to the grid so the stored node positions match what the
-      // renderer snaps them to (no stored-vs-rendered drift). Everything moves by
-      // the same amount, so relative layout is preserved exactly.
-      const sdx = Math.round(dx / CELL) * CELL,
-        sdy = Math.round(dy / CELL) * CELL;
-      const layout = {};
-      for (const [id, p] of Object.entries(sp.positions)) {
-        layout[id] = { x: p.x + sdx, y: p.y + sdy };
+    // Everything moves by exactly the snapped shift, so relative layout is
+    // preserved. Positioned things (overrides, explicit row Ys, notes,
+    // dividers) shift their own coordinates. Auto-placed boxes stay auto: they
+    // follow through state.offset. Their x also depends on the canvas width
+    // (the column block is centred), so the offset is measured, not predicted.
+    // This used to write an override for every box, which froze the board.
+    const sdx = Math.round(dx / CELL) * CELL,
+      sdy = Math.round(dy / CELL) * CELL;
+    const refId = Object.keys(sp.positions).find((id) => !this.layout[id]);
+    for (const id of Object.keys(this.layout)) {
+      this.layout[id] = {
+        x: this.layout[id].x + sdx,
+        y: this.layout[id].y + sdy,
+      };
+    }
+    for (const k of Object.keys(this.rowY)) this.rowY[k] += sdy;
+    for (const nt of this._state.notes || []) {
+      if (!nt.anchor && Number.isFinite(nt.x) && Number.isFinite(nt.y)) {
+        nt.x += sdx;
+        nt.y += sdy;
       }
-      this.layout = layout; // freeze every node at its shifted spot
-      for (const nt of this._state.notes || []) {
-        if (!nt.anchor && Number.isFinite(nt.x) && Number.isFinite(nt.y)) {
-          nt.x += sdx;
-          nt.y += sdy;
-        }
-      }
-      for (const id of Object.keys(this.noteLayout)) {
-        this.noteLayout[id] = {
-          x: this.noteLayout[id].x + sdx,
-          y: this.noteLayout[id].y + sdy,
-        };
-      }
-      for (const d of this._state.dividers || []) {
-        d.at += d.orient === "h" ? sdy : sdx; // h sits at a Y, v at an X
-      }
+    }
+    for (const id of Object.keys(this.noteLayout)) {
+      this.noteLayout[id] = {
+        x: this.noteLayout[id].x + sdx,
+        y: this.noteLayout[id].y + sdy,
+      };
+    }
+    for (const d of this._state.dividers || []) {
+      d.at += d.orient === "h" ? sdy : sdx; // h sits at a Y, v at an X
     }
     this._state.width = newW;
     this._state.height = newH;
+    if (refId) {
+      const before = sp.positions[refId];
+      const after = this.solvePositions().positions[refId];
+      const off = this._state.offset ?? { x: 0, y: 0 };
+      off.x += before.x + sdx - after.x;
+      off.y += before.y + sdy - after.y;
+      if (off.x || off.y) this._state.offset = off;
+      else delete this._state.offset;
+    }
   }
 
   // Merge routing-cost overrides (persisted as a top-level `costs` field) so the

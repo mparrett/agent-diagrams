@@ -1078,6 +1078,11 @@ export function computeLayout(ctx, state, canvasW) {
   // springs that once pulled connected boxes together are gone with the
   // repulsion pass, so connectivity no longer moves a box.
   const { nodes, rowY = {}, layout = {} } = state;
+  // Translation for auto-placed boxes, written by canvas resizes that shift
+  // content: pinned boxes, notes and dividers move by editing their own
+  // positions, auto boxes through this, so a resize never pins them.
+  const offX = Number.isFinite(state.offset?.x) ? state.offset.x : 0;
+  const offY = Number.isFinite(state.offset?.y) ? state.offset.y : 0;
   const LAYOUT_MARGIN = 40;
   const LAYOUT_MIN_GAP = 30;
 
@@ -1212,7 +1217,7 @@ export function computeLayout(ctx, state, canvasW) {
   const frameGap = (overhang, out, inn) =>
     out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
   const rowYEff = new Map();
-  let rowCursor = 48, prevIdx = null;
+  let rowCursor = 48 + offY, prevIdx = null;
   for (const [i, r] of rowIdxs.entries()) {
     // Skipped row indices are an authoring hint for extra air — honor them.
     if (prevIdx !== null && r - prevIdx > 1) {
@@ -1319,7 +1324,7 @@ export function computeLayout(ctx, state, canvasW) {
     // one line through the middle of its boxes rather than a ragged edge.
     const x = colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
     positions.set(node.id, {
-      x: Math.max(LAYOUT_MARGIN, x),
+      x: Math.max(LAYOUT_MARGIN, x) + offX,
       y: rowYEff.get(node.row),
       w: dims.w,
       h: dims.h,

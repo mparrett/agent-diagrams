@@ -133,6 +133,8 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "noteLayout": {},                        // per-note absolute overrides { noteId: {x,y} } — set by GUI drags
   "pinned":  [],                           // optional: ids the human manually placed (editor markers; subset of layout)
   "rowY":    { "0": 60, "1": 220 },        // optional: row index → Y pixel (else auto-spaced)
+  "offset":  { "x": 0, "y": 0 },           // managed: shift for auto-placed boxes, written by canvas
+                                           //   resizes so moving content never pins it
   "rev":     0,                            // optimistic-concurrency counter (managed; see below)
 
   "font": "mono",                          // optional: "mono" (default) | "sans" (Instrument Sans)
@@ -252,8 +254,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   set-legend auto|off|<color>[:<dash>]=<label>...   explicit entries take palette names
   set-font <mono|sans> / set-font-size <px|reset>
   set-canvas <w> <h> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
-  fit-canvas                 Trim the board to hug boxes, notes and group frames. It writes a layout
-                             override for every node, so row/col edits stop moving them; run it last.
+  fit-canvas                 Trim the board to hug boxes, notes and group frames
   render
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)

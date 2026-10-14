@@ -14,6 +14,8 @@ The full snapshot exists because the old spring pass re-solved positions differe
 
 `fit-canvas` freezes every box the same way, through `_resizeCanvas`. Shifting the content can instead adjust a stored board offset and leave the boxes on automatic placement.
 
+Done 2026-10-14: the editor saves only placed boxes (986d5ab), and canvas resizes move auto-placed boxes through `state.offset` (the commit after it).
+
 This lands first, as its own change: it is useful without Stage 1 and lowers the risk of everything after it.
 
 ## Data model

@@ -828,3 +828,81 @@ Deno.test("the renderer honors the board's layout settings", () =>
       "wrapSlack: 1 should take the smaller, wrapped box",
     );
   }));
+
+Deno.test("fit-canvas trims without pinning auto-placed boxes", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 1500,
+      height: 900,
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 1, col: 1 },
+      ],
+    });
+    const d = Diagram.load(path);
+    const before = d.solvePositions();
+    d.fitCanvasToContent();
+    const after = d.solvePositions();
+    assert(Object.keys(d.layout).length === 0, "no box should be pinned");
+    assert(after.canvas.width < 1500, "it should still trim");
+    // Rigid move: both boxes shift by the same amount.
+    const shift = (id) => [
+      after.positions[id].x - before.positions[id].x,
+      after.positions[id].y - before.positions[id].y,
+    ];
+    assert(
+      JSON.stringify(shift("a")) === JSON.stringify(shift("b")),
+      `boxes moved apart: ${shift("a")} vs ${shift("b")}`,
+    );
+  }));
+
+Deno.test("a shifting resize moves pinned, auto and noted content together", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 900,
+      height: 600,
+      nodes: [
+        { id: "auto", label: "Auto", color: "blue", row: 0, col: 0 },
+        { id: "pin", label: "Pinned", color: "green", row: 1, col: 1 },
+      ],
+      layout: { pin: { x: 450, y: 240 } },
+      pinned: ["pin"],
+      notes: [{ id: "n", x: 600, y: 400, text: ["note"] }],
+    });
+    const d = Diagram.load(path);
+    const before = d.solvePositions();
+    // Grows left and up by 300,200; the shift snaps to whole cells: 300,195.
+    d.setCanvas(1200, 800, "se");
+    const after = d.solvePositions();
+    for (const id of ["auto", "pin"]) {
+      const dx = after.positions[id].x - before.positions[id].x;
+      const dy = after.positions[id].y - before.positions[id].y;
+      assert(dx === 300 && dy === 195, `${id} moved ${dx},${dy}`);
+    }
+    assert(
+      after.notes.n.x - before.notes.n.x === 300 &&
+        after.notes.n.y - before.notes.n.y === 195,
+      "note should move with the boxes",
+    );
+    assert(!d.layout.auto, "the auto box must not be pinned");
+  }));
+
+Deno.test("a resize with no shift leaves every box where it was", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 900,
+      height: 600,
+      nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
+    });
+    const d = Diagram.load(path);
+    const before = d.solvePositions().positions.a;
+    d.setCanvas(1400, 600, "nw"); // grow right only
+    const after = d.solvePositions().positions.a;
+    assert(
+      after.x === before.x && after.y === before.y,
+      `centring moved the box: ${before.x},${before.y} → ${after.x},${after.y}`,
+    );
+  }));
