@@ -148,9 +148,10 @@ Commands:
   remove-note <id> | <x> <y>           Remove a note
   free-note <id>                       Drop a note's drag override → back to its anchor/position
   add-group <id> <label> <node>... [--color=NAME] [--dash=dashed|dotted]
-                                       Labeled frame around nodes, drawn under the wires. Layout ignores it:
-                                       keep a group's nodes in their own rows/cols, or non-members land inside
-                                       (render and status --positions name them). --color tints the frame.
+                                       Labeled frame around nodes, drawn under the wires. Row/column spacing
+                                       makes room for frames, but boxes are not moved: keep a group's nodes in
+                                       their own rows/cols, or non-members land inside (render and
+                                       status --positions name them). --color tints the frame.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
   remove-group <id> / list-groups
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)

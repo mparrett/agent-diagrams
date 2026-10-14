@@ -1,6 +1,6 @@
 # Group layout: Stage 0 spec
 
-Status: agreed 2026-10-14, not started. Build after the remaining experience-report fixes.
+Status: built 2026-10-14. Where it differs from the plan below, the code follows the notes in "As built".
 
 ## Problem
 
@@ -62,6 +62,16 @@ Remove the "skip a row index between stacked groups" advice from the README and 
 ## Open question
 
 `FRAME_GAP` = 15px is a guess. Check it on the context board, which has three stacked group rows, before settling it.
+
+## As built
+
+- **Column gap:** the column gap the rule extends is `COL_GAP_PX` (40px), not `LAYOUT_MIN_GAP`.
+- **Drawn sizes:** spacing is measured from boxes as drawn. Box heights and column widths are rounded up to whole cells, which can add up to 14px, and that rounding is what left stacked frames about 6px apart. The group term is also rounded up to a whole cell.
+- **Skipped rows and columns:** air from skipped indices counts toward the clearance. A board that already skipped a row between groups, as the README used to advise, lays out exactly as before.
+- **Reach:** a group reaches one pad past its members, plus the reach of any smaller group it contains that shares the same edge. That matches how `groupFrames` wraps inner frames.
+- **Measured:** on the context board with consecutive rows, the clear space between a frame and the next group's label went from 14px to 29px. The same board with skipped rows is unchanged at 59px.
+- **Tests:** two of the five tests fail with the spacing turned off (stacked groups, nested groups). The other three hold either way on their fixtures and act as guards.
+- **Renderer fix:** groups only reach the renderer's layout because of 754a259, which passes the whole board state to it.
 
 ## Later stages, for context
 

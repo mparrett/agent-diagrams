@@ -1007,6 +1007,72 @@ export function boardExtent(gridBoxes, baseW = 0, baseH = 0) {
  * Compute grid-space boxes from diagram state JSON.
  * Returns array of box objects with {id, label, color, details, col, row, w, h, pixW, pixH, _origCol, _origRow}.
  */
+/**
+ * How far group frames reach past their members' boxes, per authored row and
+ * column boundary — what row and column spacing must leave room for (Stage 0
+ * of docs/project_notes/group-layout.md).
+ *
+ * Returns { below, above, right, left }: Maps from a row (or column) index to
+ * the reach of frames ending (or starting) there. A frame reaches GROUP_PAD
+ * past its members, plus half its label band at the top, since the label
+ * straddles the border. A group wraps any smaller group it contains that
+ * shares the same edge, one pad further out, as groupFrames draws it.
+ */
+export function groupReach(groups, nodes, labelBand) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const spans = (groups || [])
+    .filter((g) => g && Array.isArray(g.nodes))
+    .map((g) => {
+      const members = g.nodes.filter((id) => byId.has(id));
+      const rows = members.map((id) => byId.get(id).row);
+      const cols = members.map((id) => byId.get(id).col);
+      return {
+        members: new Set(members),
+        labeled: !!g.label,
+        rmin: Math.min(...rows),
+        rmax: Math.max(...rows),
+        cmin: Math.min(...cols),
+        cmax: Math.max(...cols),
+      };
+    })
+    .filter((g) => g.members.size > 0)
+    .sort((a, b) => a.members.size - b.members.size);
+  const inner = (g) =>
+    spans.filter((h) =>
+      h.members.size < g.members.size &&
+      [...h.members].every((id) => g.members.has(id))
+    );
+  const reach = {
+    below: new Map(),
+    above: new Map(),
+    right: new Map(),
+    left: new Map(),
+  };
+  const edge = new Map(); // span → { below, above, right, left }, smallest first
+  for (const g of spans) {
+    const ins = inner(g);
+    const deepest = (key, same) =>
+      Math.max(0, ...ins.filter(same).map((h) => edge.get(h)[key]));
+    const e = {
+      below: GROUP_PAD + deepest("below", (h) => h.rmax === g.rmax),
+      above: GROUP_PAD + (g.labeled ? labelBand / 2 : 0) +
+        deepest("above", (h) => h.rmin === g.rmin),
+      right: GROUP_PAD + deepest("right", (h) => h.cmax === g.cmax),
+      left: GROUP_PAD + deepest("left", (h) => h.cmin === g.cmin),
+    };
+    edge.set(g, e);
+    const bump = (map, k, v) => map.set(k, Math.max(map.get(k) ?? 0, v));
+    bump(reach.below, g.rmax, e.below);
+    bump(reach.above, g.rmin, e.above);
+    bump(reach.right, g.cmax, e.right);
+    bump(reach.left, g.cmin, e.left);
+  }
+  return reach;
+}
+
+// Clear space kept between a group frame and the next frame or box.
+export const FRAME_GAP = 15;
+
 export function computeLayout(ctx, state, canvasW) {
   // No `edges`: placement is now purely declarative from row/col. The edge
   // springs that once pulled connected boxes together are gone with the
@@ -1134,9 +1200,20 @@ export function computeLayout(ctx, state, canvasW) {
   // right way to be wrong: a gap is recoverable by eye, a scrambled stack is
   // not.
   const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
+  // Group frames reach past their members; the gap between two rows widens to
+  // hold them, measured from the boxes as drawn (whole cells, up to a cell
+  // taller than measured). No groups, no change.
+  const reach = groupReach(
+    state.groups,
+    nodes,
+    Math.round(SIZES.divider * 1.4),
+  );
+  const drawn = (px) => Math.ceil(px / CELL) * CELL;
+  const frameGap = (overhang, out, inn) =>
+    out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
   const rowYEff = new Map();
   let rowCursor = 48, prevIdx = null;
-  for (const r of rowIdxs) {
+  for (const [i, r] of rowIdxs.entries()) {
     // Skipped row indices are an authoring hint for extra air — honor them.
     if (prevIdx !== null && r - prevIdx > 1) {
       rowCursor += (r - prevIdx - 1) * ROW_GAP_PX;
@@ -1150,7 +1227,20 @@ export function computeLayout(ctx, state, canvasW) {
     for (const n of nodes) {
       if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
     }
-    rowCursor = Math.max(rowCursor, y + maxH + ROW_GAP_PX);
+    // Air from skipped row indices (added at the next iteration) counts
+    // toward the frames' clearance, so a board that already skips a row
+    // between groups keeps its spacing.
+    const next = rowIdxs[i + 1];
+    const skipAir = next === undefined ? 0 : (next - r - 1) * ROW_GAP_PX;
+    const gap = Math.max(
+      ROW_GAP_PX,
+      frameGap(
+        drawn(maxH) - maxH,
+        reach.below.get(r) ?? 0,
+        next === undefined ? 0 : reach.above.get(next) ?? 0,
+      ) - skipAir,
+    );
+    rowCursor = Math.max(rowCursor, y + maxH + gap);
     prevIdx = r;
   }
 
@@ -1197,14 +1287,24 @@ export function computeLayout(ctx, state, canvasW) {
 
   const colX = new Map();
   let colCursor = 0, prevCol = null;
-  for (const c of colIdxs) {
+  for (const [i, c] of colIdxs.entries()) {
     // Skipped column indices are an authoring hint for extra air, the same way
     // skipped row indices are.
     if (prevCol !== null && c - prevCol > 1) {
       colCursor += (c - prevCol - 1) * COL_GAP_PX;
     }
     colX.set(c, colCursor);
-    colCursor += colW.get(c) + COL_GAP_PX;
+    // The last column keeps the plain gap: colsTotal below subtracts it.
+    const next = colIdxs[i + 1];
+    const gap = next === undefined ? COL_GAP_PX : Math.max(
+      COL_GAP_PX,
+      frameGap(
+        drawn(colW.get(c)) - colW.get(c),
+        reach.right.get(c) ?? 0,
+        reach.left.get(next) ?? 0,
+      ) - (next - c - 1) * COL_GAP_PX,
+    );
+    colCursor += colW.get(c) + gap;
     prevCol = c;
   }
   // Centre the whole block, so a board narrower than its canvas is not pinned

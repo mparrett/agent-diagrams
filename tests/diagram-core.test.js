@@ -9,11 +9,14 @@ import {
   createAstarState,
   DEFAULT_COSTS,
   DEFAULT_MAX_BOX_W,
+  DEFAULT_SIZES,
   deriveTheme,
   drawRoutes,
   fontFamily,
   fontSizes,
+  FRAME_GAP,
   Grid,
+  groupFrames,
   MIN_BOX_H,
   MIN_BOX_W,
   nodeBoxHeight,
@@ -1256,5 +1259,92 @@ Deno.test("a short detail line stays whole when the wider box costs little", () 
     `wrapSlack 1 is the smallest-area pick: ${
       JSON.stringify(wrapped.detailLines)
     } at ${wrapped.pixW}`,
+  );
+});
+
+// ─── Stage 0 group spacing (docs/project_notes/group-layout.md) ───────────
+const LABEL_BAND = Math.round(DEFAULT_SIZES.divider * 1.4);
+const box = (id, row, col) => ({ id, label: id, row, col });
+function framed(nodes, groups, extra = {}) {
+  const ctx = measureContext();
+  const boxes = computeLayout(
+    ctx,
+    { edges: [], nodes, groups, ...extra },
+    4000,
+  );
+  const frames = new Map(groupFrames(groups, boxes).map((f) => [f.id, f]));
+  const px = (id) => {
+    const b = boxes.find((x) => x.id === id);
+    return { x: b.col * CELL, y: b.row * CELL, w: b.w * CELL, h: b.h * CELL };
+  };
+  return { boxes, frames, px };
+}
+// Top of a frame including its label, which straddles the border.
+const labelTop = (f) => f.rect.y - (f.label ? LABEL_BAND / 2 : 0);
+
+Deno.test("stacked groups in consecutive rows keep FRAME_GAP between frames", () => {
+  const { frames } = framed(
+    [box("a", 0, 0), box("b", 0, 1), box("c", 1, 0), box("d", 1, 1)],
+    [
+      { id: "top", label: "Top", nodes: ["a", "b"] },
+      { id: "low", label: "Low", nodes: ["c", "d"] },
+    ],
+  );
+  const top = frames.get("top"), low = frames.get("low");
+  const gap = labelTop(low) - (top.rect.y + top.rect.h);
+  assert(gap >= FRAME_GAP, `frames ${gap}px apart, want ≥ ${FRAME_GAP}`);
+});
+
+Deno.test("a box above a labeled group clears its label", () => {
+  const { frames, px } = framed(
+    [box("above", 0, 0), box("a", 1, 0)],
+    [{ id: "g", label: "Group", nodes: ["a"] }],
+  );
+  const above = px("above");
+  const gap = labelTop(frames.get("g")) - (above.y + above.h);
+  assert(gap >= FRAME_GAP, `label ${gap}px below the box, want ≥ ${FRAME_GAP}`);
+});
+
+Deno.test("an enclosing group's extra pad is spaced for", () => {
+  const { frames, px } = framed(
+    [box("above", 0, 0), box("a", 1, 0), box("b", 2, 0)],
+    [
+      { id: "outer", label: "Outer", nodes: ["a", "b"] },
+      { id: "inner", label: "Inner", nodes: ["a"] },
+    ],
+  );
+  const above = px("above");
+  const gap = labelTop(frames.get("outer")) - (above.y + above.h);
+  assert(gap >= FRAME_GAP, `outer label ${gap}px below the box`);
+});
+
+Deno.test("groups side by side in adjacent columns keep FRAME_GAP apart", () => {
+  const { frames } = framed(
+    [box("a", 0, 0), box("b", 0, 1)],
+    [
+      { id: "left", nodes: ["a"] },
+      { id: "right", nodes: ["b"] },
+    ],
+  );
+  const l = frames.get("left").rect, r = frames.get("right").rect;
+  const gap = r.x - (l.x + l.w);
+  assert(gap >= FRAME_GAP, `frames ${gap}px apart, want ≥ ${FRAME_GAP}`);
+});
+
+Deno.test("group spacing leaves skipped rows and explicit rowY alone", () => {
+  const nodes = [box("a", 0, 0), box("b", 2, 0)];
+  const groups = [
+    { id: "g1", label: "One", nodes: ["a"] },
+    { id: "g2", label: "Two", nodes: ["b"] },
+  ];
+  const ys = (extra, gs) =>
+    framed(nodes, gs, extra).boxes.map((b) => [b.id, b.row]);
+  // A skipped row already gives the frames more room than they need.
+  assertEquals(ys({}, groups), ys({}, undefined));
+  // An explicit rowY wins outright.
+  const pinned = { rowY: { "2": 120 } };
+  assertEquals(
+    ys(pinned, groups).find(([id]) => id === "b"),
+    ["b", Math.round(120 / CELL)],
   );
 });
