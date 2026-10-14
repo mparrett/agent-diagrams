@@ -1595,9 +1595,11 @@ async function commitCanvasResize(deltas) {
     await postCanvas({ action: "expand", ...deltas });
     await mergeReload();
     setStatus(`canvas ${diagramState.width}×${diagramState.height}`);
+    return true;
   } catch (e) {
     setStatus("resize failed: " + e.message);
     mergeReload();
+    return false;
   }
 }
 
@@ -2166,6 +2168,24 @@ document.getElementById("bExpandCanvas").onclick = async () => {
     );
   } catch (e) {
     setStatus("expand failed: " + e.message);
+  }
+};
+// Grow B by the same amount on every side. Content shifts by (GROW, GROW) in
+// board space, so the view pans with it and nothing appears to move.
+const GROW_CANVAS_PX = 4 * CELL;
+document.getElementById("bGrowCanvas").onclick = async () => {
+  view.panX += GROW_CANVAS_PX;
+  view.panY += GROW_CANVAS_PX;
+  const ok = await commitCanvasResize({
+    left: GROW_CANVAS_PX,
+    right: GROW_CANVAS_PX,
+    up: GROW_CANVAS_PX,
+    down: GROW_CANVAS_PX,
+  });
+  if (!ok) {
+    view.panX -= GROW_CANVAS_PX;
+    view.panY -= GROW_CANVAS_PX;
+    render();
   }
 };
 document.getElementById("bAutoLayout").onclick = () => {

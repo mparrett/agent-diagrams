@@ -194,6 +194,21 @@ try {
     "editor matches renderer with an inner group",
     same(await editorBoxes(), await solved()),
   );
+
+  const before = read();
+  await page.evaluate(`document.getElementById("bGrowCanvas").click()`);
+  await wait(1500);
+  s = read();
+  check(
+    "Grow all sides adds 60px per side without pinning",
+    s.width === before.width + 120 && s.height === before.height + 120 &&
+      same(s.layout, before.layout),
+    `${before.width}x${before.height} -> ${s.width}x${s.height}`,
+  );
+  check(
+    "editor matches renderer after growing the canvas",
+    same(await editorBoxes(), await solved()),
+  );
 } finally {
   await browser.close();
   server.kill();
