@@ -995,7 +995,7 @@ Deno.test("inner groups need a parent row/col and exclusive members", () =>
       err(() =>
         d.addGroup("h", "H", ["b"], { layout: "inner", row: 0, col: 0 })
       )
-        .includes("only one inner group"),
+        .includes("list it in its innermost group only"),
       "a node in two inner groups must be rejected",
     );
     d.save();
@@ -1120,4 +1120,200 @@ Deno.test("updateNode sets, clears and validates corners", () =>
     assert(node().corners === "square", "a rejected token keeps the old one");
     d.updateNode("a", { corners: null });
     assert(!("corners" in node()), "null clears it");
+  }));
+
+// Stage 2a: nested inner groups.
+function nestBoard(dir, groups) {
+  const path = `${dir}/diagram-state.json`;
+  writeState(path, {
+    nodes: ["a", "b", "c", "d"].map((id, i) => ({
+      id,
+      label: id.toUpperCase(),
+      color: "blue",
+      row: 0,
+      col: i,
+    })),
+    groups,
+  });
+  return path;
+}
+
+// Asserts `fn` throws a message containing every needle and leaves state as is.
+function rejects(d, fn, needles, what) {
+  const before = JSON.stringify(d._state);
+  for (const n of needles) assertThrowsWith(fn, n, what);
+  assert(JSON.stringify(d._state) === before, `${what}: state changed`);
+}
+
+const inner = (id, nodes, extra = {}) => ({
+  id,
+  nodes,
+  layout: "inner",
+  row: 0,
+  col: 0,
+  ...extra,
+});
+
+Deno.test("nodes and groups share one id namespace", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(nestBoard(dir, [{ id: "g", nodes: ["a"] }]));
+    rejects(
+      d,
+      () => d.addNode("g", { label: "G", color: "blue", row: 1, col: 0 }),
+      ['id "g" is already a group'],
+      "add-node with a group id",
+    );
+    rejects(
+      d,
+      () => d.addGroup("a", "A", ["b"]),
+      ['id "a" is already a node'],
+      "add-group with a node id",
+    );
+    const path = nestBoard(dir, [{ id: "a", nodes: ["b"] }]);
+    assertThrowsWith(
+      () => Diagram.load(path),
+      'id "a" is both a node and a group',
+      "load with a collision",
+    );
+  }));
+
+Deno.test("an inner group lists group ids; unknown ids are named", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(nestBoard(dir, [inner("k", ["a", "b"])]));
+    rejects(
+      d,
+      () => d.addGroup("ar", "AR", ["k", "topicmpa"], { layout: "inner" }),
+      ['group "ar": no such node or group: topicmpa'],
+      "unknown id",
+    );
+    d.addGroup("ar", "AR", ["k", "c"], { layout: "inner", row: 1, col: 1 });
+    assert(JSON.stringify(d.listGroups()[1].nodes) === '["k","c"]');
+  }));
+
+Deno.test("nesting rejects a self-listing and a cycle", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(
+      nestBoard(dir, [inner("ar", ["k", "c"]), inner("k", ["a"])]),
+    );
+    rejects(
+      d,
+      () => d.updateGroup("k", { add: ["k"] }),
+      ["inner groups form a cycle: k -> k"],
+      "self",
+    );
+    rejects(
+      d,
+      () => d.updateGroup("k", { add: ["ar"] }),
+      ["inner groups form a cycle: ar -> k -> ar"],
+      "cycle of two",
+    );
+    const path = nestBoard(dir, [inner("x", ["y"]), inner("y", ["x"])]);
+    assertThrowsWith(
+      () => Diagram.load(path),
+      "inner groups form a cycle: x -> y -> x",
+      "load with a cycle",
+    );
+  }));
+
+Deno.test("a group has one inner parent; annotation listers don't count", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(
+      nestBoard(dir, [inner("style", ["a"]), inner("ar", ["style"])]),
+    );
+    rejects(
+      d,
+      () =>
+        d.addGroup("marketing", "M", ["style"], {
+          layout: "inner",
+          row: 1,
+          col: 1,
+        }),
+      [
+        'group "style" is listed by inner groups "ar" and "marketing"; ' +
+        "a group can have only one inner parent",
+      ],
+      "two parents",
+    );
+    d.addGroup("notes", "Notes", ["style", "b"]);
+    assert(d.listGroups().length === 3, "annotation group may list style");
+  }));
+
+Deno.test("a node is in one inner group, listed in its innermost", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(nestBoard(dir, [inner("knowledge", ["a", "b"])]));
+    rejects(
+      d,
+      () =>
+        d.addGroup("ar", "AR", ["knowledge", "a"], {
+          layout: "inner",
+          row: 1,
+          col: 1,
+        }),
+      [
+        'node "a" is in inner groups "knowledge" and "ar"; ' +
+        "list it in its innermost group only",
+      ],
+      "node in parent and child",
+    );
+  }));
+
+Deno.test("only inner groups can be listed in a group", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(nestBoard(dir, [{ id: "notes", nodes: ["a"] }]));
+    rejects(
+      d,
+      () =>
+        d.addGroup("ar", "AR", ["notes", "b"], {
+          layout: "inner",
+          row: 1,
+          col: 1,
+        }),
+      ['group "ar" lists annotation group "notes"; only inner groups'],
+      "annotation id in an inner group",
+    );
+    rejects(
+      d,
+      () => d.addGroup("more", "More", ["notes"]),
+      ['group "more" lists annotation group "notes"'],
+      "annotation id in an annotation group",
+    );
+  }));
+
+Deno.test("update-group --annotation is refused on a nested group", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(
+      nestBoard(dir, [inner("style", ["a"]), inner("ar", ["style", "b"])]),
+    );
+    rejects(
+      d,
+      () => d.updateGroup("style", { layout: "annotation", label: "x" }),
+      ['group "style" is listed by inner group "ar"; remove it there first'],
+      "kind change on a listed group",
+    );
+    rejects(
+      d,
+      () => d.updateGroup("ar", { layout: "annotation" }),
+      ['group "ar" lists inner groups "style"; remove them first'],
+      "kind change on a parent",
+    );
+  }));
+
+Deno.test("remove-group moves a nested group's members into its parent", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(
+      nestBoard(dir, [
+        inner("ar", ["c", "style", "d"]),
+        inner("style", ["a", "inner2"]),
+        inner("inner2", ["b"]),
+        { id: "notes", nodes: ["style", "c"] },
+      ]),
+    );
+    assert(d.removeGroup("style") === true);
+    const g = Object.fromEntries(d.listGroups().map((g) => [g.id, g.nodes]));
+    assert(
+      JSON.stringify(g.ar) === '["c","a","inner2","d"]',
+      JSON.stringify(g.ar),
+    );
+    assert(JSON.stringify(g.notes) === '["c"]', JSON.stringify(g.notes));
+    assert(d.groupParent("inner2").id === "ar");
   }));

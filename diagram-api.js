@@ -230,6 +230,60 @@ function removeStaleLock(lockPath) {
 export class InvalidState extends Error {}
 
 /**
+ * Structural rules for groups listing groups (Stage 2 nesting): an annotation
+ * group is never listed, a group has at most one inner parent, a node is in at
+ * most one inner group, and inner groups form no cycle. Returns one message per
+ * violation, naming the ids involved.
+ */
+export function groupNestingErrors(groups) {
+  const errs = [];
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const isInner = (id) => byId.get(id)?.layout === "inner";
+  for (const g of groups) {
+    for (const id of g.nodes) {
+      if (byId.has(id) && !isInner(id)) {
+        errs.push(
+          `group "${g.id}" lists annotation group "${id}"; only inner groups can be listed`,
+        );
+      }
+    }
+  }
+  const inner = groups.filter((g) => g.layout === "inner");
+  const listers = new Map();
+  for (const g of inner) {
+    for (const id of new Set(g.nodes)) {
+      if (!listers.has(id)) listers.set(id, []);
+      listers.get(id).push(`"${g.id}"`);
+    }
+  }
+  for (const [id, gs] of listers) {
+    if (gs.length < 2) continue;
+    const names = gs.join(" and ");
+    errs.push(
+      byId.has(id)
+        ? `group "${id}" is listed by inner groups ${names}; a group can have only one inner parent`
+        : `node "${id}" is in inner groups ${names}; list it in its innermost group only`,
+    );
+  }
+  const state = new Map(); // id -> "open" while on the walk, "done" after
+  const walk = (g, path) => {
+    state.set(g.id, "open");
+    path.push(g.id);
+    for (const id of g.nodes) {
+      if (!isInner(id)) continue;
+      if (state.get(id) === "open") {
+        const loop = path.slice(path.indexOf(id));
+        errs.push(`inner groups form a cycle: ${[...loop, id].join(" -> ")}`);
+      } else if (!state.has(id)) walk(byId.get(id), path);
+    }
+    path.pop();
+    state.set(g.id, "done");
+  };
+  for (const g of inner) if (!state.has(g.id)) walk(g, []);
+  return errs;
+}
+
+/**
  * Check a parsed state before it becomes a Diagram.
  *
  * The file is the source of truth and agents hand-edit it, so a bad field used
@@ -294,6 +348,16 @@ export function validateState(state, path = "diagram-state.json") {
         at(`node "${n.id}" has a non-numeric "${k}" (${JSON.stringify(n[k])})`);
       }
     }
+  }
+
+  if (Array.isArray(state.groups)) {
+    const groups = state.groups.filter((g) =>
+      g && typeof g.id === "string" && Array.isArray(g.nodes)
+    );
+    for (const g of groups) {
+      if (seen.has(g.id)) at(`id "${g.id}" is both a node and a group`);
+    }
+    for (const m of groupNestingErrors(groups)) at(m);
   }
 
   for (const [id, p] of Object.entries(layout)) {
@@ -547,6 +611,9 @@ export class Diagram {
   addNode(id, opts) {
     if (this.nodes.find((n) => n.id === id)) {
       throw new Error(`Node "${id}" already exists`);
+    }
+    if ((this._state.groups || []).some((g) => g.id === id)) {
+      throw new Error(`id "${id}" is already a group`);
     }
     this._validateColor(opts.color);
     const node = {
@@ -1036,9 +1103,12 @@ export class Diagram {
     if (!Array.isArray(ids) || ids.length === 0) {
       throw new Error(`${what} needs at least one node id`);
     }
-    const missing = ids.filter((id) => !this.nodes.some((n) => n.id === id));
+    const known = (id) =>
+      this.nodes.some((n) => n.id === id) ||
+      (this._state.groups || []).some((g) => g.id === id);
+    const missing = ids.filter((id) => !known(id));
     if (missing.length) {
-      throw new Error(`${what}: no such node(s): ${missing.join(", ")}`);
+      throw new Error(`${what}: no such node or group: ${missing.join(", ")}`);
     }
     return [...new Set(ids)];
   }
@@ -1117,76 +1187,119 @@ export class Diagram {
           `inner group "${g.id}" needs a row and col on the parent board`,
         );
       }
-      // Stage 1: a node is laid out by at most one inner group.
-      const taken = (this._state.groups || []).filter((o) =>
-        o !== g && o.layout === "inner" &&
-        o.nodes.some((id) => g.nodes.includes(id))
+    }
+  }
+
+  // Throw if `groups` (the would-be groups array) breaks a nesting rule.
+  _checkGroups(groups) {
+    const errs = groupNestingErrors(groups);
+    if (errs.length) throw new Error(errs.join("\n"));
+  }
+
+  // An inner group places its members now; their overrides and pins would sit
+  // in the file ignored.
+  _claimMembers(g) {
+    if (g.layout !== "inner") return;
+    this.releaseLayout(g.nodes);
+    if (Array.isArray(this._state.pinned)) {
+      this._state.pinned = this._state.pinned.filter((id) =>
+        !g.nodes.includes(id)
       );
-      if (taken.length) {
-        const shared = g.nodes.filter((id) =>
-          taken.some((o) => o.nodes.includes(id))
-        );
-        throw new Error(
-          `inner group "${g.id}" shares ${
-            shared.join(", ")
-          } with inner group ` +
-            `"${taken[0].id}"; a node can be in only one inner group`,
-        );
-      }
-      // The group places its members now; their overrides and pins would sit
-      // in the file ignored.
-      this.releaseLayout(g.nodes);
-      if (Array.isArray(this._state.pinned)) {
-        this._state.pinned = this._state.pinned.filter((id) =>
-          !g.nodes.includes(id)
-        );
-      }
     }
   }
 
   addGroup(id, label, nodes, opts = {}) {
-    const groups = this._state.groups ||= [];
+    const groups = this._state.groups || [];
     if (!id) throw new Error("group id is required");
     if (groups.some((g) => g.id === id)) {
       throw new Error(`Group "${id}" already exists`);
     }
+    if (this.nodes.some((n) => n.id === id)) {
+      throw new Error(`id "${id}" is already a node`);
+    }
     const g = { id, nodes: this._groupNodes(nodes, `group "${id}"`) };
     if (label) g.label = label;
     this._groupStyle(g, opts);
-    groups.push(g);
+    this._checkGroups([...groups, g]);
+    (this._state.groups ||= []).push(g);
+    this._claimMembers(g);
   }
 
   // opts: label, color, dash (null clears each), nodes (replaces the set),
-  // add / remove (arrays of ids, applied after nodes).
+  // add / remove (arrays of ids, applied after nodes). Validates on a copy, so
+  // a rejected update leaves the group as it was.
   updateGroup(id, opts = {}) {
-    const g = (this._state.groups || []).find((g) => g.id === id);
+    const groups = this._state.groups || [];
+    const g = groups.find((g) => g.id === id);
     if (!g) throw new Error(`Group "${id}" not found`);
+    const c = structuredClone(g);
     if (opts.label !== undefined) {
-      if (opts.label) g.label = opts.label;
-      else delete g.label;
+      if (opts.label) c.label = opts.label;
+      else delete c.label;
     }
     let nodes = opts.nodes
       ? this._groupNodes(opts.nodes, `group "${id}"`)
-      : g.nodes;
+      : c.nodes;
     if (opts.add) {
       nodes = [
-        ...new Set([...nodes, ...this._groupNodes(opts.add, "--add")]),
+        ...new Set([...nodes, ...this._groupNodes(opts.add, `group "${id}"`)]),
       ];
     }
     if (opts.remove) nodes = nodes.filter((n) => !opts.remove.includes(n));
     if (nodes.length === 0) {
       throw new Error(`group "${id}" would be empty; use remove-group`);
     }
-    g.nodes = nodes;
-    this._groupStyle(g, opts);
+    c.nodes = nodes;
+    if (opts.layout === "annotation" && g.layout === "inner") {
+      const parent = groups.find((o) =>
+        o !== g && o.layout === "inner" && o.nodes.includes(id)
+      );
+      if (parent) {
+        throw new Error(
+          `group "${id}" is listed by inner group "${parent.id}"; remove it there first`,
+        );
+      }
+      const kids = nodes.filter((n) =>
+        groups.some((o) => o.id === n && o.layout === "inner")
+      );
+      if (kids.length) {
+        throw new Error(
+          `group "${id}" lists inner groups ${
+            kids.map((k) => `"${k}"`).join(", ")
+          }; remove them first`,
+        );
+      }
+    }
+    this._groupStyle(c, opts);
+    this._checkGroups(groups.map((o) => o === g ? c : o));
+    for (const k of Object.keys(g)) delete g[k];
+    Object.assign(g, c);
+    this._claimMembers(g);
   }
 
-  // Idempotent (retry-safe): false if no such group.
+  // The inner group that lists group `id`, if any.
+  groupParent(id) {
+    return (this._state.groups || []).find((o) =>
+      o.id !== id && o.layout === "inner" && o.nodes.includes(id)
+    );
+  }
+
+  // Idempotent (retry-safe): false if no such group. A nested group's direct
+  // members move into its parent at its position; any annotation group that
+  // listed it drops the id.
   removeGroup(id) {
     const gs = this._state.groups || [];
     const idx = gs.findIndex((g) => g.id === id);
     if (idx === -1) return false;
-    gs.splice(idx, 1);
+    const [g] = gs.splice(idx, 1);
+    const parent = this.groupParent(id);
+    if (parent) {
+      const moved = g.nodes.filter((n) => !parent.nodes.includes(n));
+      parent.nodes.splice(parent.nodes.indexOf(id), 1, ...moved);
+    }
+    for (const o of gs) {
+      if (o !== parent) o.nodes = o.nodes.filter((n) => n !== id);
+    }
     if (gs.length === 0) delete this._state.groups;
     return true;
   }

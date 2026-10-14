@@ -176,7 +176,9 @@ Commands:
   add-group ... --inner --row=N --col=N
                                        Inner group: its members' row/col are positions inside the group,
                                        which is laid out as one box at row N, col N of the board. A node can
-                                       be in one inner group; boxes inside cannot be pinned yet.
+                                       be in one inner group; boxes inside cannot be pinned yet. An inner
+                                       group's nodes may list other inner group ids, nesting them; node and
+                                       group ids share one namespace.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
                     [--inner|--annotation] [--row=N] [--col=N]
   add-group / update-group ... [--labelPos=top-border|top-inside|top-outside|bottom-border|bottom-inside|bottom-outside]
@@ -587,8 +589,10 @@ function run() {
         console.error("Error: remove-group requires <id>");
         Deno.exit(1);
       }
-      let existed;
+      let existed, parent, moved;
       const d = mutate((d) => {
+        parent = d.groupParent(id)?.id;
+        moved = d.listGroups().find((g) => g.id === id)?.nodes;
         existed = d.removeGroup(id);
       });
       d.render();
@@ -597,6 +601,12 @@ function run() {
           ? `Removed group "${id}" (rev ${d.rev})`
           : `No group "${id}" — nothing removed (rev ${d.rev})`,
       );
+      if (existed && parent) {
+        console.log(
+          `Moved ${moved.join(", ")} into group "${parent}"; ` +
+            `their row/col are now read in "${parent}"'s grid`,
+        );
+      }
       break;
     }
 

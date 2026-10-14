@@ -562,3 +562,62 @@ Deno.test("CLI: init's render hint in the tool repo keeps --state", async () =>
     assert(hint.startsWith("deno task render"), hint);
     await Deno.stat(`${dir}/diagram.png`);
   }));
+
+Deno.test("CLI: node and group ids share one namespace", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: NODES,
+      edges: [],
+      groups: [{ id: "g", nodes: ["a"] }],
+    });
+    const before = Deno.readTextFileSync(path);
+    let r = await runCli(path, ["add-node", "g", "G", "blue", "1", "1"]);
+    assert(r.code !== 0 && r.err.includes('id "g" is already a group'), r.err);
+    r = await runCli(path, ["add-group", "b", "B", "c"]);
+    assert(r.code !== 0 && r.err.includes('id "b" is already a node'), r.err);
+    assert(Deno.readTextFileSync(path) === before, "state must be unchanged");
+  }));
+
+Deno.test("CLI: nested inner groups validate and remove-group promotes", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).groups;
+    let r = await runCli(path, [
+      "add-group",
+      "k",
+      "K",
+      "a",
+      "b",
+      "--inner",
+      "--row=0",
+      "--col=0",
+    ]);
+    assert(r.code === 0, r.err);
+    r = await runCli(path, [
+      "add-group",
+      "ar",
+      "AR",
+      "k",
+      "c",
+      "--inner",
+      "--row=0",
+      "--col=0",
+    ]);
+    assert(r.code === 0, r.err);
+    const before = Deno.readTextFileSync(path);
+    r = await runCli(path, ["update-group", "k", "--add=ar"]);
+    assert(
+      r.code !== 0 && r.err.includes("inner groups form a cycle: k -> ar -> k"),
+      r.err,
+    );
+    r = await runCli(path, ["update-group", "k", "--annotation"]);
+    assert(r.code !== 0 && r.err.includes('listed by inner group "ar"'), r.err);
+    assert(Deno.readTextFileSync(path) === before, "state must be unchanged");
+
+    r = await runCli(path, ["remove-group", "k"]);
+    assert(r.code === 0, r.err);
+    assert(r.out.includes(`now read in "ar"'s grid`), r.out);
+    assertEquals(read().map((g) => [g.id, g.nodes]), [["ar", ["a", "b", "c"]]]);
+  }));
