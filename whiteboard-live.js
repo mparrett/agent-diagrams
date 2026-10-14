@@ -2438,6 +2438,31 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
+// Connector dots — a dot where each wire leaves its box, or none.
+const connectorDotsBox = document.getElementById("connectorDots");
+connectorDotsBox.addEventListener("change", async () => {
+  const on = connectorDotsBox.checked;
+  if (on) delete diagramState.connectorDots;
+  else diagramState.connectorDots = false;
+  render();
+  newNonce();
+  try {
+    const r = await fetch(API + "/connectordots", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ on, baseRev: lastRev, nonce: lastSentNonce }),
+    });
+    if (r.ok) {
+      lastRev = (await r.json()).rev;
+      setStatus(
+        "connector dots: " + (on ? "on" : "off") + " (rev " + lastRev + ")",
+      );
+    } else setStatus("connector-dots save rejected: HTTP " + r.status);
+  } catch (e) {
+    setStatus("connector-dots save failed: " + e.message);
+  }
+});
+
 // ── Shared live-styling controls (chips / color picker / stepper) ──
 // The editors apply every change immediately to the targeted edge/box (the
 // setBoxColor pattern: optimistic local mutate → rebuild → render → nonce-
@@ -4004,6 +4029,7 @@ async function init() {
   initSliders();
   fontSizeInput.value = diagramState.fontSize || "";
   centerConnectorsBox.checked = diagramState.connectorAnchor === "center";
+  connectorDotsBox.checked = diagramState.connectorDots !== false;
 
   // Need canvas context for text measurement
   initCanvas();

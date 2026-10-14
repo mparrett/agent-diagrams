@@ -423,6 +423,10 @@ const WRITE_OPS = {
     domainStatus: 400,
     apply: (dd, b) => dd.setConnectorAnchor(b.mode ?? null), // "align"|"center"|null
   },
+  "/connectordots": {
+    domainStatus: 400,
+    apply: (dd, b) => dd.setConnectorDots(b.on !== false),
+  },
 };
 
 async function handleWrite(req, op, board) {

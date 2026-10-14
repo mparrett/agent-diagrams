@@ -430,6 +430,17 @@ try {
     JSON.stringify({ layout: s.layout, innerLayout: s.innerLayout }),
   );
   await parity("editor matches renderer after Auto Layout");
+
+  const dots = async () => {
+    await page.evaluate(`document.getElementById("connectorDots").click()`);
+    await wait(800);
+    return read().connectorDots;
+  };
+  check(
+    "Connector dots off saves connectorDots: false",
+    await dots() === false,
+  );
+  check("Connector dots on clears it", await dots() === undefined);
 } finally {
   await browser.close();
   server.kill();

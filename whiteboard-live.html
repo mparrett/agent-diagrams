@@ -404,6 +404,10 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
            title="Center connectors on each box side (vs the default: align to keep straight runs)">
       <input id="centerConnectors" type="checkbox" style="width:auto"> Center connectors
     </label>
+    <label style="display:flex;gap:6px;align-items:center;color:#8b949e;font-size:11px;cursor:pointer"
+           title="Draw a dot where each wire leaves its box; off starts wires at the box edge">
+      <input id="connectorDots" type="checkbox" style="width:auto"> Connector dots
+    </label>
     <button id="bSave" title="Copy the current layout JSON to the clipboard">Copy to Clipboard</button>
     <button id="bViewer" title="Open the live PNG viewer in a new tab">PNG Viewer ↗</button>
   </div>
