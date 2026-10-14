@@ -3291,7 +3291,10 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE, board = {}) {
     const intruders = (boxes || [])
       .filter((b) => !set.has(b.id) && rectsOverlap(rect, rectOf(b)))
       .map((b) => b.id);
-    frames.set(v, { rect, labelled, intruders, labelStyle: st });
+    // Frames follow the board's `corners` default, like boxes without their
+    // own; a frame's round radius is larger than a box's.
+    const radius = (v.g.corners ?? board.corners) === "square" ? 0 : 10;
+    frames.set(v, { rect, labelled, intruders, labelStyle: st, radius });
   }
   // Report in authoring order; draw order is the same (outer frames are larger,
   // and translucent fills stack, so order only matters for the label chips).
@@ -3324,13 +3327,13 @@ export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
     ctx.save();
     if (c) {
       ctx.fillStyle = withAlpha(c.bg, 0.5);
-      drawRoundRect(ctx, x, y, w, h, 10);
+      drawRoundRect(ctx, x, y, w, h, f.radius ?? 10);
       ctx.fill();
     }
     ctx.strokeStyle = withAlpha(stroke, 0.7);
     ctx.lineWidth = 1.25;
     ctx.setLineDash(resolveDash(f.dash));
-    drawRoundRect(ctx, x, y, w, h, 10);
+    drawRoundRect(ctx, x, y, w, h, f.radius ?? 10);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();

@@ -2076,3 +2076,21 @@ Deno.test("connectorDots off drops the start dot and starts at the box edge", ()
   assert(on.starts[0].x === edge + CELL / 2, `dot start ${on.starts[0].x}`);
   assert(off.starts[0].x === edge, `edge start ${off.starts[0].x}`);
 });
+
+Deno.test("group frames follow the board's corners default", () => {
+  const groups = [{ id: "g", label: "G", nodes: ["a"] }];
+  const nodes = [box("a", 0, 0)];
+  const radii = (board) => {
+    const boxes = computeLayout(
+      measureContext(),
+      { edges: [], nodes, groups, ...board },
+      4000,
+    );
+    const { ctx, log } = recordingContext();
+    drawGroups(ctx, groupFrames(groups, boxes, undefined, board));
+    return [...new Set(log.radii)];
+  };
+  assert(JSON.stringify(radii({})) === "[10]", JSON.stringify(radii({})));
+  const sq = radii({ corners: "square" });
+  assert(JSON.stringify(sq) === "[0]", JSON.stringify(sq));
+});
