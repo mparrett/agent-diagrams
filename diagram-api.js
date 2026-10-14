@@ -94,6 +94,25 @@ export function paletteFromState(state) {
 // metrics and drawing must use the same font). Unlike the old WASM canvaskit,
 // native Skia shapes proportional fonts correctly, so sans now measures the same
 // here as in the browser. Falls back silently if assets are gone.
+// Space between one legend label and the next entry's swatch.
+const LEGEND_GAP = 28;
+
+/**
+ * Left edge of each legend swatch, given each label's measured width. Each
+ * entry takes its own width plus LEGEND_GAP, so the space between entries is
+ * the same whatever their label lengths. (Fixed 160px slots left a wide gap
+ * after a short label and a tight one after a long label.)
+ */
+export function legendSwatchXs(labelWidths, x0 = 20) {
+  const xs = [];
+  let x = x0;
+  for (const w of labelWidths) {
+    xs.push(x);
+    x += 18 + w + LEGEND_GAP;
+  }
+  return xs;
+}
+
 let _fontsLoaded = false;
 // Fonts.register hands Skia a pointer into the Uint8Array without copying it,
 // and Skia reads glyphs from that memory for the life of the process. Dropping
@@ -1814,9 +1833,11 @@ export class Diagram {
       ctx.font = `${pal.sizes.legend}px ${pal.font}`;
       ctx.textAlign = "left";
       const legendY = H - (this._state.footer ? 35 : 20);
-      // 160px slots, widened for a label that would run into the next swatch.
-      let x = 20;
-      for (const item of legend) {
+      const xs = legendSwatchXs(
+        legend.map((item) => ctx.measureText(item.label).width),
+      );
+      for (const [i, item] of legend.entries()) {
+        const x = xs[i];
         if (item.dash) {
           ctx.fillStyle = item.bg || pal.background;
           ctx.fillRect(x, legendY, 12, 12);
@@ -1832,7 +1853,6 @@ export class Diagram {
         }
         ctx.fillStyle = pal.textDim;
         ctx.fillText(item.label, x + 18, legendY + 10);
-        x += Math.max(160, 18 + ctx.measureText(item.label).width + 24);
       }
       if (this._state.footer) {
         ctx.fillStyle = pal.textDim;

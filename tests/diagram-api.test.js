@@ -1,5 +1,5 @@
 import { assert } from "@std/assert";
-import { Diagram, LockBusy } from "../diagram-api.js";
+import { Diagram, legendSwatchXs, LockBusy } from "../diagram-api.js";
 
 function writeState(path, state = {}) {
   Deno.writeTextFileSync(
@@ -793,3 +793,14 @@ Deno.test("fit-canvas keeps notes and group frames on the board", () =>
     assert(g.x >= 0 && g.y >= 0, `group frame clipped: ${JSON.stringify(g)}`);
     assert(sp.canvas.width < 1500, "it should still trim");
   }));
+
+Deno.test("legend entries are spaced by their own widths", () => {
+  const widths = [140, 40, 60, 160];
+  const xs = legendSwatchXs(widths);
+  // Gap from the end of one label (swatch 12 + 6 + width) to the next swatch.
+  const gaps = widths.slice(0, -1).map((w, i) => xs[i + 1] - (xs[i] + 18 + w));
+  assert(
+    gaps.every((g) => g === gaps[0]) && gaps[0] > 0,
+    `uneven legend gaps: ${gaps}`,
+  );
+});
