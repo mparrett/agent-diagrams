@@ -134,6 +134,14 @@ const BASE_LABEL_PX = 13;
 // state.maxNodeW; declared here because fontSizes() runs at module load.
 export const DEFAULT_MAX_BOX_W = 340;
 
+// How much more area an auto-sized box may take to keep its title on one
+// line. The ladder otherwise picks the smallest box, and a two-word title is
+// often cheapest wrapped ("Message / history"), which reads worse than the
+// box size it saves. 1.5 is the smallest value that takes the 7-cell rung's
+// two-line box to the 12-cell rung's one-line box for a short title. Override
+// per board with state.titleSlack; 1 turns the preference off.
+export const DEFAULT_TITLE_SLACK = 1.5;
+
 export function fontSizes(state = {}) {
   const fs = Number.isFinite(state.fontSize) && state.fontSize > 0
     ? state.fontSize
@@ -172,6 +180,9 @@ export function fontSizes(state = {}) {
       maxW: Number.isFinite(state.maxNodeW)
         ? (state.maxNodeW > 0 ? r(state.maxNodeW) : Infinity)
         : r(DEFAULT_MAX_BOX_W),
+      titleSlack: Number.isFinite(state.titleSlack) && state.titleSlack >= 1
+        ? state.titleSlack
+        : DEFAULT_TITLE_SLACK,
     },
   };
 }
@@ -798,7 +809,7 @@ export function nodeBoxSize(
 
   const cands = boxCandidates(ctx, node, font, sizes);
   return cands.length
-    ? bestCandidate(cands)
+    ? bestCandidate(cands, sizes.box.titleSlack ?? DEFAULT_TITLE_SLACK)
     : sizeAt(ctx, node, 0, font, sizes);
 }
 
@@ -913,12 +924,25 @@ function retainedChars(sized) {
  * whole reason the ceiling exists — the previous fixed 340 wrapped text rather
  * than cutting it, and losing that would be a step backwards.
  */
-function bestCandidate(cands) {
+function bestCandidate(cands, titleSlack = DEFAULT_TITLE_SLACK) {
   const smallest = (pool) => pool.reduce((a, b) => (b.area < a.area ? b : a));
+  // The smallest box, unless a one-line title is available for at most
+  // titleSlack times its area. Compared in drawn cells, which is what the
+  // board spends: content pixels made "Message history" look 1.69x dearer on
+  // one line when its drawn box is 1.43x.
+  const cells = (c) => Math.ceil(c.w / CELL) * Math.ceil(c.h / CELL);
+  const pick = (pool) => {
+    const best = smallest(pool);
+    if (best.labelLines.length <= 1) return best;
+    const oneLine = pool.filter((c) =>
+      c.labelLines.length === 1 && cells(c) <= cells(best) * titleSlack
+    );
+    return oneLine.length ? smallest(oneLine) : best;
+  };
   const keeps = cands.filter((c) => !c.clipped);
   const inBand = keeps.filter((c) => c.feasible);
-  if (inBand.length) return smallest(inBand);
-  if (keeps.length) return smallest(keeps); // text intact beats a pretty shape
+  if (inBand.length) return pick(inBand);
+  if (keeps.length) return pick(keeps); // text intact beats a pretty shape
 
   // Nothing holds it all. Now the objective has to inverte: minimising area
   // here picks the *narrowest* rung, which is by construction the one that
@@ -1027,8 +1051,10 @@ export function computeLayout(ctx, state, canvasW) {
           // which is not uniformity, just shrinking.
           if ((popularity.get(w) || 0) <= curCount) continue;
           const alt = sizeAt(ctx, node, w, FONT, SIZES);
-          // Uniformity is never worth losing text for.
+          // Uniformity is never worth losing text for, nor worth re-wrapping
+          // a title the chooser paid titleSlack to keep on one line.
           if (!curClipped && isClipped(node, alt)) continue;
+          if (alt.labelLines.length > cur.labelLines.length) continue;
           // Nor worth leaving the aspect band the chooser just enforced: a
           // narrower rung is taller *and* smaller in area, so the tolerance
           // test alone waves through the tall thin columns the band rejects.

@@ -436,10 +436,15 @@ Deno.test("box width never shrinks as its label grows", () => {
   // that all clip" — which is the narrowest rung, the one discarding the most
   // text. The box got *smaller* as the label got longer, dropping three
   // quarters of it, which is worse than having no ceiling at all.
+  //
+  // One shrink is allowed: where the title gains a line. A title is kept on
+  // one line while that costs at most titleSlack times the area, so the word
+  // that no longer fits on any affordable line wraps it into a narrower,
+  // taller box. No text is lost there, which the second assertion holds.
   const words =
     "Reconcile the fork and upstream ownership status before the release goes out to the wider team"
       .split(" ");
-  let prevW = 0, prevShown = 0;
+  let prevW = 0, prevShown = 0, prevLines = 0;
   for (let n = 3; n <= words.length; n++) {
     const label = words.slice(0, n).join(" ");
     const b = computeLayout(ctx, {
@@ -447,8 +452,8 @@ Deno.test("box width never shrinks as its label grows", () => {
       nodes: [{ id: "a", label, row: 0, col: 0 }],
     }, 4000).find((x) => x.id === "a");
     assert(
-      b.pixW >= prevW,
-      `width shrank at ${n} words: ${b.pixW} after ${prevW}`,
+      b.pixW >= prevW || b.labelLines.length > prevLines,
+      `width shrank at ${n} words without the title gaining a line: ${b.pixW} after ${prevW}`,
     );
     const shown = b.labelLines.join(" ").replace(/…/g, "").length;
     assert(
@@ -457,6 +462,7 @@ Deno.test("box width never shrinks as its label grows", () => {
     );
     prevW = b.pixW;
     prevShown = shown;
+    prevLines = b.labelLines.length;
   }
 });
 
@@ -1173,4 +1179,53 @@ Deno.test("an edge label stays off a group frame's border", () => {
   const r = ls.find((l) => l.edge.id === "e").rect;
   const onBorder = r.y < frameTop && r.y + r.h > frameTop;
   assert(!onBorder, `label straddles the frame border: ${JSON.stringify(r)}`);
+});
+
+Deno.test("a short title stays on one line when the wider box costs little", () => {
+  const ctx = measureContext();
+  const box = (state) =>
+    computeLayout(ctx, {
+      edges: [],
+      ...state,
+      nodes: [{ id: "a", label: "Message history", row: 0, col: 0 }],
+    }, 4000).find((b) => b.id === "a");
+  // The stub measurer floors both boxes at the minimum height, so the
+  // one-line box costs 180/105 = 1.71x here (1.43x with real fonts).
+  const kept = box({ titleSlack: 2 });
+  assert(
+    kept.labelLines.length === 1,
+    `slack 2 should keep it whole: ${JSON.stringify(kept.labelLines)}`,
+  );
+  const wrapped = box({ titleSlack: 1 });
+  assert(
+    wrapped.labelLines.length === 2 && wrapped.pixW < kept.pixW,
+    `titleSlack 1 is the old smallest-area pick: ${
+      JSON.stringify(wrapped.labelLines)
+    } at ${wrapped.pixW}`,
+  );
+});
+
+Deno.test("the uniformity pass does not re-wrap a title kept on one line", () => {
+  const ctx = measureContext();
+  const peers = ["Alpha svc", "Beta svc", "Gamma svc"].map((label, i) => ({
+    id: `p${i}`,
+    label,
+    row: 0,
+    col: i,
+  }));
+  const boxes = computeLayout(ctx, {
+    edges: [],
+    titleSlack: 2,
+    nodes: [...peers, {
+      id: "t",
+      label: "Portal: Knowledge area",
+      row: 1,
+      col: 0,
+    }],
+  }, 4000);
+  const t = boxes.find((b) => b.id === "t");
+  assert(
+    t.labelLines.length === 1,
+    `title re-wrapped onto a popular width: ${JSON.stringify(t.labelLines)}`,
+  );
 });

@@ -139,6 +139,8 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "fontSize": 13,                          // optional: base box-label px (default 13); scales the whole diagram
   "uniformWidth": false,                   // optional: homogenize box widths (see below)
   "maxNodeW": 340,                         // optional: px a box grows to before its text wraps (0 = never wrap)
+  "titleSlack": 1.5,                       // optional: extra area (x, in drawn cells) a box may take to
+                                           //   keep its title on one line; 1 = always the smallest box
   "dividers": [                            // optional: dotted boundary lines across the canvas
     { "orient": "h", "at": 240, "label": "host boundary" }
   ],
@@ -175,6 +177,8 @@ Light annotation primitives mark regions and add commentary without changing how
 - **Text wrapping and box width** — an auto-sized box doesn't take whatever its longest string measures. It picks a width from a small ladder of whole-cell sizes and wraps its text to fit, choosing the rung that gives the **smallest area** while staying in a sane aspect band and without cutting any text. Titles wrap to two lines, each `details` line to three.
 
   Three things follow. Box edges line up, because every width comes off the same ladder — on a real board, free-growing boxes took 19 distinct widths where the ladder takes 3. Boards get smaller, since a tall narrow box usually beats a wide flat one. And nothing silently vanishes: a rung that would ellipsize is rejected while a wider one still holds the text, so the box grows rather than truncating.
+
+  One exception to smallest-area: a box keeps its title on one line when that costs at most `titleSlack` (default 1.5) times the drawn area, so a short title like "Message history" is not split to save a few cells. Set `"titleSlack": 1` for the pure smallest-area pick.
 
   Without a ceiling, one long string sets the column width for its whole row, so a single node stretches the board — and a wide enough board hits the 4096px raster cap and is downscaled until nothing reads. `maxNodeW` (default 340px, scaled by `fontSize`) caps the top of the ladder. A word too long to break is never split: it overflows and widens the box, so module paths and ids stay readable. To opt out, set `"maxNodeW": 0` for the board, or give one box an explicit `"w"` — an explicit width always wins.
 - **Typeface** — `"font": "sans"` (or `set-font sans`) switches the whole diagram from the default monospace to bundled Instrument Sans (with DejaVu's symbol glyphs merged in, so `✗ ✓ → ●` still render). The editor ships a matching `@font-face`, so it stays WYSIWYG.
