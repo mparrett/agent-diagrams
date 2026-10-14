@@ -79,13 +79,27 @@ function outputNameFor(statePath) {
   }
 }
 
+// The watcher reports paths with symlinks resolved (on macOS, the temp dir
+// /var/folders/… arrives as /private/var/folders/…), so a board reached through
+// a symlink never matched its own file events and never live-reloaded.
+function realOr(path) {
+  try {
+    return Deno.realPathSync(path);
+  } catch {
+    return path;
+  }
+}
+
 function makeBoard(name, statePath) {
   const stateDir = dirname(statePath);
+  const outputName = outputNameFor(statePath);
   return {
     name,
     statePath,
     stateDir,
-    outputPath: join(stateDir, outputNameFor(statePath)),
+    outputPath: join(stateDir, outputName),
+    realStatePath: realOr(statePath),
+    realOutputPath: join(realOr(stateDir), outputName),
     lastRev: 0,
     suppressPngUntil: 0,
     pendingNonce: null,
@@ -184,8 +198,12 @@ function rerender(board) {
 /** Which board does a changed file belong to, and is it state or png? */
 function boardForPath(p) {
   for (const b of boards.values()) {
-    if (p === b.statePath) return { board: b, kind: "state" };
-    if (p === b.outputPath) return { board: b, kind: "png" };
+    if (p === b.statePath || p === b.realStatePath) {
+      return { board: b, kind: "state" };
+    }
+    if (p === b.outputPath || p === b.realOutputPath) {
+      return { board: b, kind: "png" };
+    }
   }
   return null;
 }
