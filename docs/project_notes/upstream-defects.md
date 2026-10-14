@@ -23,7 +23,7 @@ Currently pinned: **0.5.6** (`deno.json`). Latest release: **0.5.8**.
 
 | # | Fault | Workaround | Canary | Reported | Last checked |
 |---|---|---|---|---|---|
-| 1 | Glyph drop — `fillText` silently draws nothing | measurement font aliases | yes, automated | no — no standalone repro | 0.5.8, 2026-07-31 |
+| 1 | Glyph drop — `fillText` silently draws nothing | **ours, fixed 2026-10-13**: font buffers are now kept alive | — | not upstream's | 0.5.6, 2026-10-13 |
 | 2 | `shadowBlur` displaced under `ctx.scale(DPR)` | shadows off in the PNG renderer | yes, automated | no | 0.5.8, 2026-07-31 |
 | 3 | `getImageData` doesn't reflect what was drawn | decode the encoded PNG instead | no | no | 0.5.8, 2026-07-30 |
 | 4 | SIGSEGV on linux-x64 the moment it rasterizes | CI runs rasterizing tests on macOS only | no | no — has a repro, unfiled | 0.5.6, 2026-08-12 |
@@ -31,6 +31,22 @@ Currently pinned: **0.5.6** (`deno.json`). Latest release: **0.5.8**.
 ---
 
 ## 1. Glyph drop — text measured on one canvas won't draw on another
+
+**Root cause, found 2026-10-13: ours, not the library's.** `ensureFonts`
+passed `Fonts.register` a `Uint8Array` from `Deno.readFileSync` and kept no
+reference to it. The binding hands Skia a pointer into that array without
+copying, and Skia reads glyph data from it for the rest of the process, so
+once the garbage collector reclaimed the array Skia was reading freed memory.
+The array now lives in a module-level list. With that one change the canary's
+25 unaliased renders all drew (about half did before), and a dense board
+rendered in 12 separate processes gave 12 identical PNGs (4 variants in 6
+before, with letters missing and bold set in regular).
+
+Everything below is the investigation as it stood before then. The
+"measured on one canvas" trigger was real but incidental: which strings lost
+their glyphs depended on what the allocator had put in the freed memory, which
+is also why the rate moved with layout and why no standalone repro ever
+reproduced it.
 
 **Symptom.** A box is laid out at exactly the right size and then rendered
 without its `details` lines: correct geometry, no text, exit code 0, nothing on

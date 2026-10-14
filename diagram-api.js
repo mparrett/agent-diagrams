@@ -120,6 +120,13 @@ export function paletteFromState(state) {
 const MEASURE_SUFFIX = "Measure";
 
 let _fontsLoaded = false;
+// Fonts.register hands Skia a pointer into the Uint8Array without copying it,
+// and Skia reads glyphs from that memory for the life of the process. Dropping
+// the array let the garbage collector free it under Skia, so a render drew
+// whatever then occupied it: missing letters, symbols from a fallback face,
+// bold set in regular, a different PNG on every run. This array is the only
+// thing keeping the font data alive. Never let it go out of scope.
+const _fontBuffers = [];
 function ensureFonts() {
   if (_fontsLoaded) return;
   _fontsLoaded = true; // attempt once per process either way
@@ -127,8 +134,11 @@ function ensureFonts() {
     const dir = join(dirname(fromFileUrl(import.meta.url)), "assets", "fonts");
     // Skia picks the weight from each file's own metadata, so regular + bold
     // register under one family alias.
-    const reg = (file, family) =>
-      Fonts.register(Deno.readFileSync(join(dir, file)), family);
+    const reg = (file, family) => {
+      const data = Deno.readFileSync(join(dir, file));
+      _fontBuffers.push(data);
+      Fonts.register(data, family);
+    };
     reg("DejaVuSansMono.ttf", "DiagramMono");
     reg("DejaVuSansMono-Bold.ttf", "DiagramMono");
     // Sans option ("font": "sans"). SemiBold serves as bold — friendlier at the
