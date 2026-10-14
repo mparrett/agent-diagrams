@@ -4,9 +4,8 @@ Every entry here is a bug in `jsr:@gfx/canvas` (native Skia, from
 [DjDeveloperr/skia_canvas](https://github.com/DjDeveloperr/skia_canvas)) that
 this repo works around. None has been filed upstream — see the "reported" column
 before assuming someone is waiting on a fix. Faults 2 and 3 have no standalone
-reproduction, which is what has kept them unfiled; fault 4 does have one and is
-the first here that could be reported as-is. Fault 1 turned out to be ours and
-is kept here as a record.
+reproduction, which is what has kept them unfiled. Faults 1 and 4 turned out to
+be ours, one bug with two symptoms, and are kept here as a record.
 
 This file exists because a workaround for an unreported bug is invisible debt.
 Nothing about a new release announces that the thing you worked around is
@@ -26,7 +25,7 @@ Currently pinned: **0.5.6** (`deno.json`). Latest release: **0.5.8**.
 | 1 | Glyph drop — `fillText` silently draws nothing | **ours, fixed 2026-10-13**: font buffers are now kept alive | — | not upstream's | 0.5.6, 2026-10-13 |
 | 2 | `shadowBlur` displaced under `ctx.scale(DPR)` | shadows off in the PNG renderer | yes, automated | no | 0.5.8, 2026-07-31 |
 | 3 | `getImageData` doesn't reflect what was drawn | decode the encoded PNG instead | no | no | 0.5.8, 2026-07-30 |
-| 4 | SIGSEGV on linux-x64 the moment it rasterizes | CI runs rasterizing tests on macOS only | no | no — has a repro, unfiled | 0.5.6, 2026-08-12 |
+| 4 | SIGSEGV on linux-x64 the moment it rasterizes | **ours, fixed 2026-10-13**: same cause as 1 | — | not upstream's | 0.5.6, 2026-10-13 |
 
 ---
 
@@ -169,6 +168,15 @@ there is nothing to retire. Recorded here so the next person doesn't reach for
 it and lose an afternoon.
 
 ## 4. SIGSEGV on linux-x64 the moment it rasterizes
+
+**Root cause, found 2026-10-13: the same freed font buffers as fault 1.**
+On macOS, reads from the freed memory returned stale data and cost glyphs;
+on Linux the allocator reused or unmapped it and the read crashed. Checked
+in an `ubuntu:24.04` linux/amd64 container with Deno 2.4.3: main exits 139
+on every full run, and with the buffers kept alive the full suite passes
+three runs out of three. CI now runs the whole suite on both platforms.
+
+What follows is the record from before the cause was known.
 
 **Symptom.** A process that draws for real exits 139 (SIGSEGV) on `ubuntu-x64`
 under Deno 2.x. No assertion failure and nothing on stderr from the library — the
