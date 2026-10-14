@@ -178,7 +178,11 @@ Commands:
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
-  set-canvas <w> <h> [--anchor=nw|n|ne|e|se|s|sw|w|c]   Set board bounds B (anchor = where content sticks; nw grows right/down)
+  set-canvas <W>x<H> [--anchor=nw|n|ne|e|se|s|sw|w|c] [--grow]
+                             Set board bounds B; <W> <H> also works. The anchor works as in Photoshop: it is
+                             where content sticks (nw grows right/down, c grows evenly). --grow never shrinks
+                             a side, so set-canvas 1920x1080 --grow is "at least 1920×1080"
+  expand-canvas --by=<W>x<H> [--anchor=]   Grow B by W×H, split by the anchor as above (negative trims)
   expand-canvas [--left=px] [--right=px] [--up=px] [--down=px]   Grow/shrink B per side (negative trims; left/up slide content)
   fit-canvas                 Trim board bounds B to hug boxes, notes and group frames (slides the diagram to a
                              uniform margin; auto-placed boxes stay auto)
@@ -970,28 +974,28 @@ function run() {
     }
 
     case "set-canvas": {
-      // Set board bounds B to exactly W×H. --anchor says where existing content
-      // sticks (default nw = grow right/down, no movement; se = grow left/up,
-      // content follows; c = re-center). Throws if too small for the content.
-      const [, w, h] = args;
-      if (!w || !h) {
+      // Set board bounds B to W×H. --anchor says where existing content sticks,
+      // as in Photoshop (default nw = grow right/down, no movement; se = grow
+      // left/up, content follows; c = re-center). --grow never shrinks a side.
+      // Throws if too small for the content.
+      const pos = args.slice(1).filter((a) => !a.startsWith("--"));
+      const size = pos.length === 1 ? pos[0].split(/x/i) : pos;
+      if (size.length !== 2) {
         console.error(
-          "Error: set-canvas requires <width> <height> [--anchor=nw|n|ne|e|se|s|sw|w|c]",
+          "Error: set-canvas requires <W>x<H> or <W> <H> [--anchor=nw|n|ne|e|se|s|sw|w|c] [--grow]",
         );
         Deno.exit(1);
       }
+      const flags = args.slice(1).filter((a) => a.startsWith("--"));
+      rejectUnknownFlags("set-canvas", flags, ["--anchor", "--grow"]);
       let anchor = "nw";
-      rejectUnknownFlags(
-        "set-canvas",
-        args.slice(3).filter((a) => a.startsWith("--")),
-        ["--anchor"],
-      );
-      for (const arg of args.slice(3)) {
+      for (const arg of flags) {
         if (arg.startsWith("--anchor=")) anchor = arg.slice(9);
       }
-      const width = int("set-canvas <width>", w, { min: 1 });
-      const height = int("set-canvas <height>", h, { min: 1 });
-      const d = mutate((d) => d.setCanvas(width, height, anchor));
+      const grow = flags.includes("--grow");
+      const width = int("set-canvas <width>", size[0], { min: 1 });
+      const height = int("set-canvas <height>", size[1], { min: 1 });
+      const d = mutate((d) => d.setCanvas(width, height, anchor, { grow }));
       d.render();
       console.log(
         `Canvas set to ${d._state.width}×${d._state.height} (anchor ${anchor}, rev ${d.rev})`,
@@ -1002,27 +1006,52 @@ function run() {
     case "expand-canvas": {
       // Grow/shrink B by per-side pixel deltas (negative trims). Adding left/up
       // slides content into the new space; right/down leave content put.
+      // --by=WxH grows by a total instead, split by --anchor as in set-canvas.
+      const flags = args.slice(1);
+      rejectUnknownFlags("expand-canvas", flags, [
+        "--left",
+        "--right",
+        "--up",
+        "--down",
+        "--by",
+        "--anchor",
+      ]);
       const opts = { left: 0, right: 0, up: 0, down: 0 };
-      let any = false;
-      rejectUnknownFlags(
-        "expand-canvas",
-        args.slice(1).filter((a) => a.startsWith("--")),
-        ["--left", "--right", "--up", "--down"],
-      );
-      for (const arg of args.slice(1)) {
+      let any = false, by = null, anchor = null;
+      for (const arg of flags) {
         const m = arg.match(/^--(left|right|up|down)=(.*)$/);
         if (m) {
           opts[m[1]] = int(`--${m[1]}`, m[2]);
           any = true;
-        }
+        } else if (arg.startsWith("--by=")) by = arg.slice(5).split(/x/i);
+        else if (arg.startsWith("--anchor=")) anchor = arg.slice(9);
       }
-      if (!any) {
+      if (by && any) {
         console.error(
-          "Error: expand-canvas needs at least one of --left/--right/--up/--down=<px> (negative trims)",
+          "Error: expand-canvas takes --by= or per-side flags, not both",
         );
         Deno.exit(1);
       }
-      const d = mutate((d) => d.expandCanvas(opts));
+      if (anchor && !by) {
+        console.error("Error: expand-canvas --anchor needs --by=<W>x<H>");
+        Deno.exit(1);
+      }
+      if (by && by.length !== 2) {
+        console.error("Error: --by must be <W>x<H>, e.g. --by=100x200");
+        Deno.exit(1);
+      }
+      if (!by && !any) {
+        console.error(
+          "Error: expand-canvas needs --by=<W>x<H> or at least one of --left/--right/--up/--down=<px> (negative trims)",
+        );
+        Deno.exit(1);
+      }
+      const d = by
+        ? (() => {
+          const dw = int("--by width", by[0]), dh = int("--by height", by[1]);
+          return mutate((d) => d.expandCanvasBy(dw, dh, anchor ?? "nw"));
+        })()
+        : mutate((d) => d.expandCanvas(opts));
       d.render();
       console.log(
         `Canvas now ${d._state.width}×${d._state.height} (rev ${d.rev})`,

@@ -154,6 +154,10 @@ Deno.test("numeric flags reject garbage across the mutating commands", async () 
       ["set-font-size", "big"],
       ["set-canvas", "900", "tall"],
       ["expand-canvas", "--left=lots"],
+      ["set-canvas", "900xtall"],
+      ["expand-canvas", "--by=10"],
+      ["expand-canvas", "--by=10x10", "--left=5"],
+      ["expand-canvas", "--anchor=c", "--left=5"],
     ];
     for (const args of cases) {
       writeState(path, BASE);
@@ -386,6 +390,28 @@ Deno.test("CLI: set-edge-style sets and resets the board edge width", async () =
     r = await runCli(path, ["set-edge-style", "--reset"]);
     assert(r.code === 0, r.err);
     assertEquals(read(), undefined);
+  }));
+
+Deno.test("CLI: set-canvas WxH --grow and expand-canvas --by", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { width: 2400, height: 600, nodes: NODES, edges: [] });
+    const size = () => {
+      const s = JSON.parse(Deno.readTextFileSync(path));
+      return [s.width, s.height];
+    };
+
+    let r = await runCli(path, ["set-canvas", "1920x1080", "--grow"]);
+    assert(r.code === 0, r.err);
+    assertEquals(size(), [2400, 1080]);
+
+    r = await runCli(path, ["set-canvas", "2000", "1000"]);
+    assert(r.code === 0, r.err);
+    assertEquals(size(), [2000, 1000]);
+
+    r = await runCli(path, ["expand-canvas", "--by=100x200", "--anchor=c"]);
+    assert(r.code === 0, r.err);
+    assertEquals(size(), [2100, 1200]);
   }));
 
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>

@@ -1404,10 +1404,15 @@ export class Diagram {
   // nw|n|ne|e|se|s|sw|w|c — default nw) says where existing content sticks, which
   // determines whether/which way content shifts. nw grows right/down with no
   // movement; se grows left/up (content slides to follow); c re-centers.
-  setCanvas(w, h, anchor = "nw") {
+  // `grow` keeps each side at least its current size, so it never shrinks.
+  setCanvas(w, h, anchor = "nw", { grow = false } = {}) {
     const W0 = this._state.width || DEFAULT_W,
       H0 = this._state.height || DEFAULT_H;
-    const newW = Math.round(Number(w)), newH = Math.round(Number(h));
+    let newW = Math.round(Number(w)), newH = Math.round(Number(h));
+    if (grow) {
+      newW = Math.max(W0, newW);
+      newH = Math.max(H0, newH);
+    }
     const a = String(anchor).toLowerCase();
     const f = ANCHOR_FRACTIONS[a];
     if (!f) {
@@ -1436,6 +1441,14 @@ export class Diagram {
     const L = Math.round(Number(left) || 0), R = Math.round(Number(right) || 0);
     const U = Math.round(Number(up) || 0), D = Math.round(Number(down) || 0);
     this._resizeCanvas(W0 + L + R, H0 + U + D, L, U);
+  }
+
+  // Grow (or, with negative deltas, shrink) B by dw×dh, split by `anchor` as in
+  // setCanvas: nw adds it all right/down, c splits it evenly.
+  expandCanvasBy(dw, dh, anchor = "nw") {
+    const W0 = this._state.width || DEFAULT_W,
+      H0 = this._state.height || DEFAULT_H;
+    this.setCanvas(W0 + Math.round(dw), H0 + Math.round(dh), anchor);
   }
 
   // Shrink (or grow) B to hug the content: slide the diagram to a uniform margin,

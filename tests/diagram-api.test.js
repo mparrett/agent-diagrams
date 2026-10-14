@@ -907,6 +907,34 @@ Deno.test("a resize with no shift leaves every box where it was", () =>
     );
   }));
 
+Deno.test("setCanvas --grow never shrinks; expandCanvasBy splits by anchor", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 2400,
+      height: 600,
+      nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
+    });
+    const d = Diagram.load(path);
+    const size = () => `${d._state.width}x${d._state.height}`;
+    d.setCanvas(1920, 1080, "nw", { grow: true });
+    assert(size() === "2400x1080", size());
+
+    const before = d.solvePositions().positions.a;
+    d.expandCanvasBy(100, 200, "c");
+    assert(size() === "2500x1280", size());
+    const after = d.solvePositions().positions.a;
+    // Half of each delta (50, 100) lands on the left/top, rounded to whole cells.
+    assert(
+      after.x - before.x === 45 && after.y - before.y === 105,
+      `moved ${after.x - before.x},${after.y - before.y}`,
+    );
+
+    d.expandCanvasBy(100, 0);
+    assert(size() === "2600x1280", size());
+    assert(d.solvePositions().positions.a.x === after.x, "nw grows right");
+  }));
+
 Deno.test("inner groups need a parent row/col and exclusive members", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;

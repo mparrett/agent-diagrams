@@ -267,7 +267,8 @@ diagram-cli.js [--state <path>] <command> [args...]
   set-box-style [--outlineWidth=] [--outlineDash=] [--corners=] [--reset]   Board-wide box defaults
   set-edge-style [--width=thin|medium|thick] [--reset]   Board-wide connector width
   set-font <mono|sans> / set-font-size <px|reset>
-  set-canvas <w> <h> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
+  set-canvas <W>x<H> [--anchor=] [--grow]   Anchor works as in Photoshop; --grow never shrinks
+  expand-canvas --by=<W>x<H> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
   fit-canvas                 Trim the board to hug boxes, notes and group frames
   render
   spread                     Force-directed spread (bakes positions into layout)
