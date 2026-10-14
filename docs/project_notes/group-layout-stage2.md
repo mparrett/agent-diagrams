@@ -1,6 +1,6 @@
-# Group layout: Stage 2 design (draft)
+# Group layout: Stage 2 design
 
-Status: draft, 2026-10-14. Stage 0 (spacing for frames) is in `group-layout.md`, Stage 1 (inner groups) in `group-layout-stage1.md`. Group label placement (`labelPos`, `labelAlign`, `labelWeight`, `labelSize`) lands before this stage.
+Status: built 2026-10-14. Where it differs from the plan below, the code follows "As built" at the end. Stage 0 (spacing for frames) is in `group-layout.md`, Stage 1 (inner groups) in `group-layout-stage1.md`. Group label placement (`labelPos`, `labelAlign`, `labelWeight`, `labelSize`) lands before this stage.
 
 ## Goal
 
@@ -175,3 +175,28 @@ Taken 2026-10-14, all as recommended:
 ## Later
 
 - **Edges to a group.** Not built in any stage yet. When they are, `remove-group` must decide what happens to an edge whose end is the removed group: move it to the parent group, or refuse the removal while edges point at it. The shared id namespace above is also what lets `add-edge <from> <group>` resolve without ambiguity.
+
+## As built
+
+2a: 2b22f53 (validation and id namespace), 448998c (layout), 257b2ac (read-back and editor refusals). 2b: efdd8a4 (pins), f59ef8e (editor).
+
+- **Unknown ids** are rejected on add and update but not on load, so a hand-edited board with a stale id keeps loading.
+- **`--annotation` on a group that lists child groups** is refused with `group "ar" lists inner groups "style"; remove them first`.
+- **Label sizing fix:** Stage 1 sized inner groups from the `innerGroups` entry, which has no label fields, so `labelPos` and `labelSize` on an inner group were ignored. `groupInsets` reads the authored group.
+- **Label width:** a label wider than its frame overhangs it sideways. Frames and group boxes are not sized by measured text, as before.
+- **`groupBoxes`:** `computeLayout`'s result carries each inner group's box in absolute cells, and the cell of its local (0, 0) as `origin`.
+- **Annotation frames inside an inner group** enlarge that group's box, so the parent frame holds them.
+- **Origin:** a group with any relative pin measures from local (0, 0). A group with none keeps the minimum of its boxes, which kept unpinned boards byte-identical.
+- **Pins survive label changes:** `update-group` keeps a member's relative pin and its `pinned` entry when the group's label settings change. Absolute `layout[id]` entries for members are still dropped.
+- **Inner to annotation:** `update-group --annotation` drops the group's `layout` entry and its `innerLayout` map.
+- **`free-node`** takes a group or member id; an unknown id errors with `No node or group "<id>"`.
+- **CLI:** a nested `add-group --inner` still needs `--row`/`--col`; they are read in the parent's grid.
+- **Group drag hit area:** the label chip and a 4px band on the frame (8px on touch). Chip and band are tested before the connector nubs, which otherwise cover them.
+- **Pin on a member or group** saves its current position as a pin. Pin on a board node only marks it pinned, as before.
+- **Align** acts on board-level boxes only: the editor has no multi-select, so "selected boxes sharing one parent" has no input. Aligned board boxes can still land on a group's frame.
+- **Conflict test:** no CLI command writes `innerLayout`, so `just editor-check` holds the editor's save (`__wb.holdSaves`), edits the file, and reads the conflict banner.
+
+### Follow-ups found while building
+
+- Wires are not routed around group labels, so a wire can cross a `top-inside` label. Labels on the border have a background chip; inside and outside labels do not.
+- A label wider than its frame overhangs it (see above).
