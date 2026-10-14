@@ -155,6 +155,26 @@ Deno.test("every fresh-process render draws the canary board's details", async (
   assert(drew === N, `details drew in only ${drew}/${N} renders`);
 });
 
+Deno.test("text survives garbage collection after the fonts load", async () => {
+  // Without the font buffers kept alive this loses text on every run, so one
+  // run is a real check, unlike the fresh-process renders above.
+  const script = new URL("./gc-render.js", import.meta.url).pathname;
+  const { stdout } = await new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      "--allow-env",
+      "--allow-ffi",
+      "--unstable-ffi",
+      "--v8-flags=--expose-gc",
+      script,
+    ],
+  }).output();
+  const out = new TextDecoder().decode(stdout).trim();
+  assert(out === "drew", `render after GC: ${out}`);
+});
+
 Deno.test("the shipped example board keeps its labels", async () => {
   // Real committed artifact, not a fixture — a regression here would otherwise
   // only surface as an unreadable diagram in the repo.
