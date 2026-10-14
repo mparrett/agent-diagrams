@@ -277,6 +277,19 @@ try {
       Math.abs(c1.x - c0.x) < 1 && Math.abs(c1.y - c0.y) < 1,
     `${big.width}x${big.height} -> ${s.width}x${s.height}, box ${c0.x},${c0.y} -> ${c1.x},${c1.y}`,
   );
+
+  // Zoomed out past the trimmed board, Expand all reaches every edge of the view.
+  const trimmed = read();
+  await page.evaluate(`document.getElementById("bExpandAll").click()`);
+  await wait(1500);
+  s = read();
+  check(
+    "Expand all grows the frame on every side",
+    s.width > trimmed.width && s.height > trimmed.height &&
+      same(s.layout, trimmed.layout) &&
+      same(await editorBoxes(), await solved()),
+    `${trimmed.width}x${trimmed.height} -> ${s.width}x${s.height}`,
+  );
 } finally {
   await browser.close();
   server.kill();

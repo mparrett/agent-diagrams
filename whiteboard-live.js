@@ -2747,6 +2747,8 @@ async function growFrameToView(edge) {
   }
 }
 
+document.getElementById("bExpandAll").onclick = () => growFrameToView("nesw");
+
 // Double-click a note to edit its text, or a node to edit its text/color.
 // Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
