@@ -143,6 +143,8 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "outlineWidth": "medium",                // optional board-wide box defaults: "thin" | "medium" | "thick",
   "outlineDash": "solid",                  //   "solid" | "dashed" | "dotted", "round" | "square"; a node's
   "corners": "round",                      //   own outlineWidth / outlineDash / corners wins (see Box outlines)
+  "edgeWidth": "medium",                   // optional board-wide connector width: "thin" | "medium" | "thick";
+                                           //   an edge's own width wins
   "maxNodeW": 340,                         // optional: px a box grows to before its text wraps (0 = never wrap)
   "wrapSlack": 1.5,                        // optional: extra area (x, in drawn cells) a box may take to
                                            //   avoid wrapping its title or details; 1 = always the smallest box
@@ -201,6 +203,8 @@ Built-in edge styles: `default`, `solid`, `dashed`, `dotted`, `thin`, `alert`.
 **Reference colors by name, not hex.** Nodes take a color *name* (`"color": "blue"`), and the legend auto-derives its swatches from the names actually used, labeling each with its name. To say what a color *means*, list the entries yourself with the same names: `set-legend amber="Ops builds" blue="AI Zone" gray:dashed="owner TBD"`. Named entries recolor with the theme; hex entries stay fixed, so they drift. A `:dashed` or `:dotted` entry draws an outlined swatch, the key for boxes given `--outlineDash`. `set-legend auto` returns to the derived legend and `set-legend off` hides it.
 
 **Box outlines.** `update-node <id> --outlineDash=dashed|dotted`, `--outlineWidth=thin|medium|thick` and `--corners=round|square` restyle a single box's border, for example to mark an undecided owner; `--outlineReset` clears all three. `set-box-style [--outlineWidth=] [--outlineDash=] [--corners=] [--reset]` sets the same three for the whole board, stored as top-level `outlineWidth`, `outlineDash` and `corners`. A box uses its own value, then the board's, then medium, solid and round.
+
+**Connector width.** `update-edge <from> <to> --width=thin|medium|thick` sets one connector; `set-edge-style --width=` sets the default for the whole board, stored as top-level `edgeWidth`, and `--reset` returns it to medium. An edge's own width wins.
 
 **Edge label placement.** A label sits along the longest horizontal segment it fits on, else beside the longest segment. It moves only when its default spot would cover or crowd something other than its own wire: another label, a box, a group label or frame border, or another edge's wire. The search then tries the route's other segments and sides, larger offsets, and a spot centered on the wire itself, favoring whatever stays closest to its own wire. Pin one with `"labelPos": { "side": "above"|"below"|"left"|"right", "offset": <px>, "seg": <segmentIndex> }` — or `update-edge <from> <to> --labelSide=below --labelOffset=24`, also in the editor's edge popover. `--labelReset` returns it to auto. Dragging a label in the editor pins its segment too, so it stays where it was dropped.
 
@@ -261,6 +265,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   set-theme <name|reset>     afterglow | dawnfox | monolight; reset = built-in palette
   set-legend auto|off|<color>[:<dash>]=<label>...   explicit entries take palette names
   set-box-style [--outlineWidth=] [--outlineDash=] [--corners=] [--reset]   Board-wide box defaults
+  set-edge-style [--width=thin|medium|thick] [--reset]   Board-wide connector width
   set-font <mono|sans> / set-font-size <px|reset>
   set-canvas <w> <h> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
   fit-canvas                 Trim the board to hug boxes, notes and group frames

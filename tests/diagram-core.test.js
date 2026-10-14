@@ -888,6 +888,23 @@ Deno.test("routeEdges is deterministic and avoids blocked cells", () => {
   );
 });
 
+Deno.test("edge width resolves edge, then board, then medium", () => {
+  const boxes = [
+    { id: "a", col: 3, row: 8, w: 5, h: 3 },
+    { id: "b", col: 31, row: 8, w: 5, h: 3 },
+  ];
+  const edges = [
+    { from: "a", to: "b", fromEdge: "E", toEdge: "W" },
+    { from: "b", to: "a", width: "thick" },
+  ];
+  const widths = (opts) =>
+    routeOnce(boxes, edges, 44, 24, opts).routes
+      .map((r) => r.width);
+  assertEquals(widths({ edgeWidth: "thin" }), [1.25, 3.25]);
+  assertEquals(widths(undefined), [2, 3.25]);
+  assertEquals(widths({ edgeWidth: "bogus" }), [2, 3.25]);
+});
+
 Deno.test("connectorAnchor center fans symmetrically; align clusters toward sources", () => {
   // Two sources up-and-left of a wide target, both forced onto the target's N
   // side → two connectors share one side (w=14 → center index 6).

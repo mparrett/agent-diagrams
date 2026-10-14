@@ -1369,6 +1369,16 @@ export class Diagram {
     this._applyBoxStyle(this._state, opts);
   }
 
+  // Board-wide edge width; an edge's own `width` wins. null clears it.
+  setEdgeStyle(opts) {
+    if (opts.width === undefined) return;
+    if (opts.width === null) delete this._state.edgeWidth;
+    else {
+      this._validateEnum(opts.width, EDGE_WIDTHS, "width");
+      this._state.edgeWidth = opts.width;
+    }
+  }
+
   // Board (export-frame) dimensions B. The editor's auto-grow and the canvas
   // resize ops persist B here; render()/_fitCanvas still treat it as a floor and
   // grow defensively, so a hand-shrunk board can never clip a box. Either arg may
@@ -1889,7 +1899,10 @@ export class Diagram {
       connMap,
       costs,
       pal,
-      { centerConnectors: this._state.connectorAnchor === "center" },
+      {
+        centerConnectors: this._state.connectorAnchor === "center",
+        edgeWidth: this._state.edgeWidth,
+      },
     );
 
     // Draw (failed-route markers go on top of boxes, mirroring the live editor)

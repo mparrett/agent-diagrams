@@ -362,6 +362,32 @@ Deno.test("CLI: set-box-style and update-node --corners", async () =>
     assertEquals([a.corners, a.outlineDash], [undefined, undefined]);
   }));
 
+Deno.test("CLI: set-edge-style sets and resets the board edge width", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).edgeWidth;
+
+    let r = await runCli(path, ["set-edge-style", "--width=thin"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), "thin");
+    assert(r.out.includes("edge style: thin"), r.out);
+
+    r = await runCli(path, ["set-edge-style", "--width=hairline"]);
+    assert(r.code !== 0, "an unknown width must fail");
+    assertEquals(read(), "thin");
+
+    r = await runCli(path, ["set-edge-style", "--widht=thin"]);
+    assert(r.code !== 0, "a typo'd flag must fail");
+
+    r = await runCli(path, ["set-edge-style"]);
+    assert(r.code !== 0, "no flags must fail");
+
+    r = await runCli(path, ["set-edge-style", "--reset"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), undefined);
+  }));
+
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

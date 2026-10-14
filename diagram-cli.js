@@ -173,6 +173,8 @@ Commands:
   set-box-style [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square] [--reset]
                              Board-wide box defaults; a box's own update-node value wins. --reset clears all
                              three (back to medium, solid, round); it runs first, so flags after it still apply
+  set-edge-style [--width=thin|medium|thick] [--reset]
+                             Board-wide connector width; an edge's own update-edge --width wins. --reset = medium
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
@@ -636,6 +638,25 @@ function run() {
         `box style: ${s.outlineWidth ?? "medium"} ${s.outlineDash ?? "solid"} ${
           s.corners ?? "round"
         } (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "set-edge-style": {
+      const flags = args.slice(1);
+      rejectUnknownFlags("set-edge-style", flags, ["--width", "--reset"]);
+      const opts = flags.includes("--reset") ? { width: null } : {};
+      for (const arg of flags) {
+        if (arg.startsWith("--width=")) opts.width = arg.slice(8);
+      }
+      if (Object.keys(opts).length === 0) {
+        console.error("Error: set-edge-style needs --width= or --reset");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setEdgeStyle(opts));
+      d.render();
+      console.log(
+        `edge style: ${d._state.edgeWidth ?? "medium"} (rev ${d.rev})`,
       );
       break;
     }

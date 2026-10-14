@@ -255,6 +255,7 @@ function rebuild() {
   connMap = buildGrid(grid, BOXES, costs);
   routes = routeEdges(astarState, grid, EDGES_DEF, BOXES, connMap, costs, PAL, {
     centerConnectors: diagramState.connectorAnchor === "center",
+    edgeWidth: diagramState.edgeWidth,
   });
 }
 
@@ -2817,7 +2818,7 @@ function renderEdgeControls(edge) {
     "eeWidth",
     buildChipGroup(
       WIDTH_OPTS,
-      edge.width ?? "medium",
+      edge.width ?? diagramState.edgeWidth ?? "medium",
       (v) => applyEdgeFields(eeId, { width: v }),
     ),
   );

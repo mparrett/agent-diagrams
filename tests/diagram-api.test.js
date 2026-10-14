@@ -1026,6 +1026,23 @@ Deno.test("setBoxStyle sets, clears and validates the board-wide defaults", () =
     );
   }));
 
+Deno.test("setEdgeStyle sets, clears and validates the board edge width", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
+    d.setEdgeStyle({ width: "thin" });
+    assert(d._state.edgeWidth === "thin", `set: ${d._state.edgeWidth}`);
+    assertThrowsWith(
+      () => d.setEdgeStyle({ width: "hairline" }),
+      'Invalid width "hairline"',
+      "unknown width token",
+    );
+    assert(d._state.edgeWidth === "thin", "unchanged after a rejected call");
+    d.setEdgeStyle({ width: null });
+    assert(!("edgeWidth" in d._state), "null clears it");
+  }));
+
 Deno.test("updateNode sets, clears and validates corners", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;

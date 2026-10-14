@@ -1888,7 +1888,7 @@ export function routeEdges(
     // reach setLineDash raw and segfault.
     const styleDash = resolveDash(style.dash);
     const dash = edge.dash ? resolveDash(edge.dash, styleDash) : styleDash;
-    const width = EDGE_WIDTHS[edge.width] ?? 2;
+    const width = EDGE_WIDTHS[edge.width] ?? EDGE_WIDTHS[opts.edgeWidth] ?? 2;
     // Per-edge cost overrides compose over the global costs (same {...global,
     // ...override} merge used for state.costs). Lets a single wire bias its own
     // routing — e.g. a response edge raising `overlap`/`turn` so it doesn't sit
