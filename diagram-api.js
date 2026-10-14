@@ -910,6 +910,12 @@ export class Diagram {
   // ─── Layout overrides ─────────────────────────────────────
   // Merge a {id: {x,y}} map into the per-node overrides (used by POST /layout).
   // Commutative with content edits — only touches `layout`.
+  // Drop the layout overrides for `ids`, returning those boxes to auto-layout.
+  // Pins are left to setPinned, which the editor sends alongside.
+  releaseLayout(ids) {
+    for (const id of ids || []) delete this.layout[id];
+  }
+
   mergeLayout(map) {
     for (const [id, pos] of Object.entries(map || {})) {
       if (

@@ -34,6 +34,11 @@ parity:
     deno task parity:gen
     deno task parity:browser
 
+# Editor saves only what a person placed, and shows what the renderer computes.
+# Starts its own server on a temporary board. Needs a Chrome (CHROME_BIN=...).
+editor-check:
+    deno run -A --unstable-ffi tests/editor_layout_browser.js
+
 # Did the text actually rasterize? Complements `parity`, which only checks
 # geometry — a render can solve perfect boxes and draw none of their text.
 # No browser or server needed. Exits non-zero if any box lost text.

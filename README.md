@@ -313,7 +313,7 @@ d.render();                               // writes diagram.png next to the stat
 - **add a node** (`+ Node`) and **edit one** (double-click it) — label, color, details — via a small popover (Save creates/updates, Delete removes, Cancel discards),
 - **right-click for a context menu** — on a box: *Connect from here*, *Edit…*, color swatches, *Connector layout* (per-side spread/collapse), *Pin/Unpin*, *Delete*; on an edge (its **label** counts too): *Edit…*, *Reverse direction*, *Delete*,
 - **hover affordances** — the box/edge under the cursor is highlighted and the cursor telegraphs the target (grab / pointer / crosshair),
-- **pin manually-placed nodes** — dragging a box pins it (corner marker); *Unpin* (box menu) frees one node back to auto-layout; **Auto Layout** clears all pins and re-solves the whole board, while **Auto Layout (keep pins)** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. Pins are a subset of the always-full layout snapshot, so the editor stays WYSIWYG with the PNG,
+- **pin manually-placed nodes** — dragging a box pins it (corner marker); *Unpin* (box menu) frees one node back to auto-layout; **Auto Layout** clears all pins and re-solves the whole board, while **Auto Layout (keep pins)** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Auto Layout (keep pins)** releases everything but the pins,
 - **switch boards** via the sidebar **Board** picker (multi-whiteboard; see above),
 - pick a **color scheme**, run **align/spread**, **reset** to auto-layout, and live-tune the four A\* routing knobs (collapsible *Routing parameters* section in the sidebar).
 
@@ -368,6 +368,7 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 | `diagram-cli.js` | Agent-facing CLI |
 | `render-diagram.js` | One-liner: load + render |
 | `raster-check.js` | Verifies the rendered PNG actually contains its text (`just raster-check`) |
+| `tests/editor_layout_browser.js` | Drives the editor in headless Chrome: a drag saves only that box, and the editor matches the renderer (`just editor-check`) |
 | `bin/upstream-check.js` | Asks whether any `@gfx/canvas` workaround can be deleted yet (`just upstream-check`) |
 | `bin/import-depgraph.js` | Builds a board from a Deno module graph (`just import-deps`) |
 | `bin/import-filetree.js` | Builds a board from a directory tree (`just import-tree`) |

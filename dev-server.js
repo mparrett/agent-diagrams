@@ -292,6 +292,10 @@ const WRITE_OPS = {
         ? "layout (object) required"
         : (b.pinned !== undefined && !Array.isArray(b.pinned))
         ? "pinned (array) required"
+        : (b.free !== undefined &&
+            !(Array.isArray(b.free) &&
+              b.free.every((id) => typeof id === "string")))
+        ? "free (array of node ids) required"
         : (b.noteLayout !== undefined &&
             (typeof b.noteLayout !== "object" || b.noteLayout === null))
         ? "noteLayout (object) required"
@@ -300,6 +304,8 @@ const WRITE_OPS = {
         ? "width/height must be > 0"
         : null,
     apply: (dd, b) => {
+      // Releases first, so a box both released and re-placed ends up placed.
+      if (b.free !== undefined) dd.releaseLayout(b.free);
       dd.mergeLayout(clampLayout(b.layout, dd));
       if (b.pinned !== undefined) dd.setPinned(b.pinned); // manual-placement markers ride with the snapshot
       if (b.noteLayout !== undefined) {

@@ -127,7 +127,12 @@ function newNonce() {
   lastSentNonce = n;
   return n;
 }
-let baseline = new Map(); // id -> {col,row} at last sync with disk
+let baseline = new Map(); // id -> {col,row} at the last solve
+// Position changes not yet saved: boxes a person placed (id -> {x,y}) and boxes
+// released back to auto-layout. Only these are sent, so a save never fixes the
+// position of a box nobody touched.
+const pendingLayout = new Map();
+const pendingFree = new Set();
 let pendingReload = false; // an inbound change arrived mid-drag
 let persistTimer = null;
 
@@ -1400,7 +1405,10 @@ cvs.addEventListener("pointerup", (e) => {
   drag = null;
   updateCursor();
   if (wasDragging) {
-    render();
+    if (!wasNote) {
+      recordMoves();
+      resolveBoxes();
+    } else render();
     schedulePersist();
   } // re-show hover ring + auto-persist the drag
   if (pendingReload) {
@@ -1977,15 +1985,15 @@ document.getElementById("bConnect").onclick = () => setMode("connect");
 // rather than duplicated; see Auto Layout / Auto Layout (keep pins) below.
 document.getElementById("bAlignH").onclick = () => {
   if (coreSnapAlign("h", BOXES, COLS, ROWS)) {
-    rebuild();
-    render();
+    recordMoves();
+    resolveBoxes();
     schedulePersist();
   }
 };
 document.getElementById("bAlignV").onclick = () => {
   if (coreSnapAlign("v", BOXES, COLS, ROWS)) {
-    rebuild();
-    render();
+    recordMoves();
+    resolveBoxes();
     schedulePersist();
   }
 };
@@ -2031,8 +2039,8 @@ function applySpreadLevel(L) {
     );
   }
   s.level = L;
-  rebuild();
-  render();
+  recordMoves();
+  resolveBoxes();
   schedulePersist();
   s.sig = posSig(); // our own result; next press knows nothing else moved
 }
@@ -2088,32 +2096,22 @@ document.getElementById("bContract").onclick = () => {
     applySpreadLevel(Math.max(0, spreadSession.level - 0.5));
     setStatus("contract → " + Math.round(spreadSession.level * 100) + "%");
   } else if (compactTowardCentroid()) {
-    rebuild();
-    render();
+    recordMoves();
+    resolveBoxes();
     schedulePersist();
     spreadSession = null; // compaction moved the baseline; next expand re-bases
     setStatus("compacted");
   } else setStatus("nothing to compact");
 };
-// Re-solve the auto-layout for `freeIds` (drop their layout overrides, solve
-// against the still-frozen others), then re-freeze the full snapshot via
-// schedulePersist so the editor stays WYSIWYG with the PNG.
+// Release `freeIds` back to auto-layout: drop their overrides locally and on
+// disk, then re-solve as the renderer will.
 function resolveAuto(freeIds) {
-  const layout = {};
-  for (const b of BOXES) {
-    if (!freeIds.has(b.id)) {
-      layout[b.id] = { x: b.col * CELL, y: b.row * CELL };
-    }
+  for (const id of freeIds) {
+    pendingLayout.delete(id);
+    if (diagramState.layout?.[id]) pendingFree.add(id);
   }
-  BOXES = computeLayout(
-    ctx,
-    { ...diagramState, layout },
-    diagramState.width || 1500,
-  );
   pinsDirty = true;
-  fitGridToBoxes();
-  rebuild();
-  render();
+  resolveBoxes();
   schedulePersist();
 }
 // Auto Layout: clear every pin and re-solve the whole board from scratch.
@@ -2225,10 +2223,7 @@ async function applyFontSize(px) {
   if (px == null) delete diagramState.fontSize;
   else diagramState.fontSize = px;
   rebuildPalette(diagramState); // pal.sizes follows state.fontSize
-  BOXES = computeLayout(ctx, diagramState, diagramState.width || 1500); // boxes resize with the font
-  fitGridToBoxes();
-  rebuild();
-  render();
+  resolveBoxes(); // boxes resize with the font
   newNonce();
   try {
     const r = await fetch(API + "/fontsize", {
@@ -3845,6 +3840,22 @@ if (new URLSearchParams(location.search).has("test")) {
         y: rect.top + (by - view.panY) * view.zoom * (rect.height / VIEW_H),
       };
     },
+    // Solved box positions in board px, to compare with the renderer's.
+    boxes: () =>
+      Object.fromEntries(
+        BOXES.map((b) => [b.id, { x: b.col * CELL, y: b.row * CELL }]),
+      ),
+    // Client-space center of a box, for drag tests.
+    boxCenter: (id) => {
+      const b = BOXES.find((x) => x.id === id);
+      if (!b) return null;
+      const rect = cvs.getBoundingClientRect();
+      const bx = (b.col + b.w / 2) * CELL, by = (b.row + b.h / 2) * CELL;
+      return {
+        x: rect.left + (bx - view.panX) * view.zoom * (rect.width / VIEW_W),
+        y: rect.top + (by - view.panY) * view.zoom * (rect.height / VIEW_H),
+      };
+    },
     // View-transform test handles (pan/zoom validation).
     getView: () => ({ ...view }),
     boardSize: () => ({ w: CSS_W, h: CSS_H }),
@@ -3945,15 +3956,43 @@ function snapshotBaseline() {
   baseline = new Map(BOXES.map((b) => [b.id, { col: b.col, row: b.row }]));
 }
 
-// ids the human has moved since the last sync (unpersisted layout deltas).
-function movedIds() {
-  return BOXES.filter((b) => {
-    const base = baseline.get(b.id);
-    return base && (b.col !== base.col || b.row !== base.row);
-  }).map((b) => b.id);
+// The overrides the editor lays out with: disk's, plus pending placements,
+// minus pending releases.
+function localLayout() {
+  const layout = { ...(diagramState.layout || {}) };
+  for (const id of pendingFree) delete layout[id];
+  for (const [id, pos] of pendingLayout) layout[id] = pos;
+  return layout;
 }
 
-// Persist only the boxes the human actually moved (keeps untouched nodes auto-laid).
+// Record each box a person moved since the last solve as a pending placement.
+function recordMoves() {
+  for (const b of BOXES) {
+    const base = baseline.get(b.id);
+    if (base && (b.col !== base.col || b.row !== base.row)) {
+      pendingLayout.set(b.id, { x: b.col * CELL, y: b.row * CELL });
+      pendingFree.delete(b.id);
+    }
+  }
+}
+
+// Re-solve from localLayout(), as the renderer will. Placing a box can shift
+// its neighbours (it stops counting toward its column's width); those shifts
+// are layout, not placements, so the baseline follows them.
+function resolveBoxes() {
+  BOXES = computeLayout(
+    ctx,
+    { ...diagramState, layout: localLayout() },
+    diagramState.width || 1500,
+  );
+  fitGridToBoxes();
+  snapshotBaseline();
+  rebuild();
+  render();
+}
+
+// Persist only pending placements and releases, so untouched boxes stay on
+// auto-layout.
 let persistInFlight = false;
 function schedulePersist() {
   clearTimeout(persistTimer);
@@ -3964,13 +4003,17 @@ async function persistLayout() {
     schedulePersist();
     return;
   }
-  if (movedIds().length === 0 && !pinsDirty && !noteDirty && !dimsDirty) return; // nothing changed (positions, pins, notes, or board size)
-  // Persist ALL boxes (full snapshot), so the render uses overrides for every
-  // node and matches the editor exactly. Auto-placed nodes otherwise drift
-  // because the renderer re-solves the spring layout on every render. `pinned`
-  // rides along as a subset of these keys (the manually-placed markers).
-  const layout = {};
-  for (const b of BOXES) layout[b.id] = { x: b.col * CELL, y: b.row * CELL };
+  if (
+    pendingLayout.size === 0 && pendingFree.size === 0 && !pinsDirty &&
+    !noteDirty && !dimsDirty
+  ) return; // nothing changed (positions, pins, notes, or board size)
+  // Only what changed. This used to send every box, which turned one drag into
+  // a fixed position for the whole board; that was needed while the spring
+  // layout re-solved differently each render, and #14 removed it. Layout is
+  // deterministic from row/col now, so the editor and the PNG agree without it.
+  const sentLayout = new Map(pendingLayout);
+  const sentFree = new Set(pendingFree);
+  const layout = Object.fromEntries(sentLayout);
   const pinned = [...pinnedSet];
   newNonce();
   persistInFlight = true;
@@ -3980,6 +4023,7 @@ async function persistLayout() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         layout,
+        free: [...sentFree],
         pinned,
         noteLayout: noteLayoutLocal,
         width: diagramState.width,
@@ -3994,7 +4038,16 @@ async function persistLayout() {
       pinsDirty = false;
       noteDirty = false;
       dimsDirty = false;
-      snapshotBaseline(); // all boxes now in sync
+      // Disk now holds what was sent. Keep anything changed while in flight.
+      const disk = { ...(diagramState.layout || {}) };
+      for (const id of sentFree) delete disk[id];
+      for (const [id, pos] of sentLayout) disk[id] = pos;
+      diagramState.layout = disk;
+      diagramState.pinned = pinned;
+      for (const [id, pos] of sentLayout) {
+        if (pendingLayout.get(id) === pos) pendingLayout.delete(id);
+      }
+      for (const id of sentFree) pendingFree.delete(id);
       setStatus("saved (rev " + j.rev + ")");
     } else if (r.status === 409) {
       // Our view was stale — resync to disk (keeps this drag) then re-persist
@@ -4031,6 +4084,7 @@ async function mergeReload() {
   document.getElementById("themeSelect").value = tName;
   setDiagramTitle(fresh.title);
   ensureEdgeIds(fresh.edges);
+  const prevDisk = diagramState.layout || {};
   diagramState = fresh;
   EDGES_DEF = fresh.edges;
   pinnedSet = new Set(fresh.pinned || []);
@@ -4043,36 +4097,24 @@ async function mergeReload() {
   fontSizeInput.value = fresh.fontSize || "";
   centerConnectorsBox.checked = fresh.connectorAnchor === "center";
 
-  const moved = new Set(movedIds());
-  const curById = new Map(BOXES.map((b) => [b.id, b]));
-  const freshBoxes = computeLayout(ctx, fresh, fresh.width || 1500);
-
+  // Keep the human's unsaved placements on top of disk's. A conflict is
+  // someone else moving the same box: its override on disk changed under ours.
   let conflict = false;
-  for (const fb of freshBoxes) {
-    if (moved.has(fb.id)) {
-      const base = baseline.get(fb.id);
-      if (base && (fb.col !== base.col || fb.row !== base.row)) conflict = true; // both moved it
-      const cur = curById.get(fb.id);
-      if (cur) {
-        fb.col = cur.col;
-        fb.row = cur.row;
-      } // keep the human's drag
-    }
+  const ids = new Set(fresh.nodes.map((n) => n.id));
+  for (const id of [...pendingLayout.keys()]) {
+    if (!ids.has(id)) pendingLayout.delete(id); // node deleted: drop the drag
+    else if (
+      JSON.stringify(fresh.layout?.[id]) !== JSON.stringify(prevDisk[id])
+    ) conflict = true;
   }
-  BOXES = freshBoxes; // ids absent from fresh are dropped (no orphans)
+  for (const id of [...pendingFree]) if (!ids.has(id)) pendingFree.delete(id);
   lastRev = fresh.rev ?? lastRev;
-
-  // New baseline: fresh positions, except keep the OLD baseline for retained deltas.
-  const nb = new Map();
-  for (const b of BOXES) {
-    nb.set(
-      b.id,
-      (moved.has(b.id) && baseline.has(b.id))
-        ? baseline.get(b.id)
-        : { col: b.col, row: b.row },
-    );
-  }
-  baseline = nb;
+  BOXES = computeLayout(
+    ctx,
+    { ...fresh, layout: localLayout() },
+    fresh.width || 1500,
+  );
+  snapshotBaseline();
 
   fitGridToBoxes();
   rebuild();
