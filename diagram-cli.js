@@ -26,6 +26,7 @@
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
 import { captureArtifacts, Diagram, resolveStatePath } from "./diagram-api.js";
 import { DEFAULT_COLORS, DEFAULT_EDGE_STYLES } from "./diagram-core.js";
+import { SCHEMES } from "./themes.js";
 
 const BUILTIN_COLORS = Object.keys(DEFAULT_COLORS);
 const BUILTIN_STYLES = Object.keys(DEFAULT_EDGE_STYLES);
@@ -154,6 +155,13 @@ Commands:
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)
   set-title [text...]        Caption drawn top-left; no argument clears it
   set-footer [text...]       Caption drawn under the legend; no argument clears it
+  set-theme <name|reset>     Color scheme (${
+    Object.keys(SCHEMES).join(", ")
+  }); reset = built-in palette
+  set-legend auto|off|<color>[:<dash>]=<label>...
+                             auto = one swatch per color in use, labeled with its name; off hides it;
+                             entries take palette names, so they follow the theme
+                             (e.g. amber="Ops builds" pink:dashed="owner TBD")
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
@@ -472,6 +480,59 @@ function run() {
       );
       d.render();
       console.log(`${field}: ${text || "(cleared)"} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-theme": {
+      const v = args[1];
+      if (!v) {
+        console.error(
+          `Error: set-theme requires <name> or 'reset'. Available: ${
+            Object.keys(SCHEMES).join(", ")
+          }`,
+        );
+        Deno.exit(1);
+      }
+      const name = v === "reset" ? null : v;
+      const d = mutate((d) => d.setTheme(name));
+      d.render();
+      console.log(`theme: ${name ?? "(default palette)"} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-legend": {
+      // auto | off | <color>[:<dash>]=<label>...
+      const rest = args.slice(1);
+      if (rest.length === 0) {
+        console.error(
+          'Error: set-legend requires auto, off, or <color>[:<dash>]=<label>... (e.g. amber="Ops builds" pink:dashed="owner TBD")',
+        );
+        Deno.exit(1);
+      }
+      let entries;
+      if (rest.length === 1 && rest[0] === "auto") entries = null;
+      else if (rest.length === 1 && rest[0] === "off") entries = false;
+      else {
+        entries = rest.map((a) => {
+          const eq = a.indexOf("=");
+          if (eq <= 0 || eq === a.length - 1) {
+            console.error(
+              `Error: set-legend entry "${a}" must be <color>[:<dash>]=<label>`,
+            );
+            Deno.exit(1);
+          }
+          const [color, dash] = a.slice(0, eq).split(":");
+          return { color, label: a.slice(eq + 1), ...(dash ? { dash } : {}) };
+        });
+      }
+      const d = mutate((d) => d.setLegend(entries));
+      d.render();
+      const what = entries === null
+        ? "auto (colors in use)"
+        : entries === false
+        ? "off"
+        : `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`;
+      console.log(`legend: ${what} (rev ${d.rev})`);
       break;
     }
 

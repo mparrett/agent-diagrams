@@ -33,10 +33,12 @@ import {
   EDGE_WIDTHS,
   fontFamily,
   Grid,
+  isColorToken,
   makePalette,
   measureNote,
   OUTLINE_WIDTHS,
   resolveColorToken,
+  resolveDash,
   resolveNotePositions,
   routeEdges,
   snapAlign,
@@ -924,8 +926,14 @@ export class Diagram {
   }
 
   // Set the color scheme (persisted as a top-level `theme` field).
+  // null drops it back to the built-in palette.
   setTheme(name) {
-    if (!SCHEMES[name]) {
+    if (name == null) {
+      delete this._state.theme;
+      this.palette = paletteFromState(this._state);
+      return;
+    }
+    if (!Object.hasOwn(SCHEMES, name)) {
       throw new Error(
         `Unknown theme "${name}". Available: ${
           Object.keys(SCHEMES).join(", ")
@@ -1145,6 +1153,43 @@ export class Diagram {
   setTitle(text) {
     if (text == null || text === "") delete this._state.title;
     else this._state.title = String(text);
+  }
+
+  // Legend: null → auto-derived from the colors in use, false → hidden, or an
+  // array of { color, label, dash? } where color is a palette name, semantic
+  // token, or hex. Names are checked here so a typo fails instead of drawing
+  // the fallback color.
+  setLegend(entries) {
+    if (entries == null) {
+      delete this._state.legend;
+      return;
+    }
+    if (entries === false) {
+      this._state.legend = false;
+      return;
+    }
+    if (!Array.isArray(entries)) {
+      throw new Error("legend must be null, false, or an array of entries");
+    }
+    const pal = paletteFromState(this._state);
+    this._state.legend = entries.map((e) => {
+      if (!e || typeof e.label !== "string" || !e.label) {
+        throw new Error("each legend entry needs a non-empty label");
+      }
+      if (!isColorToken(pal, e.color) && !/^#[0-9a-f]{3,8}$/i.test(e.color)) {
+        throw new Error(
+          `legend color "${e.color}" is not a palette color, semantic token, or hex. Palette: ${
+            Object.keys(pal.colors).join(", ")
+          }`,
+        );
+      }
+      const out = { color: e.color, label: e.label };
+      if (e.dash) {
+        this._validateEnum(e.dash, DASH_TOKENS, "legend dash");
+        out.dash = e.dash;
+      }
+      return out;
+    });
   }
 
   // Caption line drawn under the legend. Pass null/"" to drop it.
@@ -1481,8 +1526,17 @@ export class Diagram {
   }
 
   // ─── Auto-derive a legend from the colors actually used ───
+  // Explicit entries may name a palette color or semantic token instead of a
+  // hex, so a theme change recolors the legend along with the boxes. `bg` is
+  // the matching box fill, used when an entry draws an outlined (dashed) swatch.
   _legend() {
-    if (Array.isArray(this._state.legend)) return this._state.legend;
+    if (Array.isArray(this._state.legend)) {
+      return this._state.legend.filter((e) => e && e.label != null).map((e) => {
+        if (!isColorToken(this.palette, e.color)) return { ...e };
+        const c = resolveColorToken(this.palette, e.color);
+        return { ...e, color: c.border, bg: c.bg };
+      });
+    }
     if (this._state.legend === false) return [];
     const used = [];
     // Skip colorless nodes: they render with the fallback box color but have no
@@ -1648,13 +1702,26 @@ export class Diagram {
       ctx.font = `${pal.sizes.legend}px ${pal.font}`;
       ctx.textAlign = "left";
       const legendY = H - (this._state.footer ? 35 : 20);
-      legend.forEach((item, i) => {
-        const x = 20 + i * 160;
-        ctx.fillStyle = item.color;
-        ctx.fillRect(x, legendY, 12, 12);
+      // 160px slots, widened for a label that would run into the next swatch.
+      let x = 20;
+      for (const item of legend) {
+        if (item.dash) {
+          ctx.fillStyle = item.bg || pal.background;
+          ctx.fillRect(x, legendY, 12, 12);
+          ctx.strokeStyle = item.color;
+          ctx.lineWidth = 1.5;
+          // Half the box-outline pattern: a full one barely fits a 12px swatch.
+          ctx.setLineDash(resolveDash(item.dash).map((n) => n / 2));
+          ctx.strokeRect(x + 0.75, legendY + 0.75, 10.5, 10.5);
+          ctx.setLineDash([]);
+        } else {
+          ctx.fillStyle = item.color;
+          ctx.fillRect(x, legendY, 12, 12);
+        }
         ctx.fillStyle = pal.textDim;
         ctx.fillText(item.label, x + 18, legendY + 10);
-      });
+        x += Math.max(160, 18 + ctx.measureText(item.label).width + 24);
+      }
       if (this._state.footer) {
         ctx.fillStyle = pal.textDim;
         ctx.fillText(this._state.footer, 20, legendY + 25);

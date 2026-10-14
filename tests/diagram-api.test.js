@@ -660,3 +660,28 @@ Deno.test("an anchor's dx/dy shift the note from its flush position", () =>
     const gapped = Diagram.load(path).solvePositions().notes.n.x;
     assert(gapped === flush - 12, `expected ${flush - 12}, got ${gapped}`);
   }));
+
+Deno.test("legend entries that name a palette color follow the theme", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [{ id: "a", label: "A", color: "amber", row: 0, col: 0 }],
+      legend: [
+        { color: "amber", label: "builds" },
+        { color: "#123456", label: "literal" },
+      ],
+    });
+    const swatch = (theme) => {
+      const d = Diagram.load(path);
+      d.setTheme(theme);
+      return { legend: d._legend(), amber: d.palette.colors.amber.border };
+    };
+    const light = swatch("dawnfox"), dark = swatch("afterglow");
+    assert(light.legend[0].color === light.amber, "swatch is the box border");
+    assert(dark.legend[0].color === dark.amber, "swatch is the box border");
+    assert(light.amber !== dark.amber, "fixture needs themes that differ");
+    assert(
+      light.legend[1].color === "#123456" && dark.legend[1].color === "#123456",
+      "hex entries pass through",
+    );
+  }));

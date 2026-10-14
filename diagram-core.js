@@ -221,6 +221,13 @@ export const DEFAULT_PALETTE = makePalette();
  * then named; unknown tokens fall back to the first palette color. Shared by
  * edge stroke and box outline so both speak the same color vocabulary.
  */
+/** True when `token` names a palette color or a semantic alias of one. */
+export function isColorToken(pal, token) {
+  const colors = pal.colors || DEFAULT_COLORS;
+  const named = (pal.semantic && pal.semantic[token]) || token;
+  return typeof named === "string" && Object.hasOwn(colors, named);
+}
+
 export function resolveColorToken(pal, token) {
   const colors = pal.colors || DEFAULT_COLORS;
   const named = (pal.semantic && pal.semantic[token]) || token;

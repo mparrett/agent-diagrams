@@ -102,11 +102,12 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "height":  760,
   "footer":  "Solid = sync  |  Dashed = async",  // optional caption line
   "background": "#16162a",                 // optional
-  "legend":  null,                         // optional: omit/null = auto from colors used (preferred);
-                                           //   [] or false = no legend;
-                                           //   [{ "color": "#68f", "label": "service" }] = explicit
-                                           //   (prefer omitting — a hand-written legend risks
-                                           //    drifting from the palette. See Colors below.)
+  "legend":  null,                         // optional: omit/null = auto from colors used, labeled
+                                           //   with the color names; [] or false = no legend;
+                                           //   [{ "color": "amber", "label": "Ops builds" },
+                                           //    { "color": "gray", "label": "owner TBD", "dash": "dashed" }]
+                                           //   = explicit. Name palette colors so the swatches follow
+                                           //   the theme (hex works but does not). See Colors below.
   "output":  "diagram.png",                // optional output filename
   "connectorAnchor": "align",              // optional: "align" (default — straight runs) or
                                            //   "center" (fan connectors symmetric about each side's center)
@@ -176,7 +177,9 @@ Three light annotation primitives keep diagrams grokkable without boxes-inside-b
 Built-in node colors: `blue`, `green`, `amber`, `purple`, `teal`, `red`, `pink`, `gray`.
 Built-in edge styles: `default`, `solid`, `dashed`, `dotted`, `thin`, `alert`.
 
-**Reference colors by name, not hex.** Nodes take a color *name* (`"color": "blue"`), and the legend auto-derives its swatches from the names actually used — so hand-writing legend hex (or inventing a swatch color) only creates drift. Leave `"legend"` null and let it build itself; set `false` to hide it.
+**Reference colors by name, not hex.** Nodes take a color *name* (`"color": "blue"`), and the legend auto-derives its swatches from the names actually used, labeling each with its name. To say what a color *means*, list the entries yourself with the same names: `set-legend amber="Ops builds" blue="AI Zone" gray:dashed="owner TBD"`. Named entries recolor with the theme; hex entries stay fixed, so they drift. A `:dashed` or `:dotted` entry draws an outlined swatch, the key for boxes given `--outlineDash`. `set-legend auto` returns to the derived legend and `set-legend off` hides it.
+
+**Box outlines.** `update-node <id> --outlineDash=dashed|dotted` and `--outlineWidth=thin|medium|thick` restyle a single box's border, for example to mark an undecided owner; `--outlineReset` clears both.
 
 **Edge label placement.** Labels auto-place on the wire's longest segment and, by default, relocate only when two label chips would collide (otherwise byte-identical to before). Pin one with `"labelPos": { "side": "above"|"below"|"left"|"right", "offset": <px>, "seg": <segmentIndex> }` — or `update-edge <from> <to> --labelSide=below --labelOffset=24`, also in the editor's edge popover. `--labelReset` returns it to auto.
 
@@ -202,7 +205,7 @@ scheme. Each scheme in `themes.js` is just a raw palette (background, foreground
 - edge colors ← magenta/yellow/cyan/red.
 
 Built-in: `afterglow` (dark), `dawnfox` (light), `monolight` (grayscale light — node categories read as distinct gray shades; edge styles stay distinguishable by dash pattern). Pick one live from the editor's
-dropdown (persists), or set `theme` in the file. **To add a scheme**, paste its
+dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To add a scheme**, paste its
 18 hex values into `SCHEMES` in `themes.js` — nothing else changes. Any
 `colors`/`edgeStyles` overrides above still win over the theme.
 
@@ -220,6 +223,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   free-node <id>             Drop the node's layout override + unpin → back to auto-layout
                              (a frozen override otherwise shadows row/col, so move-node no-ops)
   update-node <id> [--label=] [--color=] [--row=] [--col=] [--details=a,b,c] [--minW=px|0] [--w=cells|0] [--h=cells|0]
+                             [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--outlineReset]
   update-edge <from> <to> [--style=] [--label=] [--fromEdge=N|S|E|W] [--toEdge=] [--fromConn=] [--toConn=]
   reverse-edge <from> <to>   Flip direction in place (keeps style/label, swaps per-end pins)
   retarget-edge <from> <to> [--newFrom=ID] [--newTo=ID]   Rewire an endpoint to another node (keeps style/label/costs)
@@ -229,6 +233,9 @@ diagram-cli.js [--state <path>] <command> [args...]
   add-note <x> <y> [--title=] [--color=] <line> [line...] / remove-note <x> <y>
   uniform-width <on|off>
   set-title [text...] / set-footer [text...]   (no argument clears)
+  set-theme <name|reset>     afterglow | dawnfox | monolight; reset = built-in palette
+  set-legend auto|off|<color>[:<dash>]=<label>...   explicit entries take palette names
+  set-font <mono|sans> / set-font-size <px|reset>
   render
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)

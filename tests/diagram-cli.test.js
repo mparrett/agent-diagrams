@@ -281,3 +281,52 @@ Deno.test("render warns on stderr when the raster cap downscales the board", asy
       `unexpected warning: ${small.err}`,
     );
   }));
+
+Deno.test("CLI: set-legend parses entries, auto, and off", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).legend;
+
+    let r = await runCli(path, [
+      "set-legend",
+      "blue=Services",
+      "gray:dashed=owner = TBD",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), [
+      { color: "blue", label: "Services" },
+      { color: "gray", label: "owner = TBD", dash: "dashed" },
+    ]);
+
+    r = await runCli(path, ["set-legend", "off"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), false);
+
+    r = await runCli(path, ["set-legend", "auto"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), undefined);
+
+    r = await runCli(path, ["set-legend", "chartreuse=nope"]);
+    assert(r.code !== 0, "an unknown color must fail");
+    assert(r.err.includes("chartreuse"), r.err);
+  }));
+
+Deno.test("CLI: set-theme sets and resets the scheme", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).theme;
+
+    let r = await runCli(path, ["set-theme", "dawnfox"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), "dawnfox");
+
+    r = await runCli(path, ["set-theme", "reset"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), undefined);
+
+    r = await runCli(path, ["set-theme", "nope"]);
+    assert(r.code !== 0, "an unknown theme must fail");
+    assert(r.err.includes("dawnfox"), "error should list the themes");
+  }));
