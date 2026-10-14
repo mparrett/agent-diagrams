@@ -1200,12 +1200,14 @@ function run() {
             console.log(
               `  ${id}  x=${p.x} y=${p.y} w=${p.w} h=${p.h}${
                 p.pinned ? "  [pinned]" : ""
-              }`,
+              }${p.group ? `  [group ${p.group}]` : ""}`,
             );
           }
           for (const [id, g] of Object.entries(solved.groups)) {
             console.log(
-              `  group ${id}  x=${g.x} y=${g.y} w=${g.w} h=${g.h}${
+              `  group ${id}  x=${g.x} y=${g.y} w=${g.w} h=${g.h}  ${g.layout}${
+                g.parent ? `  [in ${g.parent}]` : ""
+              }${
                 g.intruders.length
                   ? `  [contains non-members: ${g.intruders.join(", ")}]`
                   : ""

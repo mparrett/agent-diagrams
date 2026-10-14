@@ -1992,10 +1992,13 @@ export class Diagram {
       maxX = Math.max(maxX, x + w);
       maxY = Math.max(maxY, y + h);
     }
-    // Members of an inner group are placed by it; say which.
-    for (const g of innerGroups(this._state.groups, this.nodes)) {
+    // Members of an inner group are placed by it; say which. `members` is
+    // direct members only, so this is the innermost group.
+    const inner = innerGroups(this._state.groups, this.nodes);
+    for (const g of inner) {
       for (const id of g.members) if (positions[id]) positions[id].group = g.id;
     }
+    const innerParent = new Map(inner.map((g) => [g.id, g.parent]));
     const content = gridBoxes.length
       ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
       : { x: 0, y: 0, w: 0, h: 0 };
@@ -2040,7 +2043,10 @@ export class Diagram {
         ...f.rect,
         members: f.members,
         intruders: f.intruders,
+        layout: innerParent.has(f.id) ? "inner" : "annotation",
       };
+      const parent = innerParent.get(f.id);
+      if (parent) groups[f.id].parent = parent;
       drawn.push(f.labelled);
     }
     const extent = drawn.length

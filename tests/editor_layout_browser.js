@@ -326,6 +326,33 @@ try {
       mid.zoom === z,
     `${Math.round(offBefore)}px off before; after ${JSON.stringify(mid)}`,
   );
+
+  // Stage 2a: a member two levels down is placed by its innermost group.
+  await cli("add-group", "low", "Low", "e", "--inner", "--row=0", "--col=0");
+  await cli(
+    "add-group",
+    "mid",
+    "Mid",
+    "d",
+    "low",
+    "--inner",
+    "--row=6",
+    "--col=0",
+  );
+  await wait(2000);
+  await open();
+  await drag("e", 200, 100);
+  s = read();
+  check(
+    "a box two levels deep cannot be dragged",
+    s.groups.some((g) => g.id === "mid" && g.nodes.includes("low")) &&
+      !s.layout.e && !(s.pinned ?? []).includes("e"),
+    JSON.stringify({ layout: s.layout, groups: s.groups.map((g) => g.id) }),
+  );
+  check(
+    "editor matches renderer with nested groups",
+    same(await editorBoxes(), await solved()),
+  );
 } finally {
   await browser.close();
   server.kill();

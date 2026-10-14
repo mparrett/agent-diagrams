@@ -1451,3 +1451,28 @@ Deno.test("a stale innerLayout entry warns on load and is dropped on write", () 
     const saved = JSON.parse(Deno.readTextFileSync(path)).innerLayout;
     assert(json(saved) === '{"k":{"a":{"x":0,"y":0}}}', json(saved));
   }));
+
+Deno.test("status reports the innermost group and each group's parent", () =>
+  withTempDir((dir) => {
+    const sp = Diagram.load(
+      nestBoard(dir, [
+        inner("top", ["a", "mid"]),
+        inner("mid", ["b", "low"]),
+        inner("low", ["c"]),
+        { id: "notes", nodes: ["c", "d"] },
+      ]),
+    ).solvePositions();
+    assert(sp.positions.c.group === "low", sp.positions.c.group);
+    assert(sp.positions.b.group === "mid", sp.positions.b.group);
+    assert(sp.positions.a.group === "top", sp.positions.a.group);
+    assert(!("group" in sp.positions.d), "d is in no inner group");
+    const { top, mid, low, notes } = sp.groups;
+    assert(top.layout === "inner" && !("parent" in top), JSON.stringify(top));
+    assert(mid.layout === "inner" && mid.parent === "top");
+    assert(low.layout === "inner" && low.parent === "mid");
+    assert(notes.layout === "annotation" && !("parent" in notes));
+    const inside = (c, p) =>
+      c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w &&
+      c.y + c.h <= p.y + p.h;
+    assert(inside(low, mid) && inside(mid, top), "rects nest");
+  }));

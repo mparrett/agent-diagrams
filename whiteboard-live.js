@@ -4055,8 +4055,8 @@ function localLayout() {
   return layout;
 }
 
-// The inner group laying out node `id`, if any. Its members' positions come
-// from the group, so they cannot be dragged or pinned (Stage 1).
+// The innermost inner group laying out node `id`, if any. Its members' positions
+// come from the group at every depth, so they cannot be dragged or pinned.
 function innerGroupOf(id) {
   return innerGroups(diagramState?.groups, diagramState?.nodes || [])
     .find((g) => g.members.includes(id))?.id;
