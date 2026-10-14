@@ -152,6 +152,12 @@ Commands:
                                         vertically, N/S horizontally; dx/dy shift it from there)
   remove-note <id> | <x> <y>           Remove a note
   free-note <id>                       Drop a note's drag override → back to its anchor/position
+  add-group <id> <label> <node>... [--color=NAME] [--dash=dashed|dotted]
+                                       Labeled frame around nodes, drawn under the wires. Layout ignores it:
+                                       keep a group's nodes in their own rows/cols, or non-members land inside
+                                       (render and status --positions name them). --color tints the frame.
+  update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
+  remove-group <id> / list-groups
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)
   set-title [text...]        Caption drawn top-left; no argument clears it
   set-footer [text...]       Caption drawn under the legend; no argument clears it
@@ -443,6 +449,99 @@ function run() {
           ? `Freed note "${id}" back to its anchor/position (rev ${d.rev})`
           : `Note "${id}" had no drag override — nothing to free (rev ${d.rev})`,
       );
+      break;
+    }
+
+    case "add-group": {
+      const rest = args.slice(1);
+      const flags = rest.filter((a) => a.startsWith("--"));
+      rejectUnknownFlags("add-group", flags, ["--color", "--dash"]);
+      const [id, label, ...nodes] = rest.filter((a) => !a.startsWith("--"));
+      if (!id || label === undefined || nodes.length === 0) {
+        console.error(
+          "Error: add-group requires <id> <label> <node>... [--color=] [--dash=]",
+        );
+        Deno.exit(1);
+      }
+      const opts = {};
+      for (const f of flags) {
+        if (f.startsWith("--color=")) opts.color = f.slice(8);
+        else if (f.startsWith("--dash=")) opts.dash = f.slice(7);
+      }
+      const d = mutate((d) => d.addGroup(id, label, nodes, opts));
+      d.render();
+      console.log(
+        `Added group "${id}" (${nodes.length} node${
+          nodes.length === 1 ? "" : "s"
+        }) (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "update-group": {
+      const id = args[1];
+      if (!id || id.startsWith("--")) {
+        console.error("Error: update-group requires <id>");
+        Deno.exit(1);
+      }
+      const flags = args.slice(2);
+      rejectUnknownFlags(
+        "update-group",
+        flags,
+        ["--label", "--nodes", "--add", "--remove", "--color", "--dash"],
+      );
+      const list = (v) => v.split(",").filter(Boolean);
+      const opts = {};
+      for (const f of flags) {
+        if (f.startsWith("--label=")) opts.label = f.slice(8);
+        else if (f.startsWith("--nodes=")) opts.nodes = list(f.slice(8));
+        else if (f.startsWith("--add=")) opts.add = list(f.slice(6));
+        else if (f.startsWith("--remove=")) opts.remove = list(f.slice(9));
+        else if (f.startsWith("--color=")) {
+          opts.color = f.slice(8) === "none" ? null : f.slice(8);
+        } else if (f.startsWith("--dash=")) {
+          opts.dash = f.slice(7) === "none" ? null : f.slice(7);
+        }
+      }
+      if (Object.keys(opts).length === 0) {
+        console.error("Error: update-group needs at least one --flag=value");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.updateGroup(id, opts));
+      d.render();
+      console.log(`Updated group "${id}" (rev ${d.rev})`);
+      break;
+    }
+
+    case "remove-group": {
+      const id = args[1];
+      if (!id) {
+        console.error("Error: remove-group requires <id>");
+        Deno.exit(1);
+      }
+      let existed;
+      const d = mutate((d) => {
+        existed = d.removeGroup(id);
+      });
+      d.render();
+      console.log(
+        existed
+          ? `Removed group "${id}" (rev ${d.rev})`
+          : `No group "${id}" — nothing removed (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "list-groups": {
+      const groups = Diagram.load(STATE).listGroups();
+      console.log(`${groups.length} groups:`);
+      for (const g of groups) {
+        console.log(
+          `  ${g.id}  "${g.label ?? ""}"${g.color ? `  color=${g.color}` : ""}${
+            g.dash ? `  dash=${g.dash}` : ""
+          }  nodes: ${g.nodes.join(", ")}`,
+        );
+      }
       break;
     }
 
@@ -904,6 +1003,15 @@ function run() {
             console.log(
               `  ${id}  x=${p.x} y=${p.y} w=${p.w} h=${p.h}${
                 p.pinned ? "  [pinned]" : ""
+              }`,
+            );
+          }
+          for (const [id, g] of Object.entries(solved.groups)) {
+            console.log(
+              `  group ${id}  x=${g.x} y=${g.y} w=${g.w} h=${g.h}${
+                g.intruders.length
+                  ? `  [contains non-members: ${g.intruders.join(", ")}]`
+                  : ""
               }`,
             );
           }

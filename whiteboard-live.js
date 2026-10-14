@@ -33,12 +33,15 @@ import {
   drawEdgeLabels,
   drawFailedRoutes,
   drawGridLines,
+  drawGroupLabels,
+  drawGroups,
   drawHeatmap,
   drawNotes,
   drawRoutes,
   EDGE_MARGIN,
   edgeSides,
   Grid,
+  groupFrames,
   makePalette,
   measureNote,
   nodeBoxSize,
@@ -285,10 +288,19 @@ function render() {
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
+  const groupLabels = drawGroups(
+    ctx,
+    groupFrames(diagramState?.groups, BOXES, PAL),
+    PAL,
+  );
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
-  labelRects = drawRoutes(ctx, routes, CELL, PAL, { boxes: BOXES }) || []; // stash for label hit-testing
+  labelRects = drawRoutes(ctx, routes, CELL, PAL, {
+    boxes: BOXES,
+    avoid: groupLabels,
+  }) || []; // stash for label hit-testing
   drawAlignGuides(); // smart alignment guides — under the boxes, so they peek out in the gaps
+  drawGroupLabels(ctx, groupLabels, PAL);
   drawBoxes(ctx, BOXES, CELL, PAL);
   drawEdgeLabels(ctx, labelRects, PAL);
   drawPinOverlay(); // manual-placement markers (editor-only)

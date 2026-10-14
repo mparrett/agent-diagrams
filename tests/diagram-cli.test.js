@@ -330,3 +330,38 @@ Deno.test("CLI: set-theme sets and resets the scheme", async () =>
     assert(r.code !== 0, "an unknown theme must fail");
     assert(r.err.includes("dawnfox"), "error should list the themes");
   }));
+
+Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).groups;
+
+    let r = await runCli(path, [
+      "add-group",
+      "g",
+      "Two boxes",
+      "a",
+      "b",
+      "--color=amber",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), [{
+      id: "g",
+      nodes: ["a", "b"],
+      label: "Two boxes",
+      color: "amber",
+    }]);
+
+    r = await runCli(path, ["update-group", "g", "--add=c", "--color=none"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read()[0].nodes, ["a", "b", "c"]);
+    assertEquals(read()[0].color, undefined);
+
+    r = await runCli(path, ["add-group", "h", "Bad", "zzz"]);
+    assert(r.code !== 0 && r.err.includes("zzz"), r.err);
+
+    r = await runCli(path, ["remove-group", "g"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), undefined);
+  }));

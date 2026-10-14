@@ -685,3 +685,79 @@ Deno.test("legend entries that name a palette color follow the theme", () =>
       "hex entries pass through",
     );
   }));
+
+Deno.test("a group frame wraps its members and names intruding non-members", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 0, col: 2 },
+        { id: "mid", label: "Mid", color: "gray", row: 0, col: 1 },
+        { id: "far", label: "Far", color: "gray", row: 3, col: 0 },
+      ],
+      groups: [{ id: "g", label: "G", nodes: ["a", "b"] }],
+    });
+    const solved = Diagram.load(path).solvePositions();
+    const g = solved.groups.g, p = solved.positions;
+    for (const id of ["a", "b"]) {
+      assert(
+        g.x < p[id].x && g.y < p[id].y &&
+          g.x + g.w > p[id].x + p[id].w && g.y + g.h > p[id].y + p[id].h,
+        `frame must enclose ${id}`,
+      );
+    }
+    assert(
+      JSON.stringify(g.intruders) === '["mid"]',
+      `intruders: ${JSON.stringify(g.intruders)}`,
+    );
+  }));
+
+Deno.test("an enclosing group's frame clears the frame and label it encloses", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 1, col: 0 },
+      ],
+      groups: [
+        { id: "outer", label: "Outer", nodes: ["a", "b"] },
+        { id: "inner", label: "Inner", nodes: ["a"] },
+      ],
+    });
+    const { outer, inner } = Diagram.load(path).solvePositions().groups;
+    assert(outer.x < inner.x, "outer frame starts left of the inner one");
+    assert(outer.y < inner.y - 6, "outer frame clears the inner label");
+  }));
+
+Deno.test("group edits validate node ids, and removing a node prunes it", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 0, col: 1 },
+      ],
+    });
+    const d = Diagram.load(path);
+    let msg = "";
+    try {
+      d.addGroup("g", "G", ["a", "nope"]);
+    } catch (e) {
+      msg = e.message;
+    }
+    assert(msg.includes("nope"), `should name the unknown node: ${msg}`);
+
+    d.addGroup("g", "G", ["a", "b"], { color: "amber", dash: "dashed" });
+    d.updateGroup("g", { remove: ["b"], label: "Only A" });
+    assert(d.listGroups()[0].label === "Only A");
+    assert(JSON.stringify(d.listGroups()[0].nodes) === '["a"]');
+
+    d.updateGroup("g", { add: ["b"] });
+    d.removeNode("b");
+    assert(JSON.stringify(d.listGroups()[0].nodes) === '["a"]');
+
+    assert(d.removeGroup("g") === true && d.removeGroup("g") === false);
+    assert(d._state.groups === undefined, "empty groups key is dropped");
+  }));

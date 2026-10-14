@@ -138,6 +138,9 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "dividers": [                            // optional: dotted boundary lines across the canvas
     { "orient": "h", "at": 240, "label": "host boundary" }
   ],
+  "groups": [                              // optional: labeled frames around sets of nodes
+    { "id": "edge", "label": "Edge tier", "nodes": ["client", "api"], "color": "blue" }
+  ],
   "notes": [                               // optional: free-floating text annotations
     { "id": "n1", "x": 950, "y": 320, "title": "why", "text": ["line one", "line two"] },
     { "id": "n2", "anchor": { "to": "api", "side": "E", "dx": 12, "dy": 0 }, "text": ["rides the api box"] }
@@ -158,9 +161,10 @@ Because content (`nodes`/`edges`) and layout (`layout`) are disjoint keys, an ag
 
 ### Boundaries, notes & emphasis
 
-Three light annotation primitives keep diagrams grokkable without boxes-inside-boxes:
+Light annotation primitives mark regions and add commentary without changing how the board is laid out:
 
 - **Dividers** — full-width/-height dotted lines that partition the canvas into regions (`"dividers"`, or `add-divider h 240 "host boundary"`). Annotation only: wires route straight through them.
+- **Groups** — a labeled frame around a set of nodes, for views that sort boxes into regions (`"groups"`, or `add-group surfaces "User surfaces" portal queue editor`). The frame pads the members' drawn boxes and carries its label on the top border; `--color=<name>` tints it and `--dash=dashed` breaks the line. A group that contains all of another group's nodes draws around that group's frame as well. Groups are annotation only, like dividers: layout and routing ignore them, so a frame is wherever its members land. Give each group its own rows and columns. A non-member that ends up inside a frame is named in a warning on every render and under `status --positions`. Stacked groups in consecutive rows leave only a few pixels between frames; skip a row index between them for air. `update-group <id> --add=a,b --remove=c --label=…`, `remove-group`, and `list-groups` cover edits; removing a node drops it from its groups.
 - **Notes** — free-floating info-panel text outside any box (`"notes"`, or `add-note 950 320 --title="why" "line one" "line two"`): captions beside connectors, region callouts. Notes mirror the node placement model: an absolute `x,y` **or** an `anchor` to a node that rides the box through re-layout (`add-note --anchor=api:E:12:0 "…"` → 12px right of `api`'s east edge). An anchored note sits just outside the side it names: right-aligned against `W`, bottom-aligned against `N`, and centered on the box along the other axis, so `dx`/`dy` are the gap and nudge rather than a correction for the note's own size. `status --positions` lists each note's drawn rect alongside the boxes. In the editor, drag a note to pin it (writes a `noteLayout[id]` override), right-click for **Edit / Re-anchor to nearest box / Free / Delete**, double-click to edit text, or right-click empty canvas to drop one. `free-note <id>` drops the drag override so the note returns to its anchor/`x,y`.
 - **Uniform widths** — `"uniformWidth": true` (or `uniform-width on`) sizes every box to the widest one, so size variation reads as *deliberate*. To emphasize a node, give it `"minW": <px>` (or `update-node <id> --minW=320`) — it keeps its own size while the rest stay homogenized.
 - **Box size** — boxes auto-fit their content, floored to a 4:3 card minimum so short labels aren't thin strips. Set an explicit size in grid cells with `"w"`/`"h"` (or `update-node <id> --w=14 --h=6`, or drag a box's bottom-right corner in the editor). Explicit size is clamped up to the content/card minimum, so a box can never shrink small enough to clip its text; `--w=0`/`--h=0` clears it back to auto. Explicitly-sized boxes opt out of `uniformWidth`. When you give a box an explicit width, a long **title** wraps to fit it (so you can make a wide box narrower).
@@ -231,6 +235,9 @@ diagram-cli.js [--state <path>] <command> [args...]
                               one of several parallel a→b edges; from/to else matches the first)
   add-divider <h|v> <at-px> [label] / remove-divider <h|v> <at-px>
   add-note <x> <y> [--title=] [--color=] <line> [line...] / remove-note <x> <y>
+  add-group <id> <label> <node>... [--color=] [--dash=]   Labeled frame around nodes
+  update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=|none] [--dash=|none]
+  remove-group <id> / list-groups
   uniform-width <on|off>
   set-title [text...] / set-footer [text...]   (no argument clears)
   set-theme <name|reset>     afterglow | dawnfox | monolight; reset = built-in palette
@@ -241,8 +248,8 @@ diagram-cli.js [--state <path>] <command> [args...]
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)
   capture [label]            Snapshot diagram.png + state → artifacts/<ts>[-label]
   status [--positions|--json]  rev + counts; --positions/--json dumps the solved
-                               {x,y,w,h} per node plus canvas + content bounding box
-  list-nodes / list-edges
+                               {x,y,w,h} per node, note and group frame, plus canvas + content bounding box
+  list-nodes / list-edges / list-groups
 ```
 
 `status --positions` is the headless read-back of the solved layout: place notes and dividers against real pixels instead of guessing, without rendering a PNG. The dev server exposes the same data at `GET /positions` (board-scoped under `/d/<name>/positions`).
@@ -279,6 +286,7 @@ d.addNode("cache", { label: "Redis", color: "gray", details: ["sessions"], row: 
 d.addEdge("api", "cache", "dotted", "GET/SET");
 d.addDivider("h", 240, { label: "host boundary" });
 d.addNote(950, 320, ["floating caption"], { title: "why" });
+d.addGroup("edge", "Edge tier", ["client", "api"], { color: "blue" });
 d.setTitle("Request flow");                // setFooter/setTheme/setCanvasSize likewise
 d.save();
 d.render();                               // writes diagram.png next to the state file
@@ -298,7 +306,7 @@ d.render();                               // writes diagram.png next to the stat
 - **switch boards** via the sidebar **Board** picker (multi-whiteboard; see above),
 - pick a **color scheme**, run **align/spread**, **reset** to auto-layout, and live-tune the four A\* routing knobs (collapsible *Routing parameters* section in the sidebar).
 
-Dividers render in the editor but are still edited via CLI/JSON. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
+Dividers and groups render in the editor but are still edited via CLI/JSON. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
 
 State changes persist to the file (all CAS-guarded): drags/passes via `POST /layout`, content edits via `POST /node` and `POST /edge`, theme via `POST /theme`, routing-slider tuning via `POST /costs`. The theme, the routing sliders, and the layout passes all persist, so a reload — and the CLI/PNG render — reproduce what you set. It needs the files served over HTTP — use the dev server below.
 

@@ -28,11 +28,14 @@ import {
   drawDividers,
   drawEdgeLabels,
   drawFailedRoutes,
+  drawGroupLabels,
+  drawGroups,
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
   fontFamily,
   Grid,
+  groupFrames,
   isColorToken,
   makePalette,
   measureNote,
@@ -589,6 +592,9 @@ export class Diagram {
     if (Array.isArray(this._state.pinned)) {
       this._state.pinned = this._state.pinned.filter((p) => p !== id);
     }
+    for (const g of this._state.groups || []) {
+      if (Array.isArray(g.nodes)) g.nodes = g.nodes.filter((n) => n !== id);
+    }
     return true;
   }
 
@@ -1006,6 +1012,87 @@ export class Diagram {
 
   listDividers() {
     return [...(this._state.dividers || [])];
+  }
+
+  // ─── Groups (labeled frames around sets of nodes) ──────────
+  // Annotation only: see groupFrames in diagram-core.js.
+  _groupNodes(ids, what) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new Error(`${what} needs at least one node id`);
+    }
+    const missing = ids.filter((id) => !this.nodes.some((n) => n.id === id));
+    if (missing.length) {
+      throw new Error(`${what}: no such node(s): ${missing.join(", ")}`);
+    }
+    return [...new Set(ids)];
+  }
+
+  _groupStyle(g, opts) {
+    if (opts.color !== undefined) {
+      if (opts.color === null) delete g.color;
+      else {
+        this._validateColor(opts.color);
+        g.color = opts.color;
+      }
+    }
+    if (opts.dash !== undefined) {
+      if (opts.dash === null) delete g.dash;
+      else {
+        this._validateEnum(opts.dash, DASH_TOKENS, "dash");
+        g.dash = opts.dash;
+      }
+    }
+  }
+
+  addGroup(id, label, nodes, opts = {}) {
+    const groups = this._state.groups ||= [];
+    if (!id) throw new Error("group id is required");
+    if (groups.some((g) => g.id === id)) {
+      throw new Error(`Group "${id}" already exists`);
+    }
+    const g = { id, nodes: this._groupNodes(nodes, `group "${id}"`) };
+    if (label) g.label = label;
+    this._groupStyle(g, opts);
+    groups.push(g);
+  }
+
+  // opts: label, color, dash (null clears each), nodes (replaces the set),
+  // add / remove (arrays of ids, applied after nodes).
+  updateGroup(id, opts = {}) {
+    const g = (this._state.groups || []).find((g) => g.id === id);
+    if (!g) throw new Error(`Group "${id}" not found`);
+    if (opts.label !== undefined) {
+      if (opts.label) g.label = opts.label;
+      else delete g.label;
+    }
+    let nodes = opts.nodes
+      ? this._groupNodes(opts.nodes, `group "${id}"`)
+      : g.nodes;
+    if (opts.add) {
+      nodes = [
+        ...new Set([...nodes, ...this._groupNodes(opts.add, "--add")]),
+      ];
+    }
+    if (opts.remove) nodes = nodes.filter((n) => !opts.remove.includes(n));
+    if (nodes.length === 0) {
+      throw new Error(`group "${id}" would be empty; use remove-group`);
+    }
+    g.nodes = nodes;
+    this._groupStyle(g, opts);
+  }
+
+  // Idempotent (retry-safe): false if no such group.
+  removeGroup(id) {
+    const gs = this._state.groups || [];
+    const idx = gs.findIndex((g) => g.id === id);
+    if (idx === -1) return false;
+    gs.splice(idx, 1);
+    if (gs.length === 0) delete this._state.groups;
+    return true;
+  }
+
+  listGroups() {
+    return [...(this._state.groups || [])];
   }
 
   // ─── Notes (free-floating text annotations) ────────────────
@@ -1522,7 +1609,21 @@ export class Diagram {
         anchored: !!(r.anchor && !this.noteLayout[r.id]),
       };
     }
-    return { positions, content, canvas: { width: W, height: H }, notes };
+    const groups = {};
+    for (const f of groupFrames(this._state.groups, gridBoxes, pal)) {
+      groups[f.id] = {
+        ...f.rect,
+        members: f.members,
+        intruders: f.intruders,
+      };
+    }
+    return {
+      positions,
+      content,
+      canvas: { width: W, height: H },
+      notes,
+      groups,
+    };
   }
 
   // ─── Auto-derive a legend from the colors actually used ───
@@ -1554,7 +1655,8 @@ export class Diagram {
 
   // ─── Render to PNG ────────────────────────────────────────
   render() {
-    const { canvas, W, H, scale, DPR, maxDim, routes } = this.renderToCanvas();
+    const { canvas, W, H, scale, DPR, maxDim, routes, frames } = this
+      .renderToCanvas();
 
     // Write PNG
     const outPath = this.outputPath;
@@ -1577,6 +1679,17 @@ export class Diagram {
       `Wrote ${outPath} (${W}x${H}${capped}, ${canvas.width}x${canvas.height}px)` +
         (failCount > 0 ? ` — ${failCount} route failure(s)` : ""),
     );
+    // Layout ignores groups, so a non-member can land inside a frame and read
+    // as belonging to it. Say which, so the caller can move it.
+    for (const f of frames) {
+      if (f.intruders.length) {
+        console.error(
+          `warning: group "${f.id}" frame contains non-member(s): ${
+            f.intruders.join(", ")
+          } — move them out with row/col, or add them to the group.`,
+        );
+      }
+    }
     // The cap is a uniform downscale, so a very wide board "succeeds" into an
     // unreadable PNG — a 15025px canvas lands at 654px tall. Say so on stderr:
     // the success line above mentions it only parenthetically, and a caller
@@ -1658,8 +1771,10 @@ export class Diagram {
       }
     }
 
-    // Boundary dividers — annotation layer beneath wires and boxes
+    // Boundary dividers and group frames — annotation layer beneath wires and boxes
     drawDividers(ctx, this._state.dividers, W, H, pal);
+    const frames = groupFrames(this._state.groups, gridBoxes, pal);
+    const groupLabels = drawGroups(ctx, frames, pal);
 
     // Build routing grid + route (layout already computed above)
     const grid = new Grid(COLS, ROWS);
@@ -1681,7 +1796,9 @@ export class Diagram {
     const labelRects = drawRoutes(ctx, routes, CELL, pal, {
       bridges: this._state.crossingBridges !== false,
       boxes: gridBoxes,
+      avoid: groupLabels,
     });
+    drawGroupLabels(ctx, groupLabels, pal);
     drawBoxes(ctx, gridBoxes, CELL, pal, { shadow: shadows });
     drawEdgeLabels(ctx, labelRects, pal);
     drawNotes(
@@ -1733,7 +1850,19 @@ export class Diagram {
       ctx.fillText(this._state.footer, 20, H - 20);
     }
 
-    return { canvas, ctx, W, H, scale, DPR, maxDim, gridBoxes, routes, pal };
+    return {
+      canvas,
+      ctx,
+      W,
+      H,
+      scale,
+      DPR,
+      maxDim,
+      gridBoxes,
+      routes,
+      pal,
+      frames,
+    };
   }
 }
 

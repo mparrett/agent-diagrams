@@ -2383,7 +2383,7 @@ export function drawRoutes(
     y: b.row * cell,
     w: b.w * cell,
     h: b.h * cell,
-  }));
+  })).concat(opts.avoid || []);
   const overlapsBox = (rect) => boxRects.some((r) => rectsOverlap(rect, r));
   const OVER_LABEL = 100, OVER_BOX = 50; // wire crossings score 1 each
   const placed = [];
@@ -2668,6 +2668,135 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     }
     ctx.restore();
   }
+}
+
+/**
+ * Groups — a labeled frame around a set of nodes, for context views that sort
+ * boxes into regions (surfaces, agents, upstream data). Annotation only, like
+ * dividers: layout and routing ignore it, so the frame is wherever its members
+ * land. A non-member box that lands inside a frame is reported as an intruder
+ * rather than moved; give the region its own rows/cols to keep it clean.
+ *
+ *   groups: [{ id, label?, nodes: [ids], color?, dash? }]
+ *
+ * A group whose members include all of another group's members draws around
+ * that group's frame too, one pad further out, so nested frames stay visible.
+ */
+export const GROUP_PAD = 12;
+
+export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE) {
+  const byId = new Map((boxes || []).map((b) => [b.id, b]));
+  const rectOf = (b) => ({
+    x: b.col * CELL,
+    y: b.row * CELL,
+    w: b.w * CELL,
+    h: b.h * CELL,
+  });
+  const valid = (groups || [])
+    .filter((g) => g && Array.isArray(g.nodes))
+    .map((g) => ({ g, members: g.nodes.filter((id) => byId.has(id)) }))
+    .filter((v) => v.members.length > 0);
+  // Inner groups first, so an outer group can wrap their finished frames.
+  const order = [...valid].sort((a, b) => a.members.length - b.members.length);
+  const frames = new Map();
+  const labelH = Math.round(((pal.sizes || DEFAULT_SIZES).divider) * 1.4);
+  for (const v of order) {
+    const set = new Set(v.members);
+    const rects = v.members.map((id) => rectOf(byId.get(id)));
+    for (const [other, f] of frames) {
+      if (
+        other.members.length < v.members.length &&
+        other.members.every((id) => set.has(id))
+      ) rects.push(f.labelled);
+    }
+    const x0 = Math.min(...rects.map((r) => r.x)) - GROUP_PAD;
+    const y0 = Math.min(...rects.map((r) => r.y)) - GROUP_PAD;
+    const x1 = Math.max(...rects.map((r) => r.x + r.w)) + GROUP_PAD;
+    const y1 = Math.max(...rects.map((r) => r.y + r.h)) + GROUP_PAD;
+    const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    // The label straddles the top border; an enclosing frame must clear it.
+    const labelled = v.g.label
+      ? { ...rect, y: rect.y - labelH / 2, h: rect.h + labelH / 2 }
+      : rect;
+    const intruders = (boxes || [])
+      .filter((b) => !set.has(b.id) && rectsOverlap(rect, rectOf(b)))
+      .map((b) => b.id);
+    frames.set(v, { rect, labelled, intruders });
+  }
+  // Report in authoring order; draw order is the same (outer frames are larger,
+  // and translucent fills stack, so order only matters for the label chips).
+  return valid.map((v) => ({
+    id: v.g.id,
+    label: v.g.label,
+    color: v.g.color,
+    dash: v.g.dash,
+    members: v.members,
+    ...frames.get(v),
+  }));
+}
+
+/**
+ * Paint the frames from groupFrames. Returns each label's placement, for
+ * drawGroupLabels (after the wires, so no wire runs through a label) and for
+ * the edge-label placer to keep clear of.
+ */
+export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
+  const S = pal.sizes || DEFAULT_SIZES;
+  const labels = [];
+  // Outermost first, so an inner frame's fill and border sit on top.
+  const order = [...(frames || [])].sort((a, b) =>
+    b.rect.w * b.rect.h - a.rect.w * a.rect.h
+  );
+  for (const f of order) {
+    const { x, y, w, h } = f.rect;
+    const c = f.color ? resolveColorToken(pal, f.color) : null;
+    const stroke = c ? c.border : pal.textDim;
+    ctx.save();
+    if (c) {
+      ctx.fillStyle = withAlpha(c.bg, 0.5);
+      drawRoundRect(ctx, x, y, w, h, 10);
+      ctx.fill();
+    }
+    ctx.strokeStyle = withAlpha(stroke, 0.7);
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash(resolveDash(f.dash));
+    drawRoundRect(ctx, x, y, w, h, 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    if (f.label) {
+      ctx.font = `bold ${S.divider}px ${pal.font}`;
+      const tw = ctx.measureText(f.label).width;
+      const asc = S.divider * LABEL_ASCENT, desc = S.divider * LABEL_DESCENT;
+      const lx = x + 12, ly = y + (asc - desc) / 2;
+      labels.push({
+        label: f.label,
+        color: stroke,
+        lx,
+        ly,
+        x: lx - 4,
+        y: ly - asc - 2,
+        w: tw + 8,
+        h: asc + desc + 4,
+      });
+    }
+  }
+  return labels;
+}
+
+/** Paint group labels on the frame's top border, over the wires. */
+export function drawGroupLabels(ctx, labels, pal = DEFAULT_PALETTE) {
+  const S = pal.sizes || DEFAULT_SIZES;
+  ctx.save();
+  ctx.font = `bold ${S.divider}px ${pal.font}`;
+  ctx.textAlign = "left";
+  for (const l of labels || []) {
+    ctx.fillStyle = pal.background;
+    ctx.fillRect(l.x, l.y, l.w, l.h);
+    ctx.fillStyle = l.color;
+    ctx.fillText(l.label, l.lx, l.ly);
+  }
+  ctx.restore();
 }
 
 /**
