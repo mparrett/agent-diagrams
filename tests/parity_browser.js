@@ -17,6 +17,7 @@ const path = Deno.env.get("CHROME_BIN") ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const browser = await launch({ path, headless: true });
+let code = 1;
 try {
   const page = await browser.newPage();
 
@@ -53,10 +54,14 @@ try {
 
   if (!result) {
     console.error("TIMEOUT: page never set window.__PARITY_RESULT__");
-    Deno.exit(2);
+    code = 2;
+  } else {
+    console.log(JSON.stringify(result, null, 2));
+    code = result.pass ? 0 : 1;
   }
-  console.log(JSON.stringify(result, null, 2));
-  Deno.exit(result.pass ? 0 : 1);
 } finally {
   await browser.close();
 }
+// Exit after the browser closes: Deno.exit inside the try skipped the finally
+// and left a headless Chrome running.
+Deno.exit(code);
