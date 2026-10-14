@@ -37,6 +37,7 @@ import {
   drawGroupLabels,
   drawGroups,
   drawHeatmap,
+  drawLegend,
   drawNotes,
   drawRoutes,
   EDGE_MARGIN,
@@ -44,6 +45,7 @@ import {
   Grid,
   groupFrames,
   innerGroups,
+  legendEntries,
   makePalette,
   measureNote,
   nodeBoxSize,
@@ -321,6 +323,13 @@ function render() {
   drawEdgeLabels(ctx, labelRects, PAL);
   drawPinOverlay(); // manual-placement markers (editor-only)
   drawNotes(ctx, buildNotes(), PAL);
+  drawLegend(
+    ctx,
+    legendEntries(diagramState, diagramState.nodes || [], PAL),
+    CSS_H,
+    PAL,
+    diagramState.footer,
+  );
   if (showConn || connectMode) drawConnPoints(ctx, connMap, CELL); // Connect mode reveals attach slots
   drawFailedRoutes(ctx, routes, BOXES, CELL);
   drawHoverOverlay(); // before connect overlay → source ring wins

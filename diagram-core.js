@@ -3540,3 +3540,94 @@ export function drawConnPoints(ctx, connMap, cell) {
     ctx.stroke();
   }
 }
+
+// Space between one legend label and the next entry's swatch.
+export const LEGEND_GAP = 28;
+
+/**
+ * Left edge of each legend swatch, given each label's measured width. Each
+ * entry takes its own width plus LEGEND_GAP, so the space between entries is
+ * the same whatever their label lengths. (Fixed 160px slots left a wide gap
+ * after a short label and a tight one after a long label.)
+ */
+export function legendSwatchXs(labelWidths, x0 = 20) {
+  const xs = [];
+  let x = x0;
+  for (const w of labelWidths) {
+    xs.push(x);
+    x += 18 + w + LEGEND_GAP;
+  }
+  return xs;
+}
+
+/**
+ * The legend entries to draw: the board's explicit `legend`, or one entry per
+ * node color in use, or none when `legend` is false. Explicit entries may name
+ * a palette color or semantic token instead of a hex, so a theme change
+ * recolors the legend along with the boxes. `bg` is the matching box fill,
+ * used when an entry draws an outlined (dashed) swatch.
+ */
+export function legendEntries(state, nodes, pal) {
+  if (Array.isArray(state.legend)) {
+    return state.legend.filter((e) => e && e.label != null).map((e) => {
+      if (!isColorToken(pal, e.color)) return { ...e };
+      const c = resolveColorToken(pal, e.color);
+      return { ...e, color: c.border, bg: c.bg };
+    });
+  }
+  if (state.legend === false) return [];
+  const used = [];
+  // Skip colorless nodes: they render with the fallback box color but have no
+  // token to label, and an entry with an undefined label crashes fillText.
+  for (const n of nodes) {
+    if (n.color && !used.includes(n.color)) used.push(n.color);
+  }
+  return used.map((c) => ({
+    color: resolveColorToken(pal, c).border,
+    label: c,
+  }));
+}
+
+// Swatch dash per token, sized for a 12px swatch: the box-outline patterns
+// halved read as a solid line at that size.
+const LEGEND_DASH = { dashed: [3, 2], dotted: [1, 2] };
+
+/** Draw the legend row (and footer) along the bottom of a board H tall. */
+export function drawLegend(ctx, legend, H, pal, footer) {
+  if (legend.length > 0) {
+    ctx.font = `${pal.sizes.legend}px ${pal.font}`;
+    ctx.textAlign = "left";
+    const legendY = H - (footer ? 35 : 20);
+    const xs = legendSwatchXs(
+      legend.map((item) => ctx.measureText(item.label).width),
+    );
+    for (const [i, item] of legend.entries()) {
+      const x = xs[i];
+      if (item.dash) {
+        ctx.fillStyle = item.bg || pal.background;
+        ctx.fillRect(x, legendY, 12, 12);
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash(
+          LEGEND_DASH[item.dash] ?? resolveDash(item.dash).map((n) => n / 2),
+        );
+        ctx.strokeRect(x + 1, legendY + 1, 10, 10);
+        ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = item.color;
+        ctx.fillRect(x, legendY, 12, 12);
+      }
+      ctx.fillStyle = pal.textDim;
+      ctx.fillText(item.label, x + 18, legendY + 10);
+    }
+    if (footer) {
+      ctx.fillStyle = pal.textDim;
+      ctx.fillText(footer, 20, legendY + 25);
+    }
+  } else if (footer) {
+    ctx.fillStyle = pal.textDim;
+    ctx.font = `${pal.sizes.footer}px ${pal.font}`;
+    ctx.textAlign = "left";
+    ctx.fillText(footer, 20, H - 20);
+  }
+}

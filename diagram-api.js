@@ -31,6 +31,7 @@ import {
   drawFailedRoutes,
   drawGroupLabels,
   drawGroups,
+  drawLegend,
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
@@ -41,16 +42,16 @@ import {
   groupFrames,
   innerGroups,
   isColorToken,
+  legendEntries,
   makePalette,
   measureNote,
   OUTLINE_WIDTHS,
-  resolveColorToken,
-  resolveDash,
   resolveNotePositions,
   routeEdges,
   snapAlign,
   spreadBoxes,
 } from "./diagram-core.js";
+export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 
 /**
@@ -99,25 +100,6 @@ export function paletteFromState(state) {
 // metrics and drawing must use the same font). Unlike the old WASM canvaskit,
 // native Skia shapes proportional fonts correctly, so sans now measures the same
 // here as in the browser. Falls back silently if assets are gone.
-// Space between one legend label and the next entry's swatch.
-const LEGEND_GAP = 28;
-
-/**
- * Left edge of each legend swatch, given each label's measured width. Each
- * entry takes its own width plus LEGEND_GAP, so the space between entries is
- * the same whatever their label lengths. (Fixed 160px slots left a wide gap
- * after a short label and a tight one after a long label.)
- */
-export function legendSwatchXs(labelWidths, x0 = 20) {
-  const xs = [];
-  let x = x0;
-  for (const w of labelWidths) {
-    xs.push(x);
-    x += 18 + w + LEGEND_GAP;
-  }
-  return xs;
-}
-
 let _fontsLoaded = false;
 // Fonts.register hands Skia a pointer into the Uint8Array without copying it,
 // and Skia reads glyphs from that memory for the life of the process. Dropping
@@ -2078,31 +2060,8 @@ export class Diagram {
     };
   }
 
-  // ─── Auto-derive a legend from the colors actually used ───
-  // Explicit entries may name a palette color or semantic token instead of a
-  // hex, so a theme change recolors the legend along with the boxes. `bg` is
-  // the matching box fill, used when an entry draws an outlined (dashed) swatch.
   _legend() {
-    if (Array.isArray(this._state.legend)) {
-      return this._state.legend.filter((e) => e && e.label != null).map((e) => {
-        if (!isColorToken(this.palette, e.color)) return { ...e };
-        const c = resolveColorToken(this.palette, e.color);
-        return { ...e, color: c.border, bg: c.bg };
-      });
-    }
-    if (this._state.legend === false) return [];
-    const used = [];
-    // Skip colorless nodes: they render with the fallback box color but have no
-    // token to label, and a legend entry with an undefined label crashes
-    // fillText (an agent can easily omit "color").
-    for (const n of this.nodes) {
-      if (n.color && !used.includes(n.color)) used.push(n.color);
-    }
-    // resolveColorToken so semantic tokens (error/warn/success) match the box swatch.
-    return used.map((c) => ({
-      color: resolveColorToken(this.palette, c).border,
-      label: c,
-    }));
+    return legendEntries(this._state, this.nodes, this.palette);
   }
 
   // ─── Render to PNG ────────────────────────────────────────
@@ -2270,41 +2229,7 @@ export class Diagram {
 
     // Legend (auto-derived from used colors unless given / disabled)
     const legend = this._legend();
-    if (legend.length > 0) {
-      ctx.font = `${pal.sizes.legend}px ${pal.font}`;
-      ctx.textAlign = "left";
-      const legendY = H - (this._state.footer ? 35 : 20);
-      const xs = legendSwatchXs(
-        legend.map((item) => ctx.measureText(item.label).width),
-      );
-      for (const [i, item] of legend.entries()) {
-        const x = xs[i];
-        if (item.dash) {
-          ctx.fillStyle = item.bg || pal.background;
-          ctx.fillRect(x, legendY, 12, 12);
-          ctx.strokeStyle = item.color;
-          ctx.lineWidth = 1.5;
-          // Half the box-outline pattern: a full one barely fits a 12px swatch.
-          ctx.setLineDash(resolveDash(item.dash).map((n) => n / 2));
-          ctx.strokeRect(x + 0.75, legendY + 0.75, 10.5, 10.5);
-          ctx.setLineDash([]);
-        } else {
-          ctx.fillStyle = item.color;
-          ctx.fillRect(x, legendY, 12, 12);
-        }
-        ctx.fillStyle = pal.textDim;
-        ctx.fillText(item.label, x + 18, legendY + 10);
-      }
-      if (this._state.footer) {
-        ctx.fillStyle = pal.textDim;
-        ctx.fillText(this._state.footer, 20, legendY + 25);
-      }
-    } else if (this._state.footer) {
-      ctx.fillStyle = pal.textDim;
-      ctx.font = `${pal.sizes.footer}px ${pal.font}`;
-      ctx.textAlign = "left";
-      ctx.fillText(this._state.footer, 20, H - 20);
-    }
+    drawLegend(ctx, legend, H, pal, this._state.footer);
 
     return {
       canvas,
