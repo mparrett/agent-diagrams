@@ -1088,6 +1088,14 @@ export class Diagram {
             `"${taken[0].id}"; a node can be in only one inner group`,
         );
       }
+      // The group places its members now; their overrides and pins would sit
+      // in the file ignored.
+      this.releaseLayout(g.nodes);
+      if (Array.isArray(this._state.pinned)) {
+        this._state.pinned = this._state.pinned.filter((id) =>
+          !g.nodes.includes(id)
+        );
+      }
     }
   }
 
@@ -1423,6 +1431,11 @@ export class Diagram {
       h: c.h,
     });
     this._resizeCanvas(Math.ceil(fit.W), Math.ceil(fit.H), sdx, sdy);
+    // The renderer grows B to whole cells around the boxes; store what it will
+    // draw, so the size reported here is the PNG's.
+    const drawn = this.solvePositions().canvas;
+    this._state.width = Math.max(this._state.width, drawn.width);
+    this._state.height = Math.max(this._state.height, drawn.height);
   }
 
   // Grow B to a target rect (board px, e.g. the editor's visible viewport), clamped

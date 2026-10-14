@@ -942,3 +942,47 @@ Deno.test("inner groups need a parent row/col and exclusive members", () =>
     const sp = Diagram.load(path).solvePositions();
     assert(sp.positions.a.group === "g", "members report their inner group");
   }));
+
+Deno.test("making a group inner drops its members' overrides and pins", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 0, col: 1 },
+        { id: "c", label: "C", color: "blue", row: 1, col: 0 },
+      ],
+      layout: { a: { x: 300, y: 300 }, c: { x: 60, y: 300 } },
+      pinned: ["a", "c"],
+    });
+    const d = Diagram.load(path);
+    d.addGroup("g", "G", ["a", "b"], { layout: "inner", row: 0, col: 0 });
+    assert(!d.layout.a && d.layout.c, `layout: ${JSON.stringify(d.layout)}`);
+    assert(
+      JSON.stringify(d._state.pinned) === '["c"]',
+      `pinned: ${JSON.stringify(d._state.pinned)}`,
+    );
+  }));
+
+Deno.test("fit-canvas stores the size the PNG is drawn at", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 1500,
+      height: 900,
+      nodes: [
+        { id: "a", label: "Alpha", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "Beta gamma", color: "blue", row: 1, col: 2 },
+      ],
+      // A guard, not a reproduction: the mismatch showed on a larger board
+      // (stored 1477, drawn 1480) and no small fixture tried here hit it.
+      groups: [{ id: "g", label: "G", nodes: ["a", "b"] }],
+    });
+    const d = Diagram.load(path);
+    d.fitCanvasToContent();
+    const drawn = d.solvePositions().canvas;
+    assert(
+      d._state.width === drawn.width && d._state.height === drawn.height,
+      `stored ${d._state.width}x${d._state.height}, drawn ${drawn.width}x${drawn.height}`,
+    );
+  }));
