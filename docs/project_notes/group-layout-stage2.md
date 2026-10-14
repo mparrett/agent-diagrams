@@ -162,10 +162,16 @@ A relative pin only means something inside the group it was filed under.
 - `mergeLayout` drops an absolute pin sent for a member.
 - `just editor-check`: dragging a group by its label and by its border persists one entry; dragging a member persists a relative entry; a concurrent CLI change to the same `innerLayout` entry is flagged as a conflict; parity holds after each.
 
-## Decisions needed
+## Decisions
 
-1. **Annotation groups listing inner group ids.** Recommended: allowed, meaning "wrap this group's frame". The alternative is node ids only, with authors listing members.
-2. **`remove-group` on a nested group.** Recommended: its members move into the parent. The alternative drops them out of every inner group onto the board.
-3. **Annotation groups inside an inner group.** Recommended: laid out at the innermost level that holds all their members. This changes Stage 1 renders that use the pattern; none under `diagrams/` do.
-4. **Depth limit.** Recommended: none. A cap (say three levels) would only enforce readability; the engine needs none.
-5. **Group drag hit area in 2b.** Recommended: label chip and frame border only. The alternative, the whole interior, conflicts with member drags and box selection.
+Taken 2026-10-14, all as recommended:
+
+1. **Annotation groups listing inner group ids:** allowed, meaning "wrap this group's frame".
+2. **`remove-group` on a nested group:** its members move into the parent.
+3. **Annotation groups inside an inner group:** laid out at the innermost level that holds all their members.
+4. **Depth limit:** none.
+5. **Group drag hit area in 2b:** label chip and frame border only.
+
+## Later
+
+- **Edges to a group.** Not built in any stage yet. When they are, `remove-group` must decide what happens to an edge whose end is the removed group: move it to the parent group, or refuse the removal while edges point at it. The shared id namespace above is also what lets `add-edge <from> <group>` resolve without ambiguity.
