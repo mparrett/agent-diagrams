@@ -200,7 +200,7 @@ try {
   await wait(1500);
   s = read();
   check(
-    "Grow all sides adds 60px per side without pinning",
+    "Expand adds 60px per side without pinning",
     s.width === before.width + 120 && s.height === before.height + 120 &&
       same(s.layout, before.layout),
     `${before.width}x${before.height} -> ${s.width}x${s.height}`,
@@ -208,6 +208,74 @@ try {
   check(
     "editor matches renderer after growing the canvas",
     same(await editorBoxes(), await solved()),
+  );
+
+  // Double-clicking the SE handle extends the frame to the view's SE corner.
+  // Zoom out until the view reaches past the board's SE corner.
+  for (let i = 0; i < 40; i++) {
+    const v = JSON.parse(
+      await page.evaluate(`(() => {
+        const v = window.__wb.getView(), b = window.__wb.boardSize(),
+          vp = window.__wb.viewport();
+        return JSON.stringify({
+          dx: v.panX + vp.w / v.zoom - b.w,
+          dy: v.panY + vp.h / v.zoom - b.h,
+        });
+      })()`),
+    );
+    if (v.dx > 200 && v.dy > 200) break;
+    await page.evaluate(`document.getElementById("zoomOut").click()`);
+    await wait(150);
+  }
+  const se = JSON.parse(
+    await page.evaluate(`(() => {
+      const v = window.__wb.getView(), b = window.__wb.boardSize(),
+        vp = window.__wb.viewport(),
+        r = document.getElementById("c").getBoundingClientRect();
+      return JSON.stringify({
+        x: r.left + (b.w - v.panX) * v.zoom * (r.width / vp.w),
+        y: r.top + (b.h - v.panY) * v.zoom * (r.height / vp.h),
+        viewW: v.panX + vp.w / v.zoom, viewH: v.panY + vp.h / v.zoom,
+      });
+    })()`),
+  );
+  const grown = read();
+  // Astral's click({ count: 2 }) sends no dblclick, so dispatch one.
+  await page.evaluate(`document.getElementById("c").dispatchEvent(
+    new MouseEvent("dblclick", {
+      bubbles: true, clientX: ${se.x}, clientY: ${se.y},
+    }),
+  )`);
+  await wait(1500);
+  s = read();
+  check(
+    "double-clicking a corner extends the frame to the view",
+    s.width > grown.width && s.height > grown.height &&
+      s.width <= se.viewW && s.height <= se.viewH &&
+      same(s.layout, grown.layout),
+    `${grown.width}x${grown.height} -> ${s.width}x${s.height}, view ${
+      Math.round(se.viewW)
+    }x${Math.round(se.viewH)}`,
+  );
+
+  const center = async () =>
+    JSON.parse(
+      await page.evaluate(`JSON.stringify(window.__wb.boxCenter("a"))`),
+    );
+  const zoom = async () =>
+    JSON.parse(
+      await page.evaluate(`JSON.stringify(window.__wb.getView().zoom)`),
+    );
+  const big = read(), c0 = await center(), z0 = await zoom();
+  await page.evaluate(`document.getElementById("bTrimCanvas").click()`);
+  await wait(1500);
+  s = read();
+  const c1 = await center();
+  check(
+    "Shrink to content trims the frame and leaves the view alone",
+    s.width < big.width && await zoom() === z0 &&
+      Math.abs(c1.x - c0.x) < 1 && Math.abs(c1.y - c0.y) < 1,
+    `${big.width}x${big.height} -> ${s.width}x${s.height}, box ${c0.x},${c0.y} -> ${c1.x},${c1.y}`,
   );
 } finally {
   await browser.close();

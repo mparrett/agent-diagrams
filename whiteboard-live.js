@@ -2133,13 +2133,19 @@ function resolveAuto(freeIds) {
   schedulePersist();
 }
 // Auto Layout: clear every pin and re-solve the whole board from scratch.
-// Shrink to content: trim B to hug the diagram (server slides content to a
-// uniform margin), then refit the view so the tightened result is centered.
+// Shrink to content: trim B to hug the diagram. The server slides the content
+// to a uniform margin; the view pans by the same amount, so only the frame
+// changes on screen.
 document.getElementById("bTrimCanvas").onclick = async () => {
   try {
+    const ref = BOXES[0], id = ref?.id, col = ref?.col, row = ref?.row;
     await postCanvas({ action: "fit" });
     await mergeReload();
-    zoomToFit();
+    const moved = BOXES.find((b) => b.id === id);
+    if (ref && moved) {
+      view.panX += (moved.col - col) * CELL;
+      view.panY += (moved.row - row) * CELL;
+    }
     render();
     setStatus(
       `trimmed to content (${diagramState.width}×${diagramState.height})`,
@@ -2164,7 +2170,7 @@ document.getElementById("bExpandCanvas").onclick = async () => {
     zoomToFit();
     render();
     setStatus(
-      `expanded to extents (${diagramState.width}×${diagramState.height})`,
+      `fitted to extents (${diagramState.width}×${diagramState.height})`,
     );
   } catch (e) {
     setStatus("expand failed: " + e.message);
@@ -2716,9 +2722,39 @@ document.addEventListener("keydown", (e) => {
 
 document.getElementById("bAddNode").onclick = openNewNodeEditor;
 
+// Extend the frame's `edge` handle (e, nw, ...) out to the matching edges of
+// the visible area, in whole cells. Never shrinks; W/N growth pans the view
+// with the content, as a W/N handle drag does.
+async function growFrameToView(edge) {
+  const vx1 = view.panX + VIEW_W / view.zoom,
+    vy1 = view.panY + VIEW_H / view.zoom;
+  const cells = (px) => Math.max(0, Math.floor(px / CELL) * CELL);
+  const exp = {};
+  if (edge.includes("w")) exp.left = cells(-view.panX);
+  if (edge.includes("n")) exp.up = cells(-view.panY);
+  if (edge.includes("e")) exp.right = cells(vx1 - CSS_W);
+  if (edge.includes("s")) exp.down = cells(vy1 - CSS_H);
+  if (!Object.values(exp).some((v) => v > 0)) {
+    setStatus("frame already reaches the edge of the view");
+    return;
+  }
+  view.panX += exp.left || 0;
+  view.panY += exp.up || 0;
+  if (!(await commitCanvasResize(exp))) {
+    view.panX -= exp.left || 0;
+    view.panY -= exp.up || 0;
+    render();
+  }
+}
+
 // Double-click a note to edit its text, or a node to edit its text/color.
+// Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
   const hit = hitTest(canvasCoords(e));
+  if (hit.kind === "frame") {
+    growFrameToView(hit.frame);
+    return;
+  }
   if (hit.kind === "note") {
     openNoteEditor(hit.note.id, e.clientX, e.clientY);
     return;
