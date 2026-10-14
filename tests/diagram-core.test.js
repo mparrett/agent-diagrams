@@ -1883,3 +1883,162 @@ Deno.test("an inner group pads for an inside label", () => {
     }
   }
 });
+
+// ─── Stage 2b pins (docs/project_notes/group-layout-stage2.md) ──────────────
+const at = (boxes, id) => {
+  const b = boxes.find((x) => x.id === id) ?? boxes.groupBoxes.get(id);
+  return [b.col, b.row];
+};
+const minus = (p, q) => [p[0] - q[0], p[1] - q[1]];
+const AR_DESCENDANTS = [
+  "kb-docs",
+  "kb-index",
+  "style-guide",
+  "style-examples",
+  "tm-entities",
+  "ar-api",
+  "ar-cache",
+  "knowledge",
+  "style",
+  "topicmap",
+];
+
+Deno.test("a nested board without pins keeps its positions", () => {
+  const { boxes } = framed(AR_NODES, arGroups());
+  assertEquals(
+    ["ar", ...AR_DESCENDANTS, "loose"].map((id) => [id, ...at(boxes, id)]),
+    [
+      ["ar", 107, 11],
+      ["kb-docs", 109, 15],
+      ["kb-index", 109, 23],
+      ["style-guide", 122, 15],
+      ["style-examples", 133, 15],
+      ["tm-entities", 148, 15],
+      ["ar-api", 110, 32],
+      ["ar-cache", 129, 32],
+      ["knowledge", 108, 13],
+      ["style", 121, 13],
+      ["topicmap", 147, 13],
+      ["loose", 130, 3],
+    ],
+  );
+});
+
+Deno.test("pinning a root group moves all its descendants with it", () => {
+  const free = framed(AR_NODES, arGroups()).boxes;
+  const [c, r] = at(free, "ar");
+  const pinned = framed(AR_NODES, arGroups(), {
+    layout: { ar: { x: (c + 10) * CELL, y: (r + 5) * CELL } },
+  }).boxes;
+  assertEquals(at(pinned, "ar"), [c + 10, r + 5]);
+  for (const id of AR_DESCENDANTS) {
+    assertEquals(minus(at(pinned, id), at(free, id)), [10, 5], id);
+  }
+});
+
+Deno.test("a group id pins only where it is a root", () => {
+  const free = framed(AR_NODES, arGroups()).boxes;
+  const pinned = framed(AR_NODES, arGroups(), {
+    layout: { knowledge: { x: 900, y: 900 } },
+  }).boxes;
+  for (const id of ["ar", ...AR_DESCENDANTS]) {
+    assertEquals(at(pinned, id), at(free, id), id);
+  }
+});
+
+Deno.test("pinning a child group moves its members, not its siblings", () => {
+  const rel = (boxes, id) => minus(at(boxes, id), at(boxes, "ar"));
+  const pin = (x, y) =>
+    framed(AR_NODES, arGroups(), {
+      innerLayout: { ar: { topicmap: { x: x * CELL, y: y * CELL } } },
+    }).boxes;
+  const free = framed(AR_NODES, arGroups()).boxes;
+  const a = pin(60, 10), b = pin(61, 12);
+  assertEquals(minus(rel(b, "topicmap"), rel(a, "topicmap")), [1, 2]);
+  assertEquals(
+    minus(at(a, "tm-entities"), at(a, "topicmap")),
+    minus(at(free, "tm-entities"), at(free, "topicmap")),
+  );
+  for (
+    const id of [
+      "knowledge",
+      "kb-docs",
+      "style",
+      "style-guide",
+      "ar-api",
+      "ar-cache",
+    ]
+  ) {
+    assertEquals(rel(a, id), rel(free, id), id);
+  }
+  const box = (id) => a.groupBoxes.get(id);
+  const right = (g) => g.col + g.w;
+  assert(right(box("ar")) >= right(box("topicmap")), "ar grows to hold it");
+});
+
+Deno.test("a member pin survives its group's row/col, its parent's pin, and labelPos", () => {
+  const pins = {
+    innerLayout: { knowledge: { "kb-docs": { x: 5 * CELL, y: 20 * CELL } } },
+  };
+  // kb-index is alone in local column 0, so it sits on the content origin's x.
+  const offset = (child = {}, extra = {}) => {
+    const { boxes } = framed(AR_NODES, arGroups(child), { ...pins, ...extra });
+    return minus(at(boxes, "kb-docs"), at(boxes, "kb-index"));
+  };
+  const base = offset();
+  assertEquals(base[0], 5);
+  assertEquals(offset({ row: 1, col: 3 }), base, "row/col");
+  assertEquals(
+    offset({}, { layout: { ar: { x: 600, y: 900 } } }),
+    base,
+    "parent pin",
+  );
+  assertEquals(
+    offset({ labelPos: "top-inside", labelSize: 24 }),
+    base,
+    "labelPos",
+  );
+});
+
+Deno.test("a relative pin with negative coordinates is clamped to 0", () => {
+  const pos = (p) =>
+    framed(AR_NODES, arGroups(), {
+      innerLayout: { knowledge: { "kb-docs": p } },
+    })
+      .boxes.map((b) => [b.id, b.col, b.row]);
+  assertEquals(pos({ x: -90, y: -30 }), pos({ x: 0, y: 0 }));
+});
+
+Deno.test("a relative pin filed under a group that does not list the id is ignored", () => {
+  const pos = (extra) =>
+    framed(AR_NODES, arGroups(), extra).boxes.map((b) => [b.id, b.col, b.row]);
+  assertEquals(
+    pos({ innerLayout: { knowledge: { "ar-api": { x: 600, y: 600 } } } }),
+    pos({}),
+  );
+});
+
+Deno.test("groupBoxes reports the origin innerLayout pins are measured from", () => {
+  const state = {
+    edges: [],
+    nodes: [box("a", 0, 0), box("b", 0, 1), box("c", 1, 0)],
+    groups: [{
+      id: "g",
+      label: "G",
+      layout: "inner",
+      nodes: ["a", "b"],
+      row: 0,
+      col: 1,
+      labelPos: "top-inside",
+    }],
+    innerLayout: { g: { b: { x: 0, y: 0 }, a: { x: 4 * CELL, y: 2 * CELL } } },
+  };
+  const boxes = computeLayout(measureContext(), state, 4000);
+  const o = boxes.groupBoxes.get("g").origin;
+  const at = (id) => boxes.find((x) => x.id === id);
+  assert(
+    at("b").col === o.col && at("b").row === o.row,
+    `b at ${at("b").col},${at("b").row}, origin ${o.col},${o.row}`,
+  );
+  assert(at("a").col === o.col + 4 && at("a").row === o.row + 2, "a offset");
+});

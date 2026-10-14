@@ -1317,3 +1317,137 @@ Deno.test("remove-group moves a nested group's members into its parent", () =>
     assert(JSON.stringify(g.notes) === '["c"]', JSON.stringify(g.notes));
     assert(d.groupParent("inner2").id === "ar");
   }));
+
+// ─── Stage 2b pins (docs/project_notes/group-layout-stage2.md) ──────────────
+function pinned(dir, extra) {
+  const path = `${dir}/diagram-state.json`;
+  writeState(path, {
+    nodes: ["a", "b", "c", "d"].map((id, i) => ({
+      id,
+      label: id.toUpperCase(),
+      color: "blue",
+      row: 0,
+      col: i,
+    })),
+    groups: [inner("ar", ["k", "c"]), inner("k", ["a", "b"])],
+    ...extra,
+  });
+  return path;
+}
+const json = (v) => JSON.stringify(v ?? null);
+
+Deno.test("mergeLayout takes root groups and drops members", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(pinned(dir));
+    const p = { x: 300, y: 300 };
+    d.mergeLayout({ ar: p, k: p, a: p, c: p, d: p });
+    assert(json(Object.keys(d.layout)) === '["ar","d"]', json(d.layout));
+  }));
+
+Deno.test("mergeInnerLayout keeps direct members only, clamped to 0", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(pinned(dir));
+    d.mergeInnerLayout({
+      ar: { k: { x: -30, y: 45 }, a: { x: 1, y: 1 } },
+      k: { a: { x: 60, y: -1 } },
+      d: { d: { x: 1, y: 1 } },
+      nope: { a: { x: 1, y: 1 } },
+    });
+    assert(
+      json(d._state.innerLayout) ===
+        '{"ar":{"k":{"x":0,"y":45}},"k":{"a":{"x":60,"y":0}}}',
+      json(d._state.innerLayout),
+    );
+  }));
+
+Deno.test("free releases a member pin and a group pin", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(pinned(dir, {
+      layout: { ar: { x: 90, y: 90 } },
+      innerLayout: { k: { a: { x: 0, y: 0 }, b: { x: 90, y: 0 } } },
+      pinned: ["ar", "a", "b"],
+    }));
+    assert(d.freeNode("a") === true && d.freeNode("a") === false);
+    assert(d.freeNode("ar") === true);
+    d.releaseLayout(["b"]);
+    assert(json(d.layout) === "{}", json(d.layout));
+    assert(d._state.innerLayout === undefined, json(d._state.innerLayout));
+    assert(json(d._state.pinned) === '["b"]', json(d._state.pinned));
+    assertThrowsWith(() => d.freeNode("zz"), 'No node or group "zz"', "free");
+  }));
+
+Deno.test("update-group keeps member pins and drops removed or moved ones", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(pinned(dir, {
+      layout: { d: { x: 600, y: 600 } },
+      innerLayout: {
+        ar: { c: { x: 0, y: 90 } },
+        k: { a: { x: 0, y: 0 }, b: { x: 90, y: 0 } },
+      },
+      pinned: ["a", "b", "c", "d"],
+    }));
+    d.updateGroup("k", { labelPos: "top-inside" });
+    assert(
+      json(d._state.innerLayout.k) ===
+        '{"a":{"x":0,"y":0},"b":{"x":90,"y":0}}',
+      json(d._state.innerLayout),
+    );
+    d.updateGroup("k", { remove: ["b"] });
+    d.updateGroup("ar", { remove: ["c"] });
+    d.updateGroup("k", { add: ["c", "d"] });
+    assert(
+      json(d._state.innerLayout) === '{"k":{"a":{"x":0,"y":0}}}',
+      json(d._state.innerLayout),
+    );
+    assert(json(d.layout) === "{}", json(d.layout));
+    assert(json(d._state.pinned) === '["a"]', json(d._state.pinned));
+  }));
+
+Deno.test("remove-group leaves no stale pins", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(pinned(dir, {
+      layout: { ar: { x: 90, y: 90 } },
+      innerLayout: {
+        ar: { k: { x: 0, y: 0 }, c: { x: 0, y: 90 } },
+        k: { a: { x: 0, y: 0 } },
+      },
+      pinned: ["ar", "k", "a", "c"],
+    }));
+    d.removeGroup("k");
+    assert(
+      json(d._state.innerLayout) === '{"ar":{"c":{"x":0,"y":90}}}',
+      json(d._state.innerLayout),
+    );
+    assert(json(d._state.pinned) === '["ar","c"]', json(d._state.pinned));
+    d.removeGroup("ar");
+    assert(json(d.layout) === "{}", json(d.layout));
+    assert(d._state.innerLayout === undefined, json(d._state.innerLayout));
+    assert(json(d._state.pinned) === "[]", json(d._state.pinned));
+  }));
+
+Deno.test("a stale innerLayout entry warns on load and is dropped on write", () =>
+  withTempDir((dir) => {
+    const path = pinned(dir, {
+      innerLayout: { k: { c: { x: 600, y: 600 }, a: { x: 0, y: 0 } } },
+    });
+    const warnings = [];
+    const warn = console.warn;
+    console.warn = (m) => warnings.push(m);
+    let d;
+    try {
+      d = Diagram.load(path);
+    } finally {
+      console.warn = warn;
+    }
+    assert(
+      warnings.some((w) => w.includes("innerLayout") && w.includes("k/c")),
+      json(warnings),
+    );
+    const stale = d.solvePositions().positions.c;
+    d._state.innerLayout = { k: { a: { x: 0, y: 0 } } };
+    assert(json(d.solvePositions().positions.c) === json(stale), "ignored");
+    d._state.innerLayout = { k: { c: { x: 600, y: 600 }, a: { x: 0, y: 0 } } };
+    d.save();
+    const saved = JSON.parse(Deno.readTextFileSync(path)).innerLayout;
+    assert(json(saved) === '{"k":{"a":{"x":0,"y":0}}}', json(saved));
+  }));

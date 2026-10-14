@@ -621,3 +621,23 @@ Deno.test("CLI: nested inner groups validate and remove-group promotes", async (
     assert(r.out.includes(`now read in "ar"'s grid`), r.out);
     assertEquals(read().map((g) => [g.id, g.nodes]), [["ar", ["a", "b", "c"]]]);
   }));
+
+Deno.test("CLI: free-node releases a group pin and a member pin", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: NODES,
+      edges: [],
+      groups: [{ id: "g", layout: "inner", row: 0, col: 0, nodes: ["a"] }],
+      layout: { g: { x: 90, y: 90 } },
+      innerLayout: { g: { a: { x: 30, y: 0 } } },
+      pinned: ["g", "a"],
+    });
+    const read = () => JSON.parse(Deno.readTextFileSync(path));
+    let r = await runCli(path, ["free-node", "g"]);
+    assert(r.code === 0 && r.out.includes('Freed "g"'), r.err || r.out);
+    r = await runCli(path, ["free-node", "a"]);
+    assert(r.code === 0 && r.out.includes('Freed "a"'), r.err || r.out);
+    const s = read();
+    assertEquals([s.layout, s.innerLayout, s.pinned], [{}, undefined, []]);
+  }));

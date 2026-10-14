@@ -295,7 +295,10 @@ const WRITE_OPS = {
         : (b.free !== undefined &&
             !(Array.isArray(b.free) &&
               b.free.every((id) => typeof id === "string")))
-        ? "free (array of node ids) required"
+        ? "free (array of ids) required"
+        : (b.innerLayout !== undefined &&
+            (typeof b.innerLayout !== "object" || b.innerLayout === null))
+        ? "innerLayout (object) required"
         : (b.noteLayout !== undefined &&
             (typeof b.noteLayout !== "object" || b.noteLayout === null))
         ? "noteLayout (object) required"
@@ -307,6 +310,7 @@ const WRITE_OPS = {
       // Releases first, so a box both released and re-placed ends up placed.
       if (b.free !== undefined) dd.releaseLayout(b.free);
       dd.mergeLayout(clampLayout(b.layout, dd));
+      if (b.innerLayout !== undefined) dd.mergeInnerLayout(b.innerLayout); // relative pins, clamped to >= 0
       if (b.pinned !== undefined) dd.setPinned(b.pinned); // manual-placement markers ride with the snapshot
       if (b.noteLayout !== undefined) {
         dd.mergeNoteLayout(clampLayout(b.noteLayout, dd)); // note drags ride the same snapshot

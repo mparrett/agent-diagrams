@@ -151,7 +151,8 @@ Commands:
   reverse-edge <from> <to>             Flip direction in place (keeps style/label, swaps per-end pins)
   retarget-edge <from> <to> [--newFrom=ID] [--newTo=ID]   Move an endpoint to another node (keeps style/label/costs)
   move-node <id> <row> <col>
-  free-node <id>                       Drop the node's layout override + unpin → returns it to auto-layout
+  free-node <id>                       Drop a node's or group's layout override, or its pin inside its
+                                       group, + unpin → returns it to auto-layout
   update-node <id> [--label=...] [--color=NAME|SEMANTIC] [--row=N] [--col=N] [--details=a,b,c] [--minW=px|0] [--w=cells|0] [--h=cells|0]
                           [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square]
                           [--outlineReset]   box outline; --outlineReset clears all three back to the board default
@@ -176,7 +177,7 @@ Commands:
   add-group ... --inner --row=N --col=N
                                        Inner group: its members' row/col are positions inside the group,
                                        which is laid out as one box at row N, col N of the board. A node can
-                                       be in one inner group; boxes inside cannot be pinned yet. An inner
+                                       be in one inner group; boxes inside are pinned relative to it. An inner
                                        group's nodes may list other inner group ids, nesting them; node and
                                        group ids share one namespace.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
@@ -366,8 +367,8 @@ function run() {
       d.render();
       console.log(
         freed
-          ? `Freed node "${id}" to auto-layout (rev ${d.rev})`
-          : `Node "${id}" had no layout override — nothing to free (rev ${d.rev})`,
+          ? `Freed "${id}" to auto-layout (rev ${d.rev})`
+          : `"${id}" had no layout override — nothing to free (rev ${d.rev})`,
       );
       break;
     }

@@ -284,6 +284,29 @@ export function groupNestingErrors(groups) {
 }
 
 /**
+ * The `innerLayout` entries, as [groupId, id], filed under a group that is not
+ * an inner group listing that id: layout ignores them and a write drops them.
+ */
+export function staleInnerPins(state) {
+  const out = [];
+  const lists = new Map();
+  for (const g of state.groups || []) {
+    if (g?.layout === "inner" && Array.isArray(g.nodes) && !lists.has(g.id)) {
+      lists.set(g.id, g.nodes);
+    }
+  }
+  const il = state.innerLayout;
+  if (!il || typeof il !== "object") return out;
+  for (const [gid, pins] of Object.entries(il)) {
+    if (!pins || typeof pins !== "object") continue;
+    for (const id of Object.keys(pins)) {
+      if (!lists.get(gid)?.includes(id)) out.push([gid, id]);
+    }
+  }
+  return out;
+}
+
+/**
  * Check a parsed state before it becomes a Diagram.
  *
  * The file is the source of truth and agents hand-edit it, so a bad field used
@@ -365,6 +388,28 @@ export function validateState(state, path = "diagram-state.json") {
       at(`layout["${id}"] must be {x, y} numbers, got ${JSON.stringify(p)}`);
     }
   }
+  if (state.innerLayout !== undefined) {
+    const il = state.innerLayout;
+    if (!il || typeof il !== "object" || Array.isArray(il)) {
+      at(`innerLayout must be an object, got ${JSON.stringify(il)}`);
+    } else {
+      for (const [gid, pins] of Object.entries(il)) {
+        if (!pins || typeof pins !== "object" || Array.isArray(pins)) {
+          at(`innerLayout["${gid}"] must be an object of {x, y} pins`);
+          continue;
+        }
+        for (const [id, p] of Object.entries(pins)) {
+          if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+            at(
+              `innerLayout["${gid}"]["${id}"] must be {x, y} numbers, got ${
+                JSON.stringify(p)
+              }`,
+            );
+          }
+        }
+      }
+    }
+  }
   if (state.noteLayout && typeof state.noteLayout === "object") {
     for (const [id, p] of Object.entries(state.noteLayout)) {
       if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
@@ -418,6 +463,15 @@ export function validateState(state, path = "diagram-state.json") {
     console.warn(
       `${path}: ${dangling.length} edge endpoint(s) reference no node — ` +
         `rendered as free ends if pinned by fromPos/toPos, otherwise hidden`,
+    );
+  }
+  const stale = staleInnerPins(state);
+  if (stale.length) {
+    console.warn(
+      `${path}: ignoring innerLayout pin(s) filed under a group that does ` +
+        `not list them: ${
+          stale.map(([g, id]) => `${g}/${id}`).join(", ")
+        } — dropped on the next write`,
     );
   }
   return state;
@@ -555,6 +609,7 @@ export class Diagram {
       }
 
       const nextRev = this._loadedRev + 1;
+      this._pruneInnerLayout();
       const state = {
         ...this._state,
         nodes: this.nodes,
@@ -659,6 +714,7 @@ export class Diagram {
       }
     }
     delete this.layout[id];
+    this._dropInnerPins([id]);
     if (Array.isArray(this._state.pinned)) {
       this._state.pinned = this._state.pinned.filter((p) => p !== id);
     }
@@ -729,15 +785,20 @@ export class Diagram {
     node.col = col;
   }
 
-  // Release a node back to automatic placement: drop its layout override (and
-  // unpin it). Without this, a frozen layout[id] shadows row/col — so after the
-  // editor's full-snapshot freezes the board, an agent's moveNode is a no-op
-  // until the node is freed. Returns whether it had an override to remove.
+  // Release a node or group back to automatic placement: drop its layout
+  // override or its pin in its parent group (and unpin it). Without this, a
+  // frozen layout[id] shadows row/col — so after the editor's full-snapshot
+  // freezes the board, an agent's moveNode is a no-op until the node is freed.
+  // Returns whether it had an override to remove.
   freeNode(id) {
-    if (!this.nodes.some((n) => n.id === id)) {
-      throw new Error(`Node "${id}" not found`);
+    if (
+      !this.nodes.some((n) => n.id === id) &&
+      !(this._state.groups || []).some((g) => g.id === id)
+    ) {
+      throw new Error(`No node or group "${id}"`);
     }
-    const had = Object.prototype.hasOwnProperty.call(this.layout, id);
+    const relative = this._dropInnerPins([id]);
+    const had = Object.hasOwn(this.layout, id) || relative;
     delete this.layout[id];
     if (Array.isArray(this._state.pinned)) {
       this._state.pinned = this._state.pinned.filter((p) => p !== id);
@@ -991,19 +1052,78 @@ export class Diagram {
   // Commutative with content edits — only touches `layout`.
   // Drop the layout overrides for `ids`, returning those boxes to auto-layout.
   // Pins are left to setPinned, which the editor sends alongside.
+  // A relative pin is released with it, from its parent group's entry.
   releaseLayout(ids) {
     for (const id of ids || []) delete this.layout[id];
+    this._dropInnerPins(ids || []);
   }
 
+  // Accepts nodes outside every inner group and root inner group ids; an inner
+  // group places its members, so their ids are dropped.
   mergeLayout(map) {
+    const inner = innerGroups(this._state.groups, this.nodes);
+    const member = new Set(inner.flatMap((g) => [...g.members, ...g.children]));
+    const roots = new Set(
+      inner.filter((g) => g.parent === null).map((g) => g.id),
+    );
     for (const [id, pos] of Object.entries(map || {})) {
+      const placeable = roots.has(id) ||
+        (!member.has(id) && this.nodes.some((n) => n.id === id));
       if (
-        this.nodes.find((n) => n.id === id) && pos &&
-        Number.isFinite(pos.x) && Number.isFinite(pos.y)
+        placeable && pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)
       ) {
         this.layout[id] = { x: pos.x, y: pos.y };
       }
     }
+  }
+
+  // Merge {groupId: {id: {x, y}}} relative pins: px from the group's content
+  // origin, clamped to x, y >= 0. Ids that are not a direct member (node or
+  // child group) of the inner group they are filed under are dropped.
+  mergeInnerLayout(map) {
+    const groups = this._state.groups || [];
+    for (const [gid, pins] of Object.entries(map || {})) {
+      const g = groups.find((o) => o.id === gid && o.layout === "inner");
+      if (!g || !pins || typeof pins !== "object") continue;
+      for (const [id, pos] of Object.entries(pins)) {
+        if (
+          !g.nodes.includes(id) || !pos || !Number.isFinite(pos.x) ||
+          !Number.isFinite(pos.y)
+        ) continue;
+        const il = this._state.innerLayout ||= {};
+        (il[gid] ||= {})[id] = { x: Math.max(0, pos.x), y: Math.max(0, pos.y) };
+      }
+    }
+  }
+
+  // Drop each id's relative pin, wherever it is filed. Returns whether any was.
+  _dropInnerPins(ids) {
+    const il = this._state.innerLayout;
+    if (!il || typeof il !== "object") return false;
+    let had = false;
+    for (const [gid, pins] of Object.entries(il)) {
+      for (const id of ids) {
+        if (pins && Object.hasOwn(pins, id)) {
+          delete pins[id];
+          had = true;
+        }
+      }
+      if (!pins || Object.keys(pins).length === 0) delete il[gid];
+    }
+    if (Object.keys(il).length === 0) delete this._state.innerLayout;
+    return had;
+  }
+
+  _pruneInnerLayout() {
+    for (const [gid, id] of staleInnerPins(this._state)) {
+      delete this._state.innerLayout[gid][id];
+    }
+    const il = this._state.innerLayout;
+    if (!il || typeof il !== "object") return;
+    for (const [gid, pins] of Object.entries(il)) {
+      if (!pins || Object.keys(pins).length === 0) delete il[gid];
+    }
+    if (Object.keys(il).length === 0) delete this._state.innerLayout;
   }
 
   // Bake grid-space box positions into pixel overrides. Positions stay integer
@@ -1196,15 +1316,33 @@ export class Diagram {
     if (errs.length) throw new Error(errs.join("\n"));
   }
 
-  // An inner group places its members now; their overrides and pins would sit
-  // in the file ignored.
+  // An inner group places its members now; their overrides, their pins in
+  // any other group, and pin markers without a pin here would sit in the file
+  // ignored.
   _claimMembers(g) {
     if (g.layout !== "inner") return;
-    this.releaseLayout(g.nodes);
+    for (const id of g.nodes) delete this.layout[id];
+    const il = this._state.innerLayout;
+    for (const gid of Object.keys(il || {})) {
+      if (gid === g.id) continue;
+      for (const id of g.nodes) delete il[gid][id];
+    }
+    this._pruneInnerLayout();
+    const own = this._state.innerLayout?.[g.id] ?? {};
     if (Array.isArray(this._state.pinned)) {
       this._state.pinned = this._state.pinned.filter((id) =>
-        !g.nodes.includes(id)
+        !g.nodes.includes(id) || Object.hasOwn(own, id)
       );
+    }
+  }
+
+  // Drop group `gid`'s relative pins and pin markers for `ids`.
+  _unpinFrom(gid, ids) {
+    const pins = this._state.innerLayout?.[gid];
+    if (pins) { for (const id of ids) delete pins[id]; }
+    this._pruneInnerLayout();
+    if (Array.isArray(this._state.pinned)) {
+      this._state.pinned = this._state.pinned.filter((id) => !ids.includes(id));
     }
   }
 
@@ -1272,8 +1410,17 @@ export class Diagram {
     }
     this._groupStyle(c, opts);
     this._checkGroups(groups.map((o) => o === g ? c : o));
+    const removed = g.nodes.filter((n) => !c.nodes.includes(n));
     for (const k of Object.keys(g)) delete g[k];
     Object.assign(g, c);
+    this._unpinFrom(id, removed);
+    if (g.layout !== "inner") {
+      // No longer laid out: its own box and members' pins mean nothing.
+      delete this.layout[id];
+      this._unpinFrom(id, g.nodes);
+      if (this._state.innerLayout) delete this._state.innerLayout[id];
+      this._pruneInnerLayout();
+    }
     this._claimMembers(g);
   }
 
@@ -1292,6 +1439,16 @@ export class Diagram {
     const idx = gs.findIndex((g) => g.id === id);
     if (idx === -1) return false;
     const [g] = gs.splice(idx, 1);
+    if (g.layout === "inner") {
+      delete this.layout[id];
+      this._unpinFrom(id, g.nodes);
+      this._dropInnerPins([id]);
+      if (this._state.innerLayout) delete this._state.innerLayout[id];
+      this._pruneInnerLayout();
+      if (Array.isArray(this._state.pinned)) {
+        this._state.pinned = this._state.pinned.filter((p) => p !== id);
+      }
+    }
     const parent = this.groupParent(id);
     if (parent) {
       const moved = g.nodes.filter((n) => !parent.nodes.includes(n));
@@ -1731,7 +1888,12 @@ export class Diagram {
   // `layout` map, not this). Stale ids (nodes since removed) are dropped.
   setPinned(ids) {
     const valid = Array.isArray(ids)
-      ? ids.filter((id) => this.nodes.some((n) => n.id === id))
+      ? ids.filter((id) =>
+        this.nodes.some((n) => n.id === id) ||
+        (this._state.groups || []).some((g) =>
+          g.id === id && g.layout === "inner"
+        )
+      )
       : [];
     this._state.pinned = [...new Set(valid)];
   }

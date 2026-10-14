@@ -1585,8 +1585,9 @@ export function computeLayout(ctx, state, canvasW) {
 
   // Inner groups (docs/project_notes/group-layout-stage1.md, -stage2.md): lay
   // out each one's members, nodes and child groups, on its own grid, children
-  // first, then place it one level up as a single box. Members' layout
-  // overrides are ignored at every depth.
+  // first, then place it one level up as a single box. Members' `layout`
+  // overrides are ignored at every depth; `innerLayout[group][id]` pins a
+  // direct member relative to its group's content origin instead.
   const inner = innerGroups(state.groups, nodes);
   const tree = new Map(inner.map((g) => [g.id, g]));
   const authored = new Map();
@@ -1639,6 +1640,21 @@ export function computeLayout(ctx, state, canvasW) {
     const g = tree.get(gid);
     return { id: PSEUDO_PREFIX + gid, row: g.row, col: g.col };
   };
+  // A group's relative pins, keyed by grid-box id. Entries for ids the group
+  // does not list directly are stale and ignored.
+  const localPins = (g) => {
+    const pins = {};
+    for (const [id, p] of Object.entries(state.innerLayout?.[g.id] ?? {})) {
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      const key = memberOf.get(id) === g.id
+        ? id
+        : g.children.includes(id)
+        ? PSEUDO_PREFIX + id
+        : null;
+      if (key) pins[key] = { x: Math.max(0, p.x), y: Math.max(0, p.y) };
+    }
+    return pins;
+  };
   const layoutGroup = (g) => {
     for (const c of g.children) layoutGroup(tree.get(c));
     const items = [
@@ -1646,9 +1662,13 @@ export function computeLayout(ctx, state, canvasW) {
       ...g.children.map(groupItem),
     ];
     const groups = annotations.get(g.id) ?? [];
-    const boxes = place(items, { groups });
-    const minC = Math.min(...boxes.map((b) => b.col));
-    const minR = Math.min(...boxes.map((b) => b.row));
+    const pins = localPins(g);
+    const boxes = place(items, { groups, layout: pins });
+    // With pins, the local grid's (0, 0) is the content origin, so a pin
+    // never shifts it; the group grows right and down instead.
+    const origin = Object.keys(pins).length ? [0] : [];
+    const minC = Math.min(...origin, ...boxes.map((b) => b.col));
+    const minR = Math.min(...origin, ...boxes.map((b) => b.row));
     const maxC = Math.max(...boxes.map((b) => b.col + b.w));
     const maxR = Math.max(...boxes.map((b) => b.row + b.h));
     // The extent the frame wraps: the boxes, and annotation frames at this
@@ -1683,9 +1703,17 @@ export function computeLayout(ctx, state, canvasW) {
     ...nodes.filter((n) => !memberOf.has(n.id)),
     ...roots.map((g) => groupItem(g.id)),
   ];
+  // A root group's `layout[id]` pins its box on the board.
+  let boardLayout = layout;
+  for (const g of roots) {
+    if (layout[g.id]) {
+      if (boardLayout === layout) boardLayout = { ...layout };
+      boardLayout[PSEUDO_PREFIX + g.id] = layout[g.id];
+    }
+  }
   const placed = place(outer, {
     rowY,
-    layout,
+    layout: boardLayout,
     groups: annotations.get(null) ?? [],
     canvasW,
     offX: Number.isFinite(state.offset?.x) ? state.offset.x : 0,
@@ -1704,11 +1732,17 @@ export function computeLayout(ctx, state, canvasW) {
       gridBoxes.push(b);
       return;
     }
+    // `origin`: the absolute cell of the group's local (0, 0), which
+    // `innerLayout` pins are measured from.
     groupBoxes.set(b.id.slice(PSEUDO_PREFIX.length), {
       col: b.col,
       row: b.row,
       w: b.w,
       h: b.h,
+      origin: {
+        col: b.col + local.pad.left - local.minC,
+        row: b.row + local.pad.top - local.minR,
+      },
     });
     for (const m of local.boxes) {
       const col = b.col + local.pad.left + (m.col - local.minC);
