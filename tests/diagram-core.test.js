@@ -2206,3 +2206,40 @@ Deno.test("wires reach a cylinder's cap and a person's figure", () => {
   );
   assert(start("person", 16) > top, "a person's wire reaches the figure");
 });
+
+Deno.test("icons add height; a frameless box draws no frame", () => {
+  const ctx = measureContext();
+  const node = (extra) =>
+    nodeBoxSize(ctx, {
+      id: "a",
+      label: "Store",
+      details: ["a", "b"],
+      ...extra,
+    });
+  const plain = node({});
+  assert(node({ icon: "cylinder" }).h > plain.h, "a can icon adds height");
+  assert(node({ icon: "person" }).h > plain.h, "a person icon adds height");
+  assert(node({ frame: "none" }).h === plain.h, "no frame, same size");
+
+  const strokes = (extra) => {
+    const { ctx: rc, log } = recordingContext();
+    Object.assign(rc, { arc() {}, ellipse() {} });
+    drawBoxes(rc, [{
+      id: "a",
+      label: "A",
+      color: "blue",
+      col: 0,
+      row: 0,
+      w: 8,
+      h: 6,
+      ...extra,
+    }], CELL);
+    return log.strokes.length;
+  };
+  assert(strokes({}) === 1, "a box strokes its frame");
+  assert(strokes({ frame: "none" }) === 0, "a frameless box strokes nothing");
+  assert(
+    strokes({ frame: "none", icon: "cylinder" }) === 2,
+    "a frameless box still draws its icon",
+  );
+});

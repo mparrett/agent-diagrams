@@ -1129,6 +1129,37 @@ Deno.test("node shape sets, clears and validates", () =>
     assert(!("shape" in d.nodes.find((n) => n.id === "a")), "box clears it");
   }));
 
+Deno.test("node icon and frame set, clear and validate", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [{ ...NODE_A }] });
+    const d = Diagram.load(path);
+    const a = () => d.nodes.find((n) => n.id === "a");
+    d.updateNode("a", { icon: "cylinder", frame: "none" });
+    assert(a().icon === "cylinder" && a().frame === "none", "set both");
+    assertThrowsWith(
+      () => d.updateNode("a", { icon: "person", frame: "dashed" }),
+      'Invalid frame "dashed"',
+      "unknown frame",
+    );
+    assert(a().icon === "cylinder", "a rejected call writes nothing");
+    d.updateNode("a", { icon: "none", frame: "box" });
+    assert(!("icon" in a()) && !("frame" in a()), "defaults clear them");
+    assertThrowsWith(
+      () =>
+        d.addNode("b", {
+          label: "B",
+          color: "blue",
+          row: 1,
+          col: 0,
+          icon: "cat",
+        }),
+      'Invalid icon "cat"',
+      "add-node validates too",
+    );
+    assert(!d.nodes.some((n) => n.id === "b"), "a rejected add leaves no node");
+  }));
+
 Deno.test("updateNode sets, clears and validates corners", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;

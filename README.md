@@ -211,6 +211,8 @@ Built-in edge styles: `default`, `solid`, `dashed`, `dotted`, `thin`, `alert`.
 
 **Node shapes.** `add-node ... --shape=cylinder` or `update-node <id> --shape=cylinder|person|box` (also the editor's Shape chips, and `"shape"` on a node). A cylinder draws a store with elliptical caps; a person draws an actor as a head-and-shoulders figure above its label, with no frame. Boxes are the default. Wires meeting a cylinder's top or bottom reach the curved cap, and wires meeting a person reach the figure or its text.
 
+**Icons and frames.** `--icon=cylinder|person|none` puts a small icon above any node's label, framed or not. `--frame=none` draws no border or fill: the node keeps its place in the layout, and wires meet its icon or text. Both work on `add-node` and `update-node`, and in the editor's node popover. A `person` shape is a person icon with no frame.
+
 **Box outlines.** `update-node <id> --outlineDash=dashed|dotted`, `--outlineWidth=thin|medium|thick` and `--corners=round|square` restyle a single box's border, for example to mark an undecided owner; `--outlineReset` clears all three. `set-box-style [--outlineWidth=] [--outlineDash=] [--corners=] [--reset]` sets the same three for the whole board, stored as top-level `outlineWidth`, `outlineDash` and `corners`. A box uses its own value, then the board's, then medium, solid and round. Group frames follow the board's `corners` too.
 
 **Connector width.** `update-edge <from> <to> --width=thin|medium|thick` sets one connector; `set-edge-style --width=` sets the default for the whole board, stored as top-level `edgeWidth`, and `--reset` returns it to medium. An edge's own width wins.

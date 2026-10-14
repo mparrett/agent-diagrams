@@ -488,6 +488,15 @@ Deno.test("CLI: add-node and update-node --shape", async () =>
 
     r = await runCli(path, ["update-node", "a", "--shape=blob"]);
     assert(r.code !== 0, "an unknown shape must fail");
+
+    r = await runCli(path, [
+      "update-node",
+      "a",
+      "--icon=cylinder",
+      "--frame=none",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals([node("a").icon, node("a").frame], ["cylinder", "none"]);
   }));
 
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>

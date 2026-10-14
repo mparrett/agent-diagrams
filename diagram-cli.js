@@ -157,6 +157,8 @@ Commands:
                           [--outlineWidth=thin|medium|thick] [--outlineDash=solid|dashed|dotted] [--corners=round|square]
                           [--outlineReset]   box outline; --outlineReset clears all three back to the board default
                           [--shape=box|cylinder|person]   cylinder for a store, person for an actor (also add-node --shape=)
+                          [--icon=none|cylinder|person]   small icon above the label (also add-node --icon=)
+                          [--frame=box|none]   none draws no border or fill; the box still holds its place (also add-node --frame=)
   update-edge <from> <to> [--style=...] [--label=...] [--fromEdge=N|S|E|W] [--toEdge=...] [--fromConn=C|C-1|...] [--toConn=...]
                           [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=NAME|SEMANTIC] [--styleReset]   style axes
                           [--cost-step=N] [--cost-turn=N] [--cost-near=N] [--cost-overlap=N] [--cost-reset]   per-edge routing bias
@@ -271,8 +273,12 @@ function run() {
   switch (cmd) {
     case "add-node": {
       const [, id, label, color, rowStr, colStr, ...rest] = args;
-      const shapeArg = rest.find((a) => a.startsWith("--shape="));
-      const details = rest.filter((a) => !a.startsWith("--shape="));
+      const look = {};
+      const details = rest.filter((a) => {
+        const m = a.match(/^--(shape|icon|frame)=(.*)$/);
+        if (m) look[m[1]] = m[2];
+        return !m;
+      });
       if (!id || !label || !color || !rowStr || !colStr) {
         console.error(
           "Error: add-node requires <id> <label> <color> <row> <col> [details...]",
@@ -288,7 +294,7 @@ function run() {
           details,
           row,
           col,
-          shape: shapeArg?.slice(8),
+          ...look,
         })
       );
       d.render();
@@ -877,6 +883,8 @@ function run() {
           "--corners",
           "--outlineReset",
           "--shape",
+          "--icon",
+          "--frame",
         ],
       );
       const opts = {};
@@ -903,6 +911,10 @@ function run() {
           opts.corners = arg.slice(10);
         } else if (arg.startsWith("--shape=")) {
           opts.shape = arg.slice(8);
+        } else if (arg.startsWith("--icon=")) {
+          opts.icon = arg.slice(7);
+        } else if (arg.startsWith("--frame=")) {
+          opts.frame = arg.slice(8);
         } else if (arg === "--outlineReset") {
           opts.outlineWidth = null;
           opts.outlineDash = null;

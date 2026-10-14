@@ -2706,6 +2706,15 @@ async function applyNodeFields(id, fields, { reflow = false } = {}) {
   }
 }
 
+const ICON_OPTS = [
+  { value: "none", label: "None" },
+  { value: "cylinder", label: "Cylinder" },
+  { value: "person", label: "Person" },
+];
+const FRAME_OPTS = [
+  { value: "box", label: "Box" },
+  { value: "none", label: "None" },
+];
 const SHAPE_OPTS = [
   { value: "box", label: "Box" },
   { value: "cylinder", label: "Cylinder" },
@@ -2748,6 +2757,26 @@ function renderNodeControls(n) {
         }),
     ),
   );
+  mount(
+    "neIcon",
+    buildChipGroup(
+      ICON_OPTS,
+      n.icon ?? "none",
+      // An icon changes the box's height, so re-solve the layout.
+      (v) =>
+        applyNodeFields(editingId, { icon: v === "none" ? null : v }, {
+          reflow: true,
+        }),
+    ),
+  );
+  mount(
+    "neFrame",
+    buildChipGroup(
+      FRAME_OPTS,
+      n.frame ?? "box",
+      (v) => applyNodeFields(editingId, { frame: v === "box" ? null : v }),
+    ),
+  );
 }
 
 // Edit an existing node. Text applies on change (blur/Enter); chips apply on click.
@@ -2762,6 +2791,8 @@ function openNodeEditor(id, clientX, clientY) {
     outlineWidth: n.outlineWidth ?? null,
     outlineDash: n.outlineDash ?? null,
     shape: n.shape ?? null,
+    icon: n.icon ?? null,
+    frame: n.frame ?? null,
   };
   neLabel.value = n.label || "";
   neDetails.value = (n.details || []).join("\n");
@@ -2833,6 +2864,8 @@ document.getElementById("neReset").onclick = async () => {
     outlineWidth: s.outlineWidth,
     outlineDash: s.outlineDash,
     shape: s.shape,
+    icon: s.icon,
+    frame: s.frame,
   }, { reflow: true });
   neLabel.value = s.label || "";
   neDetails.value = (s.details || []).join("\n");
