@@ -3731,6 +3731,12 @@ document.getElementById("zoomFit").onclick = () => {
   zoomToFit();
   render();
 };
+// Pan so the board frame sits in the middle of the view; the zoom is kept.
+document.getElementById("zoomCenter").onclick = () => {
+  view.panX = CSS_W / 2 - VIEW_W / (2 * view.zoom);
+  view.panY = CSS_H / 2 - VIEW_H / (2 * view.zoom);
+  render();
+};
 zoomPctEl.onclick = () => {
   zoomToFit();
   render();
@@ -3937,6 +3943,11 @@ if (new URLSearchParams(location.search).has("test")) {
     },
     // View-transform test handles (pan/zoom validation).
     getView: () => ({ ...view }),
+    pan: (dx, dy) => {
+      view.panX += dx;
+      view.panY += dy;
+      render();
+    },
     boardSize: () => ({ w: CSS_W, h: CSS_H }),
     viewport: () => ({ w: VIEW_W, h: VIEW_H }),
     // Client-space center of a box, via the live view transform (forward map).

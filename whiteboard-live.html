@@ -117,7 +117,7 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 #viewHud button { font: 14px ui-monospace, monospace; color: #c9d1d9; background: #161b22; border: 1px solid #30363d;
   border-radius: 4px; width: 22px; height: 22px; line-height: 1; cursor: pointer; padding: 0; }
 #viewHud button:hover { background: #21262d; }
-#viewHud #zoomFit { width: auto; padding: 0 8px; font-size: 11px; }
+#viewHud #zoomFit, #viewHud #zoomCenter { width: auto; padding: 0 8px; font-size: 11px; }
 #viewHud #zoomPct { min-width: 40px; text-align: center; cursor: pointer; }
 #viewHud #sizeReadout { margin-left: 4px; color: #6e7681; }
 /* Sidebar foot: legend + live status, pinned to the bottom. */
@@ -464,6 +464,7 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
       <span id="zoomPct" title="Reset to fit">100%</span>
       <button id="zoomIn" title="Zoom in">+</button>
       <button id="zoomFit" title="Fit board to view">fit</button>
+      <button id="zoomCenter" title="Center the board frame in the view, keeping the zoom">center</button>
       <span id="sizeReadout"></span>
     </div>
   </div>

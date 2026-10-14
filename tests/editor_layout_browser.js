@@ -290,6 +290,42 @@ try {
       same(await editorBoxes(), await solved()),
     `${trimmed.width}x${trimmed.height} -> ${s.width}x${s.height}`,
   );
+
+  const z = await page.evaluate(
+    `JSON.stringify(window.__wb.getView().zoom)`,
+  );
+  const off = async () =>
+    JSON.parse(
+      await page.evaluate(`(() => {
+        const v = window.__wb.getView(), b = window.__wb.boardSize(),
+          vp = window.__wb.viewport();
+        return JSON.stringify(Math.hypot(
+          v.panX + vp.w / (2 * v.zoom) - b.w / 2,
+          v.panY + vp.h / (2 * v.zoom) - b.h / 2,
+        ));
+      })()`),
+    );
+  await page.evaluate(`window.__wb.pan(400, -250)`);
+  const offBefore = await off();
+  await page.evaluate(`document.getElementById("zoomCenter").click()`);
+  await wait(200);
+  const mid = JSON.parse(
+    await page.evaluate(`(() => {
+      const v = window.__wb.getView(), b = window.__wb.boardSize(),
+        vp = window.__wb.viewport();
+      return JSON.stringify({
+        dx: v.panX + vp.w / (2 * v.zoom) - b.w / 2,
+        dy: v.panY + vp.h / (2 * v.zoom) - b.h / 2,
+        zoom: JSON.stringify(v.zoom),
+      });
+    })()`),
+  );
+  check(
+    "center puts the board frame in the middle of the view",
+    offBefore > 100 && Math.abs(mid.dx) < 0.5 && Math.abs(mid.dy) < 0.5 &&
+      mid.zoom === z,
+    `${Math.round(offBefore)}px off before; after ${JSON.stringify(mid)}`,
+  );
 } finally {
   await browser.close();
   server.kill();
