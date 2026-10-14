@@ -243,6 +243,9 @@ diagram-cli.js [--state <path>] <command> [args...]
   set-theme <name|reset>     afterglow | dawnfox | monolight; reset = built-in palette
   set-legend auto|off|<color>[:<dash>]=<label>...   explicit entries take palette names
   set-font <mono|sans> / set-font-size <px|reset>
+  set-canvas <w> <h> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
+  fit-canvas                 Trim the board to hug boxes, notes and group frames. It writes a layout
+                             override for every node, so row/col edits stop moving them; run it last.
   render
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)

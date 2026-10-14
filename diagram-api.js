@@ -1361,15 +1361,20 @@ export class Diagram {
   // Shrink (or grow) B to hug the content: slide the diagram to a uniform margin,
   // then set B to the renderer's exact grid extent so frame == PNG. The one-click
   // "trim canvas". No-op on an empty board.
+  // Fits the boxes plus notes and group frames, so trimming never clips an
+  // annotation. The renderer still grows B for boxes, so B is at least that.
   fitCanvasToContent(margin = 40) {
-    const c = this.solvePositions().content;
-    if (c.w <= 0) return;
+    const sp = this.solvePositions();
+    if (sp.content.w <= 0) return;
+    const c = sp.extent;
     const sdx = Math.round((margin - c.x) / CELL) * CELL,
       sdy = Math.round((margin - c.y) / CELL) * CELL;
     this._resizeCanvas(20000, 20000, sdx, sdy); // translate under an oversized B (validation trivially passes)
-    const g = this._gridExtent(); // then tighten to what the renderer actually uses
-    this._state.width = g.W;
-    this._state.height = g.H;
+    const e = this.solvePositions().extent; // then tighten to what is drawn
+    const g = this._gridExtent();
+    const fit = boardExtentForContent(e);
+    this._state.width = Math.max(g.W, fit.W);
+    this._state.height = Math.max(g.H, fit.H);
   }
 
   // Grow B to a target rect (board px, e.g. the editor's visible viewport), clamped
@@ -1610,16 +1615,34 @@ export class Diagram {
       };
     }
     const groups = {};
+    // Everything drawn on the board, annotations included: what fit-canvas
+    // must keep on the canvas. `content` stays boxes-only.
+    const drawn = gridBoxes.length ? [content] : [];
+    for (const n of Object.values(notes)) drawn.push(n.rect);
     for (const f of groupFrames(this._state.groups, gridBoxes, pal)) {
       groups[f.id] = {
         ...f.rect,
         members: f.members,
         intruders: f.intruders,
       };
+      drawn.push(f.labelled);
     }
+    const extent = drawn.length
+      ? (() => {
+        const x0 = Math.min(...drawn.map((r) => r.x)),
+          y0 = Math.min(...drawn.map((r) => r.y));
+        return {
+          x: x0,
+          y: y0,
+          w: Math.max(...drawn.map((r) => r.x + r.w)) - x0,
+          h: Math.max(...drawn.map((r) => r.y + r.h)) - y0,
+        };
+      })()
+      : { x: 0, y: 0, w: 0, h: 0 };
     return {
       positions,
       content,
+      extent,
       canvas: { width: W, height: H },
       notes,
       groups,

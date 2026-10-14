@@ -761,3 +761,35 @@ Deno.test("group edits validate node ids, and removing a node prunes it", () =>
     assert(d.removeGroup("g") === true && d.removeGroup("g") === false);
     assert(d._state.groups === undefined, "empty groups key is dropped");
   }));
+
+Deno.test("fit-canvas keeps notes and group frames on the board", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 1500,
+      height: 900,
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 1, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 1, col: 1 },
+      ],
+      groups: [{ id: "g", label: "Group", nodes: ["a", "b"] }],
+      notes: [{
+        id: "far",
+        x: 1300,
+        y: 700,
+        text: ["a note well past the boxes"],
+      }],
+    });
+    const d = Diagram.load(path);
+    d.fitCanvasToContent();
+    const sp = d.solvePositions();
+    const r = sp.notes.far.rect, g = sp.groups.g;
+    assert(
+      r.x + r.w <= sp.canvas.width && r.y + r.h <= sp.canvas.height,
+      `note ${
+        JSON.stringify(r)
+      } outside ${sp.canvas.width}x${sp.canvas.height}`,
+    );
+    assert(g.x >= 0 && g.y >= 0, `group frame clipped: ${JSON.stringify(g)}`);
+    assert(sp.canvas.width < 1500, "it should still trim");
+  }));
