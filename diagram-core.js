@@ -1051,6 +1051,22 @@ export function groupLabelStyle(g, board = {}, sizes = DEFAULT_SIZES) {
 }
 
 /**
+ * How far a group's frame and label reach past its members' boxes, per side,
+ * in px: GROUP_PAD everywhere, plus the label's reach on the label's side.
+ * Spacing, inner-group sizing and drawn frames all read it, so they agree.
+ */
+export function groupInsets(g, board = {}, sizes = DEFAULT_SIZES) {
+  const st = groupLabelStyle(g, board, sizes);
+  const at = (side) => GROUP_PAD + (st.side === side ? st.reach : 0);
+  return {
+    top: at("top"),
+    right: GROUP_PAD,
+    bottom: at("bottom"),
+    left: GROUP_PAD,
+  };
+}
+
+/**
  * How far group frames reach past their members' boxes, per authored row and
  * column boundary — what row and column spacing must leave room for (Stage 0
  * of docs/project_notes/group-layout.md).
@@ -1069,11 +1085,9 @@ export function groupReach(groups, nodes, sizes = DEFAULT_SIZES, board = {}) {
       const members = g.nodes.filter((id) => byId.has(id));
       const rows = members.map((id) => byId.get(id).row);
       const cols = members.map((id) => byId.get(id).col);
-      const st = groupLabelStyle(g, board, sizes);
       return {
         members: new Set(members),
-        top: st.side === "top" ? st.reach : 0,
-        bottom: st.side === "bottom" ? st.reach : 0,
+        ins: groupInsets(g, board, sizes),
         rmin: Math.min(...rows),
         rmax: Math.max(...rows),
         cmin: Math.min(...cols),
@@ -1099,11 +1113,10 @@ export function groupReach(groups, nodes, sizes = DEFAULT_SIZES, board = {}) {
     const deepest = (key, same) =>
       Math.max(0, ...ins.filter(same).map((h) => edge.get(h)[key]));
     const e = {
-      below: GROUP_PAD + g.bottom +
-        deepest("below", (h) => h.rmax === g.rmax),
-      above: GROUP_PAD + g.top + deepest("above", (h) => h.rmin === g.rmin),
-      right: GROUP_PAD + deepest("right", (h) => h.cmax === g.cmax),
-      left: GROUP_PAD + deepest("left", (h) => h.cmin === g.cmin),
+      below: g.ins.bottom + deepest("below", (h) => h.rmax === g.rmax),
+      above: g.ins.top + deepest("above", (h) => h.rmin === g.rmin),
+      right: g.ins.right + deepest("right", (h) => h.cmax === g.cmax),
+      left: g.ins.left + deepest("left", (h) => h.cmin === g.cmin),
     };
     edge.set(g, e);
     const bump = (map, k, v) => map.set(k, Math.max(map.get(k) ?? 0, v));
@@ -1123,23 +1136,63 @@ export const FRAME_GAP = 15;
 const PSEUDO_PREFIX = "\u0000group:";
 
 /**
- * The inner groups (`layout: "inner"`) that can be laid out: each with its
- * members that exist and are not already claimed by an earlier inner group,
- * and its parent row and column (0 when missing).
+ * The inner groups (`layout: "inner"`) that can be laid out, in authoring
+ * order: each with `members` (its direct node members that exist and are not
+ * already claimed by an earlier inner group), `children` (the inner group ids
+ * it lists, in its own order), `parent` (its inner parent's id, or null) and
+ * its row and column (0 when missing), read in the parent's grid. A group
+ * listed by a second parent, or whose listing would close a cycle, keeps its
+ * first parent; a group with nothing to lay out at any depth is dropped.
  */
 export function innerGroups(groups, nodes) {
   const ids = new Set(nodes.map((n) => n.id));
-  const claimed = new Set();
-  const out = [];
+  const byId = new Map();
   for (const g of groups || []) {
     if (!g || g.layout !== "inner" || !Array.isArray(g.nodes)) continue;
-    const members = g.nodes.filter((id) => ids.has(id) && !claimed.has(id));
-    if (!members.length) continue;
-    for (const id of members) claimed.add(id);
+    if (ids.has(g.id) || byId.has(g.id)) continue;
+    byId.set(g.id, { g, members: [], children: [], parent: null });
+  }
+  const claimed = new Set();
+  const above = (id, anc) => {
+    for (let p = id; p !== null; p = byId.get(p).parent) {
+      if (p === anc) return true;
+    }
+    return false;
+  };
+  for (const [id, t] of byId) {
+    for (const m of t.g.nodes) {
+      if (ids.has(m)) {
+        if (!claimed.has(m)) {
+          claimed.add(m);
+          t.members.push(m);
+        }
+        continue;
+      }
+      const child = byId.get(m);
+      if (!child || child.parent !== null || above(id, m)) continue;
+      child.parent = id;
+      t.children.push(m);
+    }
+  }
+  const live = new Map();
+  const isLive = (id) => {
+    if (!live.has(id)) {
+      live.set(id, false);
+      const t = byId.get(id);
+      live.set(id, t.members.length > 0 || t.children.some(isLive));
+    }
+    return live.get(id);
+  };
+  const out = [];
+  for (const [id, t] of byId) {
+    if (!isLive(id)) continue;
+    const { g } = t;
     out.push({
-      id: g.id,
+      id,
       label: g.label,
-      members,
+      members: t.members,
+      children: t.children.filter(isLive),
+      parent: t.parent,
       row: Number.isInteger(g.row) ? g.row : 0,
       col: Number.isInteger(g.col) ? g.col : 0,
     });
@@ -1530,60 +1583,110 @@ export function computeLayout(ctx, state, canvasW) {
     return gridBoxes;
   }
 
-  // Inner groups (Stage 1, docs/project_notes/group-layout-stage1.md): lay out
-  // each one's members on their own grid, then place the group on the parent
-  // board as a single box. A node belongs to at most one inner group; later
-  // claims are ignored. Members' layout overrides are ignored: pinning inside
-  // an inner group waits for Stage 2.
+  // Inner groups (docs/project_notes/group-layout-stage1.md, -stage2.md): lay
+  // out each one's members, nodes and child groups, on its own grid, children
+  // first, then place it one level up as a single box. Members' layout
+  // overrides are ignored at every depth.
   const inner = innerGroups(state.groups, nodes);
+  const tree = new Map(inner.map((g) => [g.id, g]));
+  const authored = new Map();
+  for (const g of state.groups || []) {
+    if (tree.has(g?.id) && !authored.has(g.id)) authored.set(g.id, g);
+  }
   const memberOf = new Map();
-  for (const g of inner) for (const id of g.members) memberOf.set(id, g);
+  for (const g of inner) for (const id of g.members) memberOf.set(id, g.id);
+  // Inner group ids from the root down to `gid` (empty for the board).
+  const path = (gid) => {
+    const out = [];
+    for (let p = gid; p != null; p = tree.get(p).parent) out.unshift(p);
+    return out;
+  };
+
+  // Annotation groups get Stage 0 spacing at the innermost level holding all
+  // their members, with each id mapped to the box at that level holding it.
+  const annotations = new Map(); // level (group id, or null for the board)
+  for (const g of state.groups || []) {
+    if (!g || g.layout === "inner" || !Array.isArray(g.nodes)) continue;
+    const held = g.nodes
+      .map((id) =>
+        tree.has(id)
+          ? { id, at: path(tree.get(id).parent) }
+          : pixDims.has(id)
+          ? { id, at: path(memberOf.get(id)) }
+          : null
+      )
+      .filter(Boolean);
+    if (!held.length) continue;
+    let depth = 0;
+    while (
+      depth < held[0].at.length &&
+      held.every((h) => h.at[depth] === held[0].at[depth])
+    ) depth++;
+    const level = depth ? held[0].at[depth - 1] : null;
+    const ids = held.map((h) =>
+      h.at.length > depth
+        ? PSEUDO_PREFIX + h.at[depth]
+        : tree.has(h.id)
+        ? PSEUDO_PREFIX + h.id
+        : h.id
+    );
+    if (!annotations.has(level)) annotations.set(level, []);
+    annotations.get(level).push({ ...g, nodes: [...new Set(ids)] });
+  }
+
   const localBoxes = new Map();
-  const pseudo = [];
-  for (const g of inner) {
-    const members = nodes.filter((n) => memberOf.get(n.id) === g);
-    const boxes = place(members, { groups: [] });
+  const groupItem = (gid) => {
+    const g = tree.get(gid);
+    return { id: PSEUDO_PREFIX + gid, row: g.row, col: g.col };
+  };
+  const layoutGroup = (g) => {
+    for (const c of g.children) layoutGroup(tree.get(c));
+    const items = [
+      ...nodes.filter((n) => memberOf.get(n.id) === g.id),
+      ...g.children.map(groupItem),
+    ];
+    const groups = annotations.get(g.id) ?? [];
+    const boxes = place(items, { groups });
     const minC = Math.min(...boxes.map((b) => b.col));
     const minR = Math.min(...boxes.map((b) => b.row));
     const maxC = Math.max(...boxes.map((b) => b.col + b.w));
     const maxR = Math.max(...boxes.map((b) => b.row + b.h));
-    // One cell holds GROUP_PAD (12px) on each side; the label's side takes
-    // enough cells for the pad plus the label's reach.
-    const st = groupLabelStyle(g, state, SIZES);
-    const padFor = (side) =>
-      Math.ceil((GROUP_PAD + (st.side === side ? st.reach : 0)) / CELL);
-    const padTop = padFor("top"), padBottom = padFor("bottom");
-    const pad = Math.ceil(GROUP_PAD / CELL);
+    // The extent the frame wraps: the boxes, and annotation frames at this
+    // level as drawn. The insets around it round up to whole cells per side.
+    let x0 = minC * CELL, y0 = minR * CELL, x1 = maxC * CELL, y1 = maxR * CELL;
+    for (const f of groupFrames(groups, boxes, { sizes: SIZES }, state)) {
+      const r = f.labelled;
+      x0 = Math.min(x0, r.x), y0 = Math.min(y0, r.y);
+      x1 = Math.max(x1, r.x + r.w), y1 = Math.max(y1, r.y + r.h);
+    }
+    const ins = groupInsets(authored.get(g.id), state, SIZES);
+    const pad = {
+      left: Math.ceil((minC * CELL - x0 + ins.left) / CELL),
+      top: Math.ceil((minR * CELL - y0 + ins.top) / CELL),
+      right: Math.ceil((x1 - maxC * CELL + ins.right) / CELL),
+      bottom: Math.ceil((y1 - maxR * CELL + ins.bottom) / CELL),
+    };
     const id = PSEUDO_PREFIX + g.id;
-    localBoxes.set(id, { boxes, minC, minR, pad, padTop });
+    localBoxes.set(id, { boxes, minC, minR, pad });
     pixDims.set(id, {
-      w: (maxC - minC + 2 * pad) * CELL,
-      h: (maxR - minR + padBottom + padTop) * CELL,
+      w: (maxC - minC + pad.left + pad.right) * CELL,
+      h: (maxR - minR + pad.top + pad.bottom) * CELL,
       labelLines: [],
       detailLines: [],
     });
-    pseudo.push({ id, row: g.row, col: g.col });
-  }
+  };
+  const roots = inner.filter((g) => g.parent === null);
+  for (const g of roots) layoutGroup(g);
 
-  // The parent board: plain nodes, plus one box per inner group. Annotation
-  // groups that list inner members span that group's box instead.
-  const outer = [...nodes.filter((n) => !memberOf.has(n.id)), ...pseudo];
-  const outerGroups = (state.groups || [])
-    .filter((g) => g && g.layout !== "inner" && Array.isArray(g.nodes))
-    .map((g) => ({
-      ...g,
-      nodes: [
-        ...new Set(
-          g.nodes.map((id) =>
-            memberOf.has(id) ? PSEUDO_PREFIX + memberOf.get(id).id : id
-          ),
-        ),
-      ],
-    }));
+  // The parent board: plain nodes, plus one box per root inner group.
+  const outer = [
+    ...nodes.filter((n) => !memberOf.has(n.id)),
+    ...roots.map((g) => groupItem(g.id)),
+  ];
   const placed = place(outer, {
     rowY,
     layout,
-    groups: outerGroups,
+    groups: annotations.get(null) ?? [],
     canvasW,
     offX: Number.isFinite(state.offset?.x) ? state.offset.x : 0,
     offY: Number.isFinite(state.offset?.y) ? state.offset.y : 0,
@@ -1591,19 +1694,32 @@ export function computeLayout(ctx, state, canvasW) {
     top: 48,
   });
 
+  // Offset top down: a member sits at its group's cell, inside the insets,
+  // at its local cell less the local minimum.
   const gridBoxes = [];
-  for (const b of placed) {
+  const groupBoxes = new Map();
+  const emit = (b) => {
     const local = localBoxes.get(b.id);
     if (!local) {
       gridBoxes.push(b);
-      continue;
+      return;
     }
+    groupBoxes.set(b.id.slice(PSEUDO_PREFIX.length), {
+      col: b.col,
+      row: b.row,
+      w: b.w,
+      h: b.h,
+    });
     for (const m of local.boxes) {
-      const col = b.col + local.pad + (m.col - local.minC);
-      const row = b.row + local.padTop + (m.row - local.minR);
-      gridBoxes.push({ ...m, col, row, _origCol: col, _origRow: row });
+      const col = b.col + local.pad.left + (m.col - local.minC);
+      const row = b.row + local.pad.top + (m.row - local.minR);
+      emit({ ...m, col, row, _origCol: col, _origRow: row });
     }
-  }
+  };
+  for (const b of placed) emit(b);
+  // Each inner group's box, in absolute cells: what it reserves for its frame
+  // and label.
+  gridBoxes.groupBoxes = groupBoxes;
   return gridBoxes;
 }
 
@@ -3062,35 +3178,72 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE, board = {}) {
     w: b.w * CELL,
     h: b.h * CELL,
   });
+  // An inner group id stands for its transitive node members: in its inner
+  // parent's `nodes`, and in any annotation group's.
+  const tree = new Map(innerGroups(groups, boxes || []).map((g) => [g.id, g]));
+  const under = (gid) => {
+    const g = tree.get(gid);
+    return [...g.members, ...g.children.flatMap(under)];
+  };
+  const within = (g, gid) => {
+    for (let p = gid; p != null; p = tree.get(p).parent) {
+      if (g.layout === "inner" ? p === g.id : g.nodes.includes(p)) return true;
+    }
+    return false;
+  };
   const valid = (groups || [])
     .filter((g) => g && Array.isArray(g.nodes))
-    .map((g) => ({ g, members: g.nodes.filter((id) => byId.has(id)) }))
+    .map((g) => {
+      const own = g.layout === "inner" ? tree.get(g.id)?.children ?? [] : null;
+      const ids = g.nodes.flatMap((id) =>
+        byId.has(id)
+          ? [id]
+          : tree.has(id) && (!own || own.includes(id))
+          ? under(id)
+          : []
+      );
+      return { g, members: [...new Set(ids)] };
+    })
     .filter((v) => v.members.length > 0);
-  // Inner groups first, so an outer group can wrap their finished frames.
-  const order = [...valid].sort((a, b) => a.members.length - b.members.length);
+  // Inner groups first, so an outer group can wrap their finished frames; a
+  // parent with no members of its own after its child.
+  const depth = (v) => {
+    if (v.g.layout !== "inner" || !tree.has(v.g.id)) return -1;
+    let n = 0;
+    for (let p = tree.get(v.g.id).parent; p != null; p = tree.get(p).parent) {
+      n++;
+    }
+    return n;
+  };
+  const order = [...valid].sort((a, b) =>
+    a.members.length - b.members.length || depth(b) - depth(a)
+  );
   const frames = new Map();
   const sizes = pal.sizes || DEFAULT_SIZES;
   for (const v of order) {
     const st = groupLabelStyle(v.g, board, sizes);
+    const ins = groupInsets(v.g, board, sizes);
     const set = new Set(v.members);
     const rects = v.members.map((id) => rectOf(byId.get(id)));
     for (const [other, f] of frames) {
       if (
-        other.members.length < v.members.length &&
-        other.members.every((id) => set.has(id))
+        other.members.every((id) => set.has(id)) &&
+        (other.members.length < v.members.length ||
+          (other.g.layout === "inner" && tree.has(other.g.id) &&
+            within(v.g, other.g.id)))
       ) rects.push(f.labelled);
     }
-    const inside = st.mode === "inside" ? st.reach : 0;
-    const top = st.side === "top", grow = (t) => (top === t ? inside : 0);
-    const x0 = Math.min(...rects.map((r) => r.x)) - GROUP_PAD;
-    const y0 = Math.min(...rects.map((r) => r.y)) - GROUP_PAD - grow(true);
-    const x1 = Math.max(...rects.map((r) => r.x + r.w)) + GROUP_PAD;
-    const y1 = Math.max(...rects.map((r) => r.y + r.h)) + GROUP_PAD +
-      grow(false);
-    const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     // A label on or past the border reaches beyond the frame; an enclosing
     // frame must clear it.
+    const inside = st.mode === "inside" ? st.reach : 0;
     const out = st.reach - inside;
+    const top = st.side === "top";
+    const pad = (side) => ins[side] - (st.side === side ? out : 0);
+    const x0 = Math.min(...rects.map((r) => r.x)) - pad("left");
+    const y0 = Math.min(...rects.map((r) => r.y)) - pad("top");
+    const x1 = Math.max(...rects.map((r) => r.x + r.w)) + pad("right");
+    const y1 = Math.max(...rects.map((r) => r.y + r.h)) + pad("bottom");
+    const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     const labelled = top
       ? { ...rect, y: rect.y - out, h: rect.h + out }
       : { ...rect, h: rect.h + out };

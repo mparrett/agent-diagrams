@@ -1453,6 +1453,198 @@ Deno.test("members' layout overrides are ignored inside an inner group", () => {
   );
 });
 
+// ─── Stage 2a nested inner groups (docs/project_notes/group-layout-stage2.md)
+const AR_NODES = [
+  box("kb-docs", 0, 0),
+  box("kb-index", 1, 0),
+  box("style-guide", 0, 0),
+  box("style-examples", 0, 1),
+  box("tm-entities", 0, 0),
+  box("ar-api", 1, 0),
+  box("ar-cache", 1, 1),
+  box("loose", 0, 0),
+];
+const arGroups = (child = {}) => [
+  {
+    id: "ar",
+    label: "Agent Reference",
+    layout: "inner",
+    row: 1,
+    col: 0,
+    nodes: ["knowledge", "style", "topicmap", "ar-api", "ar-cache"],
+  },
+  {
+    id: "knowledge",
+    label: "Knowledge",
+    layout: "inner",
+    row: 0,
+    col: 0,
+    nodes: ["kb-docs", "kb-index"],
+    ...child,
+  },
+  {
+    id: "style",
+    label: "Style Guide",
+    layout: "inner",
+    row: 0,
+    col: 1,
+    nodes: ["style-guide", "style-examples"],
+  },
+  {
+    id: "topicmap",
+    label: "Topic Map",
+    layout: "inner",
+    row: 0,
+    col: 2,
+    nodes: ["tm-entities"],
+  },
+];
+const cellRect = (b) => ({
+  x: b.col * CELL,
+  y: b.row * CELL,
+  w: b.w * CELL,
+  h: b.h * CELL,
+});
+const disjoint = (a, b) =>
+  a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y ||
+  b.y + b.h <= a.y;
+const drawnLabels = (frames) =>
+  new Map(
+    drawGroups(recordingContext().ctx, [...frames.values()]).map((l) => [
+      [...frames.values()].find((f) => f.label === l.label).id,
+      l,
+    ]),
+  );
+
+Deno.test("nested inner groups sit inside their parent's frame", () => {
+  const { boxes, frames, px } = framed(AR_NODES, arGroups());
+  const ar = frames.get("ar");
+  const kids = ["knowledge", "style", "topicmap"].map((id) => frames.get(id));
+  for (const k of kids) {
+    assert(inside(ar.rect, k.labelled), `${k.id} outside ar's frame`);
+    assert(k.intruders.length === 0, `${k.id} intruders: ${k.intruders}`);
+  }
+  assert(ar.intruders.length === 0, `ar intruders: ${ar.intruders}`);
+  for (const [a, b] of [[kids[0], kids[1]], [kids[1], kids[2]]]) {
+    const gap = b.labelled.x - (a.labelled.x + a.labelled.w);
+    assert(gap >= FRAME_GAP, `${a.id}–${b.id} ${gap}px apart`);
+  }
+  // ar-api shares col 0 of ar's grid with the knowledge group's box.
+  const mid = (r) => r.x + r.w / 2;
+  const kb = cellRect(boxes.groupBoxes.get("knowledge"));
+  assert(
+    Math.abs(mid(px("ar-api")) - mid(kb)) <= CELL,
+    `ar-api centred at ${mid(px("ar-api"))}, knowledge at ${mid(kb)}`,
+  );
+  assert(px("ar-api").y > kb.y + kb.h, "ar-api sits below the child row");
+  assert(px("loose").y + px("loose").h < labelTop(ar), "board rows");
+  assert(boxes.length === AR_NODES.length, "every node is laid out once");
+});
+
+Deno.test("a child's frame and label stay inside its box for every labelPos", () => {
+  // A short label: one wider than its frame overhangs it sideways, which
+  // insets do not cover.
+  for (
+    const labelPos of [
+      "top-border",
+      "top-inside",
+      "top-outside",
+      "bottom-border",
+      "bottom-inside",
+      "bottom-outside",
+    ]
+  ) {
+    const { boxes, frames } = framed(
+      AR_NODES,
+      arGroups({ label: "KB", labelPos, labelSize: 24 }),
+    );
+    const kb = frames.get("knowledge"), ar = frames.get("ar");
+    const own = cellRect(boxes.groupBoxes.get("knowledge"));
+    const labels = drawnLabels(frames);
+    const label = labels.get("knowledge");
+    assert(inside(own, kb.rect), `${labelPos}: frame outside its box`);
+    assert(inside(own, label), `${labelPos}: label outside its box`);
+    assert(inside(ar.rect, label), `${labelPos}: label outside ar's frame`);
+    assert(
+      disjoint(labels.get("ar"), label),
+      `${labelPos}: ar's label overlaps the child's`,
+    );
+  }
+});
+
+Deno.test("three levels of inner groups nest", () => {
+  const nodes = [box("a1", 0, 0), box("b1", 0, 0), box("c1", 0, 0)];
+  const groups = [
+    { id: "a", label: "A", layout: "inner", nodes: ["b", "a1"], row: 0 },
+    {
+      id: "b",
+      label: "B",
+      layout: "inner",
+      nodes: ["c", "b1"],
+      row: 0,
+      col: 1,
+    },
+    { id: "c", label: "C", layout: "inner", nodes: ["c1"], row: 1 },
+  ];
+  const { boxes, frames } = framed(nodes, groups);
+  const f = (id) => frames.get(id);
+  assert(inside(f("b").rect, f("c").labelled), "c outside b");
+  assert(inside(f("a").rect, f("b").labelled), "b outside a");
+  assertEquals(f("a").members.toSorted(), ["a1", "b1", "c1"]);
+  const g = (id) => cellRect(boxes.groupBoxes.get(id));
+  assert(inside(g("a"), g("b")) && inside(g("b"), g("c")), "boxes nest");
+  for (const id of ["a", "b", "c"]) {
+    assert(f(id).intruders.length === 0, `${id}: ${f(id).intruders}`);
+  }
+});
+
+Deno.test("reordering the groups array leaves positions unchanged", () => {
+  const at = (groups) =>
+    framed(AR_NODES, groups).boxes.map((b) => [b.id, b.col, b.row]).sort();
+  assertEquals(at(arGroups().toReversed()), at(arGroups()));
+});
+
+Deno.test("an annotation group listing a nested group wraps and spaces it", () => {
+  const nodes = [...AR_NODES, box("under", 1, 2)];
+  const groups = [
+    ...arGroups(),
+    {
+      id: "note",
+      label: "Note",
+      nodes: ["style"],
+      labelPos: "bottom-outside",
+      labelSize: 30,
+    },
+  ];
+  groups[0].nodes.push("under");
+  const { frames, px } = framed(nodes, groups);
+  const note = frames.get("note"), ar = frames.get("ar");
+  assert(inside(note.rect, frames.get("style").labelled), "note wraps style");
+  assert(inside(ar.rect, note.labelled), "ar wraps note");
+  const gap = px("ar-cache").y - (note.labelled.y + note.labelled.h);
+  assert(gap >= FRAME_GAP, `note's label ${gap}px above ar's next row`);
+});
+
+Deno.test("an annotation group inside one inner group is spaced there", () => {
+  const groups = [
+    ...arGroups(),
+    {
+      id: "docs",
+      label: "Docs",
+      nodes: ["kb-docs"],
+      labelPos: "bottom-outside",
+      labelSize: 30,
+    },
+  ];
+  const { boxes, frames, px } = framed(AR_NODES, groups);
+  const docs = frames.get("docs"), kb = frames.get("knowledge");
+  const gap = px("kb-index").y - (docs.labelled.y + docs.labelled.h);
+  assert(gap >= FRAME_GAP, `docs' label ${gap}px above kb-index`);
+  assert(inside(kb.rect, docs.labelled), "knowledge wraps docs");
+  const own = cellRect(boxes.groupBoxes.get("knowledge"));
+  assert(inside(own, kb.labelled), "knowledge's box holds its frame");
+});
+
 // ─── Box style defaults and corners ─────────────────────────────────
 
 Deno.test("box style tokens resolve node, then board, then built-in", () => {
