@@ -296,7 +296,7 @@ function render() {
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
-  const frames = groupFrames(diagramState?.groups, BOXES, PAL);
+  const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.

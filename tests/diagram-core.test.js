@@ -12,12 +12,14 @@ import {
   DEFAULT_SIZES,
   deriveTheme,
   drawBoxes,
+  drawGroups,
   drawRoutes,
   fontFamily,
   fontSizes,
   FRAME_GAP,
   Grid,
   groupFrames,
+  groupLabelStyle,
   MIN_BOX_H,
   MIN_BOX_W,
   nodeBoxHeight,
@@ -1568,5 +1570,124 @@ Deno.test("drawBoxes draws square corners at radius 0 and round at 6", () => {
       log.radii.length > 0 && log.radii.every((r) => r === 6),
       `${corners}: radii ${log.radii}`,
     );
+  }
+});
+
+// ─── Group label placement ──────────────────────────────────────────
+
+// Frame and drawn label rect for one labeled group around "a", with boxes
+// directly above and below it.
+function labelled(groupFields, board = {}) {
+  const nodes = [box("above", 0, 0), box("a", 1, 0), box("below", 2, 0)];
+  const groups = [{ id: "g", label: "Group", nodes: ["a"], ...groupFields }];
+  const boxes = computeLayout(
+    measureContext(),
+    { edges: [], nodes, groups, ...board },
+    4000,
+  );
+  const frame = groupFrames(groups, boxes, undefined, board)[0];
+  const { ctx } = recordingContext();
+  const label = drawGroups(ctx, [frame])[0];
+  const px = (id) => {
+    const b = boxes.find((x) => x.id === id);
+    return { x: b.col * CELL, y: b.row * CELL, w: b.w * CELL, h: b.h * CELL };
+  };
+  return { frame: frame.rect, label, px };
+}
+
+Deno.test("group labels clear neighbouring boxes in every position", () => {
+  for (
+    const pos of Object.keys({
+      "top-border": 1,
+      "top-inside": 1,
+      "top-outside": 1,
+      "bottom-border": 1,
+      "bottom-inside": 1,
+      "bottom-outside": 1,
+    })
+  ) {
+    const { frame, label, px } = labelled({ labelPos: pos });
+    const above = px("above"), a = px("a"), below = px("below");
+    const top = Math.min(frame.y, label.y);
+    const bottom = Math.max(frame.y + frame.h, label.y + label.h);
+    assert(
+      top - (above.y + above.h) >= FRAME_GAP &&
+        below.y - bottom >= FRAME_GAP,
+      `${pos}: ${top - (above.y + above.h)}px above, ${
+        below.y - bottom
+      }px below`,
+    );
+    const inside = pos.endsWith("inside");
+    const within = label.y >= frame.y && label.y + label.h <= frame.y + frame.h;
+    assert(within === inside, `${pos}: label inside the frame is ${within}`);
+    const clear = label.y + label.h <= a.y || label.y >= a.y + a.h;
+    assert(clear, `${pos}: label overlaps its member`);
+    assert(
+      pos.startsWith("top") ? label.y < a.y : label.y > a.y,
+      `${pos}: label on the wrong side`,
+    );
+  }
+});
+
+Deno.test("group label alignment, weight and size", () => {
+  const mid = (r) => r.x + r.w / 2;
+  const c = labelled({ labelAlign: "center" });
+  assert(Math.abs(mid(c.label) - mid(c.frame)) < 1, "center");
+  const r = labelled({ labelAlign: "right" });
+  const gap = r.frame.x + r.frame.w - (r.label.x + r.label.w);
+  assert(gap > 0 && gap < 12, `right: ${gap}px from the frame's edge`);
+  const big = labelled({ labelWeight: "normal", labelSize: 20 });
+  assert(big.label.font.startsWith("normal 20px"), big.label.font);
+});
+
+Deno.test("group label style: group, then board, then built-in", () => {
+  const board = { groupLabelPos: "top-inside", groupLabelSize: 18 };
+  const own = groupLabelStyle(
+    { label: "G", labelPos: "bottom-outside", labelAlign: "right" },
+    board,
+  );
+  assert(
+    own.side === "bottom" && own.mode === "outside" && own.align === "right" &&
+      own.size === 18,
+    JSON.stringify(own),
+  );
+  const bare = groupLabelStyle({ label: "G", labelPos: "sideways" });
+  assert(
+    bare.side === "top" && bare.mode === "border" && bare.weight === "bold" &&
+      bare.size === DEFAULT_SIZES.divider,
+    JSON.stringify(bare),
+  );
+  assert(groupLabelStyle({}).reach === 0, "no label, no reach");
+});
+
+Deno.test("an inner group pads for an inside label", () => {
+  const nodes = [box("a", 0, 0), box("b", 0, 1)];
+  for (const labelPos of ["top-inside", "bottom-inside"]) {
+    const groups = [{
+      id: "g",
+      label: "Group",
+      nodes: ["a", "b"],
+      layout: "inner",
+      row: 0,
+      col: 0,
+      labelPos,
+      labelSize: 24,
+    }];
+    const boxes = computeLayout(
+      measureContext(),
+      { edges: [], nodes, groups },
+      4000,
+    );
+    const frame = groupFrames(groups, boxes)[0];
+    const { ctx } = recordingContext();
+    const label = drawGroups(ctx, [frame])[0];
+    for (const id of ["a", "b"]) {
+      const b = boxes.find((x) => x.id === id);
+      const y0 = b.row * CELL, y1 = y0 + b.h * CELL;
+      assert(
+        label.y + label.h <= y0 || label.y >= y1,
+        `${labelPos}: label overlaps ${id}`,
+      );
+    }
   }
 });

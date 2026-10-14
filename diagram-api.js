@@ -35,6 +35,9 @@ import {
   drawRoutes,
   EDGE_WIDTHS,
   Grid,
+  GROUP_LABEL_ALIGN,
+  GROUP_LABEL_POS,
+  GROUP_LABEL_WEIGHT,
   groupFrames,
   innerGroups,
   isColorToken,
@@ -1040,7 +1043,41 @@ export class Diagram {
     return [...new Set(ids)];
   }
 
+  // Set or clear (null) the label style fields in `opts` on `target`: a group
+  // (keys labelPos, ...), or the state for board defaults (groupLabelPos, ...).
+  // Validates every field before writing any.
+  _applyGroupLabel(target, opts, prefix = "label") {
+    const fields = [
+      ["Pos", GROUP_LABEL_POS],
+      ["Align", GROUP_LABEL_ALIGN],
+      ["Weight", GROUP_LABEL_WEIGHT],
+      ["Size", null],
+    ];
+    for (const [f, table] of fields) {
+      const v = opts["label" + f];
+      if (v == null) continue;
+      if (table) this._validateEnum(v, table, "label" + f);
+      else if (!(Number.isFinite(v) && v > 0 && v <= 200)) {
+        throw new Error(
+          `labelSize must be a number of px in 1-200, got "${v}"`,
+        );
+      }
+    }
+    for (const [f] of fields) {
+      const v = opts["label" + f];
+      if (v === undefined) continue;
+      if (v === null) delete target[prefix + f];
+      else target[prefix + f] = v;
+    }
+  }
+
+  // Board-wide group label defaults; a group's own field wins.
+  setGroupStyle(opts) {
+    this._applyGroupLabel(this._state, opts, "groupLabel");
+  }
+
   _groupStyle(g, opts) {
+    this._applyGroupLabel(g, opts);
     if (opts.color !== undefined) {
       if (opts.color === null) delete g.color;
       else {
@@ -1721,7 +1758,9 @@ export class Diagram {
     // must keep on the canvas. `content` stays boxes-only.
     const drawn = gridBoxes.length ? [content] : [];
     for (const n of Object.values(notes)) drawn.push(n.rect);
-    for (const f of groupFrames(this._state.groups, gridBoxes, pal)) {
+    for (
+      const f of groupFrames(this._state.groups, gridBoxes, pal, this._state)
+    ) {
       groups[f.id] = {
         ...f.rect,
         members: f.members,
@@ -1896,7 +1935,7 @@ export class Diagram {
 
     // Boundary dividers and group frames — annotation layer beneath wires and boxes
     drawDividers(ctx, this._state.dividers, W, H, pal);
-    const frames = groupFrames(this._state.groups, gridBoxes, pal);
+    const frames = groupFrames(this._state.groups, gridBoxes, pal, this._state);
     const groupLabels = drawGroups(ctx, frames, pal);
 
     // Build routing grid + route (layout already computed above)

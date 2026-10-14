@@ -414,6 +414,52 @@ Deno.test("CLI: set-canvas WxH --grow and expand-canvas --by", async () =>
     assertEquals(size(), [2100, 1200]);
   }));
 
+Deno.test("CLI: group label flags and set-group-style", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path));
+
+    let r = await runCli(path, [
+      "add-group",
+      "g",
+      "G",
+      "a",
+      "--labelPos=top-inside",
+      "--labelSize=16",
+    ]);
+    assert(r.code === 0, r.err);
+    const g = read().groups[0];
+    assertEquals([g.labelPos, g.labelSize], ["top-inside", 16]);
+
+    r = await runCli(path, ["update-group", "g", "--labelPos=none"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().groups[0].labelPos, undefined);
+
+    r = await runCli(path, ["update-group", "g", "--labelSize=big"]);
+    assert(r.code !== 0, "a non-numeric size must fail");
+
+    r = await runCli(path, [
+      "set-group-style",
+      "--labelPos=bottom-outside",
+      "--labelAlign=center",
+    ]);
+    assert(r.code === 0, r.err);
+    assert(r.out.includes("bottom-outside center"), r.out);
+    const s = read();
+    assertEquals([s.groupLabelPos, s.groupLabelAlign], [
+      "bottom-outside",
+      "center",
+    ]);
+
+    r = await runCli(path, ["set-group-style", "--reset"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().groupLabelPos, undefined);
+
+    r = await runCli(path, ["set-group-style"]);
+    assert(r.code !== 0, "no flags must fail");
+  }));
+
 Deno.test("CLI: set-theme sets and resets the scheme", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

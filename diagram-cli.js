@@ -69,6 +69,26 @@ function int(what, raw, { min } = {}) {
 
 // Reject unrecognized --flags so a typo (--lable=) errors instead of silently
 // applying nothing and reporting success.
+// --labelPos= --labelAlign= --labelWeight= --labelSize= into opts; a value of
+// "none" clears the field.
+const LABEL_FLAGS = [
+  "--labelPos",
+  "--labelAlign",
+  "--labelWeight",
+  "--labelSize",
+];
+function labelFlags(flags, opts) {
+  for (const f of flags) {
+    const m = f.match(/^--label(Pos|Align|Weight|Size)=(.*)$/);
+    if (!m) continue;
+    const key = "label" + m[1];
+    if (m[2] === "none") opts[key] = null;
+    else if (m[1] === "Size") opts[key] = Number(m[2]);
+    else opts[key] = m[2];
+  }
+  return opts;
+}
+
 function rejectUnknownFlags(command, flags, known) {
   for (const f of flags) {
     const name = f.split("=")[0];
@@ -159,6 +179,12 @@ Commands:
                                        be in one inner group; boxes inside cannot be pinned yet.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
                     [--inner|--annotation] [--row=N] [--col=N]
+  add-group / update-group ... [--labelPos=top-border|top-inside|top-outside|bottom-border|bottom-inside|bottom-outside]
+                    [--labelAlign=left|center|right] [--labelWeight=bold|normal] [--labelSize=px]
+                                       Where the group's label sits; "none" clears a field back to the board default
+  set-group-style [--labelPos=] [--labelAlign=] [--labelWeight=] [--labelSize=] [--reset]
+                                       Board-wide group label defaults; a group's own value wins. Default:
+                                       top-border, left, bold, the board's divider size
   remove-group <id> / list-groups
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)
   set-title [text...]        Caption drawn top-left; no argument clears it
@@ -476,6 +502,7 @@ function run() {
         "--inner",
         "--row",
         "--col",
+        ...LABEL_FLAGS,
       ]);
       const [id, label, ...nodes] = rest.filter((a) => !a.startsWith("--"));
       if (!id || label === undefined || nodes.length === 0) {
@@ -492,6 +519,7 @@ function run() {
         else if (f.startsWith("--row=")) opts.row = int("--row", f.slice(6));
         else if (f.startsWith("--col=")) opts.col = int("--col", f.slice(6));
       }
+      labelFlags(flags, opts);
       const d = mutate((d) => d.addGroup(id, label, nodes, opts));
       d.render();
       console.log(
@@ -523,6 +551,7 @@ function run() {
           "--annotation",
           "--row",
           "--col",
+          ...LABEL_FLAGS,
         ],
       );
       const list = (v) => v.split(",").filter(Boolean);
@@ -541,6 +570,7 @@ function run() {
         else if (f.startsWith("--row=")) opts.row = int("--row", f.slice(6));
         else if (f.startsWith("--col=")) opts.col = int("--col", f.slice(6));
       }
+      labelFlags(flags, opts);
       if (Object.keys(opts).length === 0) {
         console.error("Error: update-group needs at least one --flag=value");
         Deno.exit(1);
@@ -661,6 +691,37 @@ function run() {
       d.render();
       console.log(
         `edge style: ${d._state.edgeWidth ?? "medium"} (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "set-group-style": {
+      const flags = args.slice(1);
+      rejectUnknownFlags("set-group-style", flags, [...LABEL_FLAGS, "--reset"]);
+      const opts = flags.includes("--reset")
+        ? {
+          labelPos: null,
+          labelAlign: null,
+          labelWeight: null,
+          labelSize: null,
+        }
+        : {};
+      labelFlags(flags, opts);
+      if (Object.keys(opts).length === 0) {
+        console.error(
+          "Error: set-group-style needs --labelPos=, --labelAlign=, --labelWeight=, --labelSize= or --reset",
+        );
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setGroupStyle(opts));
+      d.render();
+      const s = d._state;
+      console.log(
+        `group labels: ${s.groupLabelPos ?? "top-border"} ${
+          s.groupLabelAlign ?? "left"
+        } ${s.groupLabelWeight ?? "bold"} ${
+          s.groupLabelSize ?? "default"
+        }px (rev ${d.rev})`,
       );
       break;
     }

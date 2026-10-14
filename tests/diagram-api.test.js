@@ -935,6 +935,38 @@ Deno.test("setCanvas --grow never shrinks; expandCanvasBy splits by anchor", () 
     assert(d.solvePositions().positions.a.x === after.x, "nw grows right");
   }));
 
+Deno.test("group label fields set, clear and validate", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
+    d.addGroup("g", "G", ["a"], { labelPos: "top-inside", labelSize: 16 });
+    const g = () => d._state.groups[0];
+    assert(g().labelPos === "top-inside" && g().labelSize === 16, "set");
+    assertThrowsWith(
+      () => d.updateGroup("g", { labelAlign: "center", labelPos: "left" }),
+      'Invalid labelPos "left"',
+      "unknown position",
+    );
+    assert(!g().labelAlign, "a rejected call writes nothing");
+    assertThrowsWith(
+      () => d.updateGroup("g", { labelSize: NaN }),
+      "labelSize must be",
+      "non-numeric size",
+    );
+    d.updateGroup("g", { labelPos: null });
+    assert(!("labelPos" in g()), "null clears");
+
+    d.setGroupStyle({ labelPos: "bottom-outside", labelWeight: "normal" });
+    assert(
+      d._state.groupLabelPos === "bottom-outside" &&
+        d._state.groupLabelWeight === "normal",
+      "board defaults",
+    );
+    d.setGroupStyle({ labelPos: null });
+    assert(!("groupLabelPos" in d._state), "board default cleared");
+  }));
+
 Deno.test("inner groups need a parent row/col and exclusive members", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;

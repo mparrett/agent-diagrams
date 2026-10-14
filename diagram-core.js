@@ -1009,6 +1009,47 @@ export function boardExtent(gridBoxes, baseW = 0, baseH = 0) {
  * Compute grid-space boxes from diagram state JSON.
  * Returns array of box objects with {id, label, color, details, col, row, w, h, pixW, pixH, _origCol, _origRow}.
  */
+// Group label placement: the side, then where the label sits against that
+// side's border. Left and right sides would need rotated text; not offered.
+export const GROUP_LABEL_POS = {
+  "top-border": true,
+  "top-inside": true,
+  "top-outside": true,
+  "bottom-border": true,
+  "bottom-inside": true,
+  "bottom-outside": true,
+};
+export const GROUP_LABEL_ALIGN = { left: true, center: true, right: true };
+export const GROUP_LABEL_WEIGHT = { bold: true, normal: true };
+
+/**
+ * A group's label style: the group's own field, then the board's
+ * `groupLabel*` default, then top-border, left, bold at the divider size.
+ * `band` is the height the label takes; `reach` is how far past GROUP_PAD the
+ * label carries the frame on its side: a band when inside (the frame grows)
+ * or outside (the label sits beyond it), half when it straddles the border.
+ */
+export function groupLabelStyle(g, board = {}, sizes = DEFAULT_SIZES) {
+  const pick = (own, dflt, table, fallback) => {
+    const v = g[own] ?? board[dflt];
+    return Object.hasOwn(table, v) ? v : fallback;
+  };
+  const pos = pick("labelPos", "groupLabelPos", GROUP_LABEL_POS, "top-border");
+  const [side, mode] = pos.split("-");
+  const raw = Number(g.labelSize ?? board.groupLabelSize);
+  const size = raw > 0 ? raw : sizes.divider;
+  const band = Math.round(size * 1.4);
+  return {
+    side,
+    mode,
+    align: pick("labelAlign", "groupLabelAlign", GROUP_LABEL_ALIGN, "left"),
+    weight: pick("labelWeight", "groupLabelWeight", GROUP_LABEL_WEIGHT, "bold"),
+    size,
+    band,
+    reach: g.label ? (mode === "border" ? band / 2 : band) : 0,
+  };
+}
+
 /**
  * How far group frames reach past their members' boxes, per authored row and
  * column boundary — what row and column spacing must leave room for (Stage 0
@@ -1016,11 +1057,11 @@ export function boardExtent(gridBoxes, baseW = 0, baseH = 0) {
  *
  * Returns { below, above, right, left }: Maps from a row (or column) index to
  * the reach of frames ending (or starting) there. A frame reaches GROUP_PAD
- * past its members, plus half its label band at the top, since the label
- * straddles the border. A group wraps any smaller group it contains that
- * shares the same edge, one pad further out, as groupFrames draws it.
+ * past its members, plus its label's reach on the label's side (see
+ * groupLabelStyle). A group wraps any smaller group it contains that shares
+ * the same edge, one pad further out, as groupFrames draws it.
  */
-export function groupReach(groups, nodes, labelBand) {
+export function groupReach(groups, nodes, sizes = DEFAULT_SIZES, board = {}) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const spans = (groups || [])
     .filter((g) => g && Array.isArray(g.nodes))
@@ -1028,9 +1069,11 @@ export function groupReach(groups, nodes, labelBand) {
       const members = g.nodes.filter((id) => byId.has(id));
       const rows = members.map((id) => byId.get(id).row);
       const cols = members.map((id) => byId.get(id).col);
+      const st = groupLabelStyle(g, board, sizes);
       return {
         members: new Set(members),
-        labeled: !!g.label,
+        top: st.side === "top" ? st.reach : 0,
+        bottom: st.side === "bottom" ? st.reach : 0,
         rmin: Math.min(...rows),
         rmax: Math.max(...rows),
         cmin: Math.min(...cols),
@@ -1056,9 +1099,9 @@ export function groupReach(groups, nodes, labelBand) {
     const deepest = (key, same) =>
       Math.max(0, ...ins.filter(same).map((h) => edge.get(h)[key]));
     const e = {
-      below: GROUP_PAD + deepest("below", (h) => h.rmax === g.rmax),
-      above: GROUP_PAD + (g.labeled ? labelBand / 2 : 0) +
-        deepest("above", (h) => h.rmin === g.rmin),
+      below: GROUP_PAD + g.bottom +
+        deepest("below", (h) => h.rmax === g.rmax),
+      above: GROUP_PAD + g.top + deepest("above", (h) => h.rmin === g.rmin),
       right: GROUP_PAD + deepest("right", (h) => h.cmax === g.cmax),
       left: GROUP_PAD + deepest("left", (h) => h.cmin === g.cmin),
     };
@@ -1247,11 +1290,7 @@ export function computeLayout(ctx, state, canvasW) {
     // Group frames reach past their members; the gap between two rows widens to
     // hold them, measured from the boxes as drawn (whole cells, up to a cell
     // taller than measured). No groups, no change.
-    const reach = groupReach(
-      groups,
-      nodes,
-      Math.round(SIZES.divider * 1.4),
-    );
+    const reach = groupReach(groups, nodes, SIZES, state);
     const drawn = (px) => Math.ceil(px / CELL) * CELL;
     const frameGap = (overhang, out, inn) =>
       out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
@@ -1499,7 +1538,6 @@ export function computeLayout(ctx, state, canvasW) {
   const inner = innerGroups(state.groups, nodes);
   const memberOf = new Map();
   for (const g of inner) for (const id of g.members) memberOf.set(id, g);
-  const labelBand = Math.round(SIZES.divider * 1.4);
   const localBoxes = new Map();
   const pseudo = [];
   for (const g of inner) {
@@ -1509,17 +1547,18 @@ export function computeLayout(ctx, state, canvasW) {
     const minR = Math.min(...boxes.map((b) => b.row));
     const maxC = Math.max(...boxes.map((b) => b.col + b.w));
     const maxR = Math.max(...boxes.map((b) => b.row + b.h));
-    // One cell holds GROUP_PAD (12px) on each side; the top takes enough
-    // cells for the pad plus half the label band, which straddles the border.
-    const padTop = Math.ceil(
-      (GROUP_PAD + (g.label ? labelBand / 2 : 0)) / CELL,
-    );
+    // One cell holds GROUP_PAD (12px) on each side; the label's side takes
+    // enough cells for the pad plus the label's reach.
+    const st = groupLabelStyle(g, state, SIZES);
+    const padFor = (side) =>
+      Math.ceil((GROUP_PAD + (st.side === side ? st.reach : 0)) / CELL);
+    const padTop = padFor("top"), padBottom = padFor("bottom");
     const pad = Math.ceil(GROUP_PAD / CELL);
     const id = PSEUDO_PREFIX + g.id;
     localBoxes.set(id, { boxes, minC, minR, pad, padTop });
     pixDims.set(id, {
       w: (maxC - minC + 2 * pad) * CELL,
-      h: (maxR - minR + pad + padTop) * CELL,
+      h: (maxR - minR + padBottom + padTop) * CELL,
       labelLines: [],
       detailLines: [],
     });
@@ -3015,7 +3054,7 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
  */
 export const GROUP_PAD = 12;
 
-export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE) {
+export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE, board = {}) {
   const byId = new Map((boxes || []).map((b) => [b.id, b]));
   const rectOf = (b) => ({
     x: b.col * CELL,
@@ -3030,8 +3069,9 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE) {
   // Inner groups first, so an outer group can wrap their finished frames.
   const order = [...valid].sort((a, b) => a.members.length - b.members.length);
   const frames = new Map();
-  const labelH = Math.round(((pal.sizes || DEFAULT_SIZES).divider) * 1.4);
+  const sizes = pal.sizes || DEFAULT_SIZES;
   for (const v of order) {
+    const st = groupLabelStyle(v.g, board, sizes);
     const set = new Set(v.members);
     const rects = v.members.map((id) => rectOf(byId.get(id)));
     for (const [other, f] of frames) {
@@ -3040,19 +3080,24 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE) {
         other.members.every((id) => set.has(id))
       ) rects.push(f.labelled);
     }
+    const inside = st.mode === "inside" ? st.reach : 0;
+    const top = st.side === "top", grow = (t) => (top === t ? inside : 0);
     const x0 = Math.min(...rects.map((r) => r.x)) - GROUP_PAD;
-    const y0 = Math.min(...rects.map((r) => r.y)) - GROUP_PAD;
+    const y0 = Math.min(...rects.map((r) => r.y)) - GROUP_PAD - grow(true);
     const x1 = Math.max(...rects.map((r) => r.x + r.w)) + GROUP_PAD;
-    const y1 = Math.max(...rects.map((r) => r.y + r.h)) + GROUP_PAD;
+    const y1 = Math.max(...rects.map((r) => r.y + r.h)) + GROUP_PAD +
+      grow(false);
     const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-    // The label straddles the top border; an enclosing frame must clear it.
-    const labelled = v.g.label
-      ? { ...rect, y: rect.y - labelH / 2, h: rect.h + labelH / 2 }
-      : rect;
+    // A label on or past the border reaches beyond the frame; an enclosing
+    // frame must clear it.
+    const out = st.reach - inside;
+    const labelled = top
+      ? { ...rect, y: rect.y - out, h: rect.h + out }
+      : { ...rect, h: rect.h + out };
     const intruders = (boxes || [])
       .filter((b) => !set.has(b.id) && rectsOverlap(rect, rectOf(b)))
       .map((b) => b.id);
-    frames.set(v, { rect, labelled, intruders });
+    frames.set(v, { rect, labelled, intruders, labelStyle: st });
   }
   // Report in authoring order; draw order is the same (outer frames are larger,
   // and translucent fills stack, so order only matters for the label chips).
@@ -3096,13 +3141,32 @@ export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
     ctx.setLineDash([]);
     ctx.restore();
     if (f.label) {
-      ctx.font = `bold ${S.divider}px ${pal.font}`;
+      const st = f.labelStyle ?? groupLabelStyle(f, {}, S);
+      const font = `${st.weight} ${st.size}px ${pal.font}`;
+      ctx.font = font;
       const tw = ctx.measureText(f.label).width;
-      const asc = S.divider * LABEL_ASCENT, desc = S.divider * LABEL_DESCENT;
-      const lx = x + 12, ly = y + (asc - desc) / 2;
+      const asc = st.size * LABEL_ASCENT, desc = st.size * LABEL_DESCENT;
+      const lx = st.align === "left"
+        ? x + 12
+        : st.align === "right"
+        ? x + w - 12 - tw
+        : x + (w - tw) / 2;
+      // Vertical centre: on the border, half a band past it, or inside below
+      // it with half a pad of air.
+      const edge = st.side === "top" ? y : y + h;
+      const into = st.side === "top" ? 1 : -1;
+      const cy = st.mode === "border"
+        ? edge
+        : st.mode === "inside"
+        ? edge + into * (GROUP_PAD / 2 + st.band / 2)
+        : edge - into * (st.band / 2);
+      const ly = cy + (asc - desc) / 2;
       labels.push({
         label: f.label,
         color: stroke,
+        font,
+        // Only a label on the border needs a chip to hide the border line.
+        chip: st.mode === "border",
         lx,
         ly,
         x: lx - 4,
@@ -3115,15 +3179,17 @@ export function drawGroups(ctx, frames, pal = DEFAULT_PALETTE) {
   return labels;
 }
 
-/** Paint group labels on the frame's top border, over the wires. */
+/** Paint group labels from drawGroups, over the wires. */
 export function drawGroupLabels(ctx, labels, pal = DEFAULT_PALETTE) {
   const S = pal.sizes || DEFAULT_SIZES;
   ctx.save();
-  ctx.font = `bold ${S.divider}px ${pal.font}`;
   ctx.textAlign = "left";
   for (const l of labels || []) {
-    ctx.fillStyle = pal.background;
-    ctx.fillRect(l.x, l.y, l.w, l.h);
+    ctx.font = l.font ?? `bold ${S.divider}px ${pal.font}`;
+    if (l.chip !== false) {
+      ctx.fillStyle = pal.background;
+      ctx.fillRect(l.x, l.y, l.w, l.h);
+    }
     ctx.fillStyle = l.color;
     ctx.fillText(l.label, l.lx, l.ly);
   }
