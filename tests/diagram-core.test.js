@@ -2042,3 +2042,37 @@ Deno.test("groupBoxes reports the origin innerLayout pins are measured from", ()
   );
   assert(at("a").col === o.col + 4 && at("a").row === o.row + 2, "a offset");
 });
+
+Deno.test("connectorDots off drops the start dot and starts at the box edge", () => {
+  const boxes = [
+    { id: "a", col: 3, row: 8, w: 5, h: 3 },
+    { id: "b", col: 31, row: 8, w: 5, h: 3 },
+  ];
+  const { routes } = routeOnce(boxes, [
+    { from: "a", to: "b", fromEdge: "E", toEdge: "W" },
+  ]);
+  const draw = (connectorDots) => {
+    const log = { arcs: 0, starts: [] };
+    const { ctx } = recordingContext();
+    Object.assign(ctx, {
+      arc() {
+        log.arcs++;
+      },
+      moveTo(x, y) {
+        log.starts.push({ x, y });
+      },
+      quadraticCurveTo() {},
+      fillRect() {},
+      strokeRect() {},
+      rotate() {},
+      translate() {},
+    });
+    drawRoutes(ctx, routes, CELL, undefined, { connectorDots });
+    return log;
+  };
+  const on = draw(true), off = draw(false);
+  assert(on.arcs === 1 && off.arcs === 0, `arcs ${on.arcs} / ${off.arcs}`);
+  const edge = (3 + 5) * CELL;
+  assert(on.starts[0].x === edge + CELL / 2, `dot start ${on.starts[0].x}`);
+  assert(off.starts[0].x === edge, `edge start ${off.starts[0].x}`);
+});

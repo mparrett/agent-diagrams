@@ -310,6 +310,7 @@ function render() {
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
+    connectorDots: diagramState.connectorDots !== false,
     boxes: BOXES,
     avoid: groupLabels,
     frames: frames.map((f) => f.rect),

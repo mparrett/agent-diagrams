@@ -2714,6 +2714,13 @@ export function drawRoutes(
         y: p.y * cell + cell / 2,
       })),
     );
+    // Without the start dot, the wire starts at the box edge: the first cell
+    // centre sits half a cell outside it, along the exit.
+    if (opts.connectorDots === false && !route.srcFree && pts.length > 1) {
+      const dx = Math.sign(pts[1].x - pts[0].x),
+        dy = Math.sign(pts[1].y - pts[0].y);
+      pts[0] = { x: pts[0].x - dx * cell / 2, y: pts[0].y - dy * cell / 2 };
+    }
     allPolys.push(pts);
     drawn.push({ route, pts });
   }
@@ -2746,7 +2753,7 @@ export function drawRoutes(
     // Start dot — or a free-end handle if the source is unconnected.
     if (route.srcFree) {
       drawFreeHandle(ctx, pts[0].x, pts[0].y, color, chipColor);
-    } else {
+    } else if (opts.connectorDots !== false) {
       ctx.beginPath();
       ctx.arc(pts[0].x, pts[0].y, 3, 0, Math.PI * 2);
       ctx.fillStyle = color;

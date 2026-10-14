@@ -207,6 +207,7 @@ Commands:
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
+  set-connector-dots <on|off>   Dot at the start of each wire (default on); off draws wires from the box edge
   set-canvas <W>x<H> [--anchor=nw|n|ne|e|se|s|sw|w|c] [--grow]
                              Set board bounds B; <W> <H> also works. The anchor works as in Photoshop: it is
                              where content sticks (nw grows right/down, c grows evenly). --grow never shrinks
@@ -815,6 +816,18 @@ function run() {
       const d = mutate((d) => d.setFontSize(px));
       d.render();
       console.log(`font size: ${px ?? "default (13)"} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-connector-dots": {
+      const v = args[1];
+      if (v !== "on" && v !== "off") {
+        console.error("Error: set-connector-dots requires on|off");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setConnectorDots(v === "on"));
+      d.render();
+      console.log(`connector dots: ${v} (rev ${d.rev})`);
       break;
     }
 
