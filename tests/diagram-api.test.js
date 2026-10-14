@@ -804,3 +804,27 @@ Deno.test("legend entries are spaced by their own widths", () => {
     `uneven legend gaps: ${gaps}`,
   );
 });
+
+Deno.test("the renderer honors the board's layout settings", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const width = (label, extra) => {
+      writeState(path, {
+        nodes: [{ id: "a", label, details: ["Queue · MQS?"], row: 0, col: 0 }],
+        ...extra,
+      });
+      return Diagram.load(path).solvePositions().positions.a.w;
+    };
+    const long = "A fairly long title that would wrap somewhere";
+    assert(
+      width(long, { maxNodeW: 0 }) > width(long, {}),
+      "maxNodeW: 0 should let the box grow past the default ceiling",
+    );
+    // In sans: one line by default (180px), wrapped at the 105px rung
+    // without slack.
+    assert(
+      width("Message history", { font: "sans", wrapSlack: 1 }) <
+        width("Message history", { font: "sans" }),
+      "wrapSlack: 1 should take the smaller, wrapped box",
+    );
+  }));

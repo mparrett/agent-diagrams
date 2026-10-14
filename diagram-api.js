@@ -1512,16 +1512,17 @@ export class Diagram {
   }
 
   // ─── Compute grid boxes ───────────────────────────────────
+  // The whole board state goes through, as the editor passes it. A hand-picked
+  // subset silently dropped every layout setting nobody remembered to add:
+  // maxNodeW and wrapSlack were honored by the editor and ignored here.
   _computeGridBoxes(ctx) {
     const { W } = this._dims;
     const state = {
+      ...this._state,
       nodes: this.nodes,
       edges: this.edges,
       layout: this.layout,
       rowY: this.rowY,
-      uniformWidth: this._state.uniformWidth,
-      font: this._state.font, // affects text width → box size
-      fontSize: this._state.fontSize, // scales box geometry with the font
     };
     return computeLayout(ctx, state, W);
   }
