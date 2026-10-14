@@ -34,6 +34,7 @@ import {
   fontFamily,
   Grid,
   makePalette,
+  measureNote,
   OUTLINE_WIDTHS,
   resolveColorToken,
   resolveNotePositions,
@@ -1449,17 +1450,30 @@ export class Diagram {
       : { x: 0, y: 0, w: 0, h: 0 };
     // Resolved note positions (anchor/override applied) so agents can verify
     // annotation placement without rendering.
+    // x/y are where drawNotes puts the first baseline; rect is the drawn text
+    // block, for checking a note against the boxes above.
+    const pal = paletteFromState(this._state);
+    const sctx = scratch.getContext("2d");
+    const measure = (n) => measureNote(sctx, n, pal);
     const notes = {};
     for (
       const r of resolveNotePositions(
         this._state.notes,
         this.noteLayout,
         gridBoxes,
+        measure,
       )
     ) {
+      const m = measure(r);
       notes[r.id ?? `${r.x},${r.y}`] = {
         x: r.x,
         y: r.y,
+        rect: {
+          x: Math.round(r.x),
+          y: Math.round(r.y - m.ascent),
+          w: Math.ceil(m.w),
+          h: m.h,
+        },
         anchored: !!(r.anchor && !this.noteLayout[r.id]),
       };
     }
@@ -1618,7 +1632,12 @@ export class Diagram {
     drawEdgeLabels(ctx, labelRects, pal);
     drawNotes(
       ctx,
-      resolveNotePositions(this._state.notes, this.noteLayout, gridBoxes),
+      resolveNotePositions(
+        this._state.notes,
+        this.noteLayout,
+        gridBoxes,
+        (n) => measureNote(ctx, n, pal),
+      ),
       pal,
     );
     drawFailedRoutes(ctx, routes, gridBoxes, CELL); // surface broken edges in the artifact, not just the console

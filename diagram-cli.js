@@ -147,6 +147,8 @@ Commands:
   add-divider <h|v> <at-px> [label]    Dotted boundary line across the canvas
   remove-divider <h|v> <at-px>
   add-note <x> <y> [--title=...] [--color=...] [--anchor=node:side:dx:dy] <line>...  Floating text annotation
+                                       (--anchor puts the note just outside that side of the box: E/W centered
+                                        vertically, N/S horizontally; dx/dy shift it from there)
   remove-note <id> | <x> <y>           Remove a note
   free-note <id>                       Drop a note's drag override → back to its anchor/position
   uniform-width <on|off>     Homogenize box widths (minW'd boxes keep emphasis)
@@ -841,6 +843,14 @@ function run() {
             console.log(
               `  ${id}  x=${p.x} y=${p.y} w=${p.w} h=${p.h}${
                 p.pinned ? "  [pinned]" : ""
+              }`,
+            );
+          }
+          for (const [id, n] of Object.entries(solved.notes)) {
+            const r = n.rect;
+            console.log(
+              `  note ${id}  x=${r.x} y=${r.y} w=${r.w} h=${r.h}${
+                n.anchored ? "  [anchored]" : ""
               }`,
             );
           }

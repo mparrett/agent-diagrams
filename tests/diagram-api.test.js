@@ -599,3 +599,64 @@ Deno.test("an anchored note sits against the drawn edge, not the content edge", 
       } (content edge ${box.x + box.pixW})`,
     );
   }));
+
+Deno.test("W and N anchors place the note outside the box, not over it", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      width: 900,
+      nodes: [{ id: "api", label: "API", row: 2, col: 3 }],
+      notes: ["N", "E", "S", "W"].map((side) => ({
+        id: side,
+        anchor: { to: "api", side, dx: 0, dy: 0 },
+        title: "TITLE",
+        text: ["a longer caption line"],
+      })),
+    });
+    const solved = Diagram.load(path).solvePositions();
+    const b = solved.positions.api;
+    const r = (id) => solved.notes[id].rect;
+    const near = (a, e) => Math.abs(a - e) <= 1;
+
+    assert(
+      near(r("W").x + r("W").w, b.x),
+      `W right edge ${r("W").x + r("W").w} vs box ${b.x}`,
+    );
+    assert(
+      near(r("E").x, b.x + b.w),
+      `E left edge ${r("E").x} vs box ${b.x + b.w}`,
+    );
+    assert(
+      near(r("N").y + r("N").h, b.y),
+      `N bottom ${r("N").y + r("N").h} vs box ${b.y}`,
+    );
+    assert(near(r("S").y, b.y + b.h), `S top ${r("S").y} vs box ${b.y + b.h}`);
+    // Centered on the box along the other axis.
+    for (const id of ["N", "S"]) {
+      assert(near(r(id).x + r(id).w / 2, b.x + b.w / 2), `${id} not centered`);
+    }
+    for (const id of ["E", "W"]) {
+      assert(near(r(id).y + r(id).h / 2, b.y + b.h / 2), `${id} not centered`);
+    }
+  }));
+
+Deno.test("an anchor's dx/dy shift the note from its flush position", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const note = (dx) => ({
+      id: "n",
+      anchor: { to: "api", side: "W", dx, dy: 0 },
+      text: ["caption"],
+    });
+    writeState(path, {
+      nodes: [{ id: "api", label: "API", row: 2, col: 4 }],
+      notes: [note(0)],
+    });
+    const flush = Diagram.load(path).solvePositions().notes.n.x;
+    writeState(path, {
+      nodes: [{ id: "api", label: "API", row: 2, col: 4 }],
+      notes: [note(-12)],
+    });
+    const gapped = Diagram.load(path).solvePositions().notes.n.x;
+    assert(gapped === flush - 12, `expected ${flush - 12}, got ${gapped}`);
+  }));

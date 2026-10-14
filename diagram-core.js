@@ -2681,8 +2681,42 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
  *   3. else fall back to the note's own absolute x/y (back-compat).
  * Returns note-like objects with resolved {x,y} so drawNotes stays a dumb
  * draw fn. `boxes` are the solved grid boxes from computeLayout.
+ *
+ * `measure(note) → {w,h,ascent}` (measureNote bound to a context and palette) lets an
+ * anchored note sit flush against its side: the note's text block is placed
+ * outside the box, right-aligned for W, bottom-aligned for N, and centered on
+ * the box along the other axis. dx/dy then shift it from there. Without
+ * `measure` the note is treated as zero-sized, so its first baseline starts at
+ * the side's midpoint and a W or N note overlaps the box it names.
  */
-export function resolveNotePositions(notes, noteLayout = {}, boxes = []) {
+/**
+ * Where an anchored note's first baseline goes when dx = dy = 0: its text
+ * block (`m` from measureNote) sits just outside `side` of the drawn box —
+ * right-aligned for W, bottom-aligned for N — and is centered on the box
+ * along the other axis. Shared with the editor's re-anchor so it inverts
+ * exactly what the renderer does.
+ */
+export function anchoredNoteOrigin(box, side, m) {
+  const bx = box.col * CELL, by = box.row * CELL;
+  const bw = box.w * CELL, bh = box.h * CELL;
+  let left = bx + bw, top = by + (bh - m.h) / 2; // E
+  if (side === "W") left = bx - m.w;
+  else if (side === "N") {
+    left = bx + (bw - m.w) / 2;
+    top = by - m.h;
+  } else if (side === "S") {
+    left = bx + (bw - m.w) / 2;
+    top = by + bh;
+  }
+  return { x: left, y: top + m.ascent };
+}
+
+export function resolveNotePositions(
+  notes,
+  noteLayout = {},
+  boxes = [],
+  measure = null,
+) {
   const byId = new Map((boxes || []).map((b) => [b.id, b]));
   const out = [];
   for (const nt of notes || []) {
@@ -2698,25 +2732,12 @@ export function resolveNotePositions(notes, noteLayout = {}, boxes = []) {
       // to a cell smaller than what gets painted, so an E-anchored note with
       // dx=0 used to land inside the visible border — and disagreed with the
       // `w`/`h` that solvePositions reports for the same box.
-      const bx = b.col * CELL, by = b.row * CELL;
-      const bw = b.w * CELL, bh = b.h * CELL;
-      let ax = bx + bw, ay = by + bh / 2; // default E (right edge, vertical center)
-      switch (nt.anchor.side) {
-        case "W":
-          ax = bx;
-          ay = by + bh / 2;
-          break;
-        case "N":
-          ax = bx + bw / 2;
-          ay = by;
-          break;
-        case "S":
-          ax = bx + bw / 2;
-          ay = by + bh;
-          break;
-      }
-      x = ax + (Number.isFinite(nt.anchor.dx) ? nt.anchor.dx : 0);
-      y = ay + (Number.isFinite(nt.anchor.dy) ? nt.anchor.dy : 0);
+      const dx = Number.isFinite(nt.anchor.dx) ? nt.anchor.dx : 0;
+      const dy = Number.isFinite(nt.anchor.dy) ? nt.anchor.dy : 0;
+      const m = measure ? measure(nt) : { w: 0, h: 0, ascent: 0 };
+      const o = anchoredNoteOrigin(b, nt.anchor.side, m);
+      x = Math.round(o.x + dx);
+      y = Math.round(o.y + dy);
     }
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     out.push({ ...nt, x, y });
@@ -2725,9 +2746,11 @@ export function resolveNotePositions(notes, noteLayout = {}, boxes = []) {
 }
 
 /**
- * Bounding size of a note's text block (for editor hit-testing). Width = widest
- * line; height runs from the first baseline down. Uses the same fonts as
- * drawNotes so the hit rect matches what's drawn.
+ * Bounding box of a note's text block: `w` is the widest line, `h` runs from
+ * the top of the first line to the bottom of the last, and `ascent` is the
+ * distance from that top to the first baseline. A note's `y` is the first
+ * baseline (drawNotes draws there), so its top edge is `y - ascent`. Uses the
+ * same fonts as drawNotes so the rect matches what's drawn.
  */
 export function measureNote(ctx, note, pal = DEFAULT_PALETTE) {
   const S = pal.sizes || DEFAULT_SIZES;
@@ -2741,9 +2764,15 @@ export function measureNote(ctx, note, pal = DEFAULT_PALETTE) {
   }
   ctx.font = `${S.noteText}px ${pal.font}`;
   for (const line of lines) w = Math.max(w, ctx.measureText(line).width);
-  const h = (note.title ? Math.round(15 * S.scale) : 0) +
-    lines.length * Math.round(14 * S.scale);
-  return { w, h };
+  const titleGap = Math.round(15 * S.scale), lineH = Math.round(14 * S.scale);
+  const firstFs = note.title ? S.noteTitle : S.noteText;
+  const lastFs = lines.length ? S.noteText : S.noteTitle;
+  const ascent = Math.round(firstFs * LABEL_ASCENT);
+  const lastBaseline = lines.length
+    ? (note.title ? titleGap : 0) + (lines.length - 1) * lineH
+    : 0;
+  const h = ascent + lastBaseline + Math.round(lastFs * LABEL_DESCENT);
+  return { w, h, ascent };
 }
 
 export function drawNotes(ctx, notes, pal = DEFAULT_PALETTE) {

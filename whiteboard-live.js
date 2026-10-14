@@ -14,6 +14,7 @@
  */
 
 import {
+  anchoredNoteOrigin,
   BOARD_MARGIN,
   BOARD_MARGIN_BOTTOM,
   boardExtent,
@@ -251,20 +252,21 @@ function rebuild() {
 // their hit rects. Cheap (a handful of notes) so it runs each render, keeping
 // NOTES in sync for hit-testing. Returns the resolved list for drawNotes.
 function buildNotes() {
+  const measure = (n) => measureNote(ctx, n, PAL);
   const resolved = resolveNotePositions(
     diagramState?.notes,
     noteLayoutLocal,
     BOXES,
+    measure,
   );
   NOTES = resolved.map((r) => {
-    const m = measureNote(ctx, r, PAL);
-    // Text baseline sits at r.y; the first line's cap is ~11px above. Pad the
-    // rect a little so the thin text is an easy grab target.
+    const m = measure(r);
+    // Pad the rect a little so the thin text is an easy grab target.
     return {
       id: r.id,
       x: r.x,
       y: r.y,
-      rect: { x: r.x - 4, y: r.y - 13, w: m.w + 8, h: m.h + 8 },
+      rect: { x: r.x - 4, y: r.y - m.ascent - 4, w: m.w + 8, h: m.h + 8 },
     };
   });
   return resolved;
@@ -3016,27 +3018,33 @@ async function reanchorNote(id) {
     setStatus("no box to anchor to");
     return;
   }
+  // Nearest side by note-center to side-midpoint distance; dx/dy are what
+  // resolveNotePositions adds to anchoredNoteOrigin, so the note stays put.
+  const note = (diagramState?.notes || []).find((n) => n.id === id);
+  const m = measureNote(ctx, note || {}, PAL);
+  const cx = cur.x + m.w / 2, cy = cur.y - m.ascent + m.h / 2;
   let best = null;
   for (const b of BOXES) {
     const bx = b.col * CELL,
       by = b.row * CELL,
       bw = b.w * CELL,
       bh = b.h * CELL;
-    const sides = {
+    const mids = {
       N: { x: bx + bw / 2, y: by },
       E: { x: bx + bw, y: by + bh / 2 },
       S: { x: bx + bw / 2, y: by + bh },
       W: { x: bx, y: by + bh / 2 },
     };
     for (const side of ["N", "E", "S", "W"]) {
-      const d = Math.hypot(cur.x - sides[side].x, cur.y - sides[side].y);
+      const d = Math.hypot(cx - mids[side].x, cy - mids[side].y);
       if (!best || d < best.d) {
+        const o = anchoredNoteOrigin(b, side, m);
         best = {
           d,
           to: b.id,
           side,
-          dx: Math.round(cur.x - sides[side].x),
-          dy: Math.round(cur.y - sides[side].y),
+          dx: Math.round(cur.x - o.x),
+          dy: Math.round(cur.y - o.y),
         };
       }
     }
