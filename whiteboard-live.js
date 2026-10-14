@@ -2279,7 +2279,7 @@ document.getElementById("bExpandCanvas").onclick = async () => {
     zoomToFit();
     render();
     setStatus(
-      `fitted to extents (${diagramState.width}×${diagramState.height})`,
+      `zoomed to extents (${diagramState.width}×${diagramState.height})`,
     );
   } catch (e) {
     setStatus("expand failed: " + e.message);
