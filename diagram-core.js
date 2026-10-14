@@ -1770,8 +1770,16 @@ export function computeLayout(ctx, state, canvasW) {
 // blocked, so a label can never make a route impossible.
 export const LABEL_COST = 120;
 
-// `avoid`: px rects (group labels) wires should route round.
-export function buildGrid(grid, boxes, costs, avoid = []) {
+// Per-cell cost of a group frame's border (`costs.frame`). Crossing a frame
+// costs about one cell's worth, less than a turn, so wires still cross where
+// they must; running along a border pays it on every cell.
+export const FRAME_COST = 25;
+// Share of FRAME_COST paid one cell either side of a border.
+const FRAME_NEAR = 0.4;
+
+// `avoid`: px rects (group labels) wires should route round. `frames`: px
+// rects of group frames, whose borders wires should cross briefly.
+export function buildGrid(grid, boxes, costs, avoid = [], frames = []) {
   grid.reset();
   const connMap = new Map();
 
@@ -1808,7 +1816,33 @@ export function buildGrid(grid, boxes, costs, avoid = []) {
     }
   }
 
-  // 4. Place connection points
+  // 4. Frame borders: the row or column of cells each edge runs through.
+  const frameCost = costs.frame ?? FRAME_COST;
+  for (const f of frames) {
+    const c0 = Math.floor(f.x / CELL), c1 = Math.floor((f.x + f.w) / CELL);
+    const r0 = Math.floor(f.y / CELL), r1 = Math.floor((f.y + f.h) / CELL);
+    // The border ring pays the full cost; the rings one cell inside and
+    // outside pay a share, so a wire keeps a cell clear of the border.
+    const ring = (d, cost) => {
+      const cells = new Set();
+      for (let gx = c0 - d; gx <= c1 + d; gx++) {
+        cells.add(`${gx},${r0 - d}`).add(`${gx},${r1 + d}`);
+      }
+      for (let gy = r0 - d; gy <= r1 + d; gy++) {
+        cells.add(`${c0 - d},${gy}`).add(`${c1 + d},${gy}`);
+      }
+      for (const k of cells) {
+        const [gx, gy] = k.split(",").map(Number);
+        if (!grid.ok(gx, gy) || grid.get(gx, gy) === T_BLOCKED) continue;
+        grid.addCost(gx, gy, cost);
+      }
+    };
+    ring(0, frameCost);
+    ring(1, frameCost * FRAME_NEAR);
+    ring(-1, frameCost * FRAME_NEAR);
+  }
+
+  // 5. Place connection points
   for (const b of boxes) {
     for (const edge of ["N", "E", "S", "W"]) {
       const n = connCount(b, edge);

@@ -164,8 +164,10 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
     { "id": "n2", "anchor": { "to": "api", "side": "E", "dx": 12, "dy": 0 }, "text": ["rides the api box"] }
   ],
 
-  "costs": {}                              // optional A* overrides: { step, turn, near, overlap, label }
-                                           //   (label: per-cell cost of crossing a group label, default 120)
+  "costs": {}                              // optional A* overrides: { step, turn, near, overlap, label, frame }
+                                           //   (label: per-cell cost of crossing a group label, default 120;
+                                           //   frame: per-cell cost of a frame border, default 25, 40% of it
+                                           //   one cell either side)
 }
 ```
 

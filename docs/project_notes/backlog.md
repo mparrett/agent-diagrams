@@ -9,7 +9,6 @@ Open work, roughly in priority order within each section. Remove an item when it
 
 ## Routing and groups
 
-- **Frame-crossing cost.** Routing does not penalize crossing a frame border, so wires cross frames freely and run along them.
 - **Labels wider than their frame** overhang it; frames and group boxes are not sized by measured text.
 - **Edges to a group** (`add-edge api agents`). `remove-group` will need a rule for edges that end at the removed group.
 - **Align with multi-select.** Align acts on board-level boxes only; the editor has no multi-select.

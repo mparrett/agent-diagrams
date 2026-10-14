@@ -263,13 +263,11 @@ function zoomAtClient(clientX, clientY, factor) {
 // ================================================================
 function rebuild() {
   grid = new Grid(COLS, ROWS);
-  // Wires route round group labels; measure them as render() will draw them.
-  const labels = groupLabelRects(
-    ctx,
-    groupFrames(diagramState?.groups, BOXES, PAL, diagramState),
-    PAL,
-  );
-  connMap = buildGrid(grid, BOXES, costs, labels);
+  // Wires route round group labels and cross frame borders briefly; measure
+  // the labels as render() will draw them.
+  const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
+  const labels = groupLabelRects(ctx, frames, PAL);
+  connMap = buildGrid(grid, BOXES, costs, labels, frames.map((f) => f.rect));
   routes = routeEdges(astarState, grid, EDGES_DEF, BOXES, connMap, costs, PAL, {
     centerConnectors: diagramState.connectorAnchor === "center",
     edgeWidth: diagramState.edgeWidth,

@@ -2121,3 +2121,30 @@ Deno.test("wires route round group labels when they can", () => {
   assert(crosses(route([])), "without the label the wire runs straight");
   assert(!crosses(route([label])), "with it, the wire goes round");
 });
+
+Deno.test("wires keep off a frame border they would run along", () => {
+  const boxes = [
+    { id: "a", col: 3, row: 8, w: 5, h: 3 },
+    { id: "b", col: 31, row: 8, w: 5, h: 3 },
+  ];
+  const edges = [{ from: "a", to: "b", fromEdge: "E", toEdge: "W" }];
+  // A frame whose top border lies on the straight run between the boxes.
+  const frame = { x: 12 * CELL, y: 9 * CELL + 4, w: 14 * CELL, h: 8 * CELL };
+  const route = (frames) => {
+    const grid = new Grid(44, 24);
+    const costs = { ...DEFAULT_COSTS };
+    const connMap = buildGrid(grid, boxes, costs, [], frames);
+    return routeEdges(
+      createAstarState(44, 24),
+      grid,
+      edges,
+      boxes,
+      connMap,
+      costs,
+    )[0].path;
+  };
+  const along = (path) =>
+    path.filter((p) => p.y === 9 && p.x >= 12 && p.x <= 26).length;
+  assert(along(route([])) > 10, "without the frame the wire runs on row 9");
+  assert(along(route([frame])) === 0, "with it, the wire keeps off the border");
+});
