@@ -218,7 +218,7 @@ dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To ad
 ```
 diagram-cli.js [--state <path>] <command> [args...]
 
-  init                       Write a starter diagram-state.json
+  init [--empty]             Write a starter diagram-state.json (--empty: no sample nodes)
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]    (parallel edges allowed — repeat to add a 2nd a→b)
   remove-node <id>           (also removes connected edges)

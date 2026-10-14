@@ -128,7 +128,8 @@ State file: --state <path> (any command) > DIAGRAM_STATE env > ./diagram-state.j
 in the cwd (so the CLI works from any project) > the bundled diagrams/example board.
 
 Commands:
-  init                       Write a starter diagram-state.json in the current dir
+  init [--empty]             Write a starter diagram-state.json in the current dir
+                             (--empty: no sample nodes, for building a board from scratch)
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]
   remove-node <id>
@@ -196,13 +197,18 @@ if (!cmd) usage();
 if (cmd === "init") {
   // init scaffolds in the cwd (or --state path) — it never targets the bundled
   // example board the way other commands' zero-arg default can.
+  const flags = args.slice(1);
+  rejectUnknownFlags("init", flags, ["--empty"]);
   const target = resolve(Deno.cwd(), stateArg ?? "diagram-state.json");
   try {
     Deno.statSync(target);
     console.error(`Error: ${target} already exists — refusing to overwrite`);
     Deno.exit(1);
   } catch { /* not found — proceed */ }
-  Deno.writeTextFileSync(target, JSON.stringify(STARTER_STATE, null, 2) + "\n");
+  const starter = flags.includes("--empty")
+    ? { ...STARTER_STATE, nodes: [], edges: [] }
+    : STARTER_STATE;
+  Deno.writeTextFileSync(target, JSON.stringify(starter, null, 2) + "\n");
   // Print a render command that actually works from where the user is standing:
   // in the tool repo the `deno task` alias exists; from a foreign cwd it doesn't.
   const toolDir = dirname(fromFileUrl(import.meta.url));

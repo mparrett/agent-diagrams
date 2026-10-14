@@ -365,3 +365,12 @@ Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>
     assert(r.code === 0, r.err);
     assertEquals(read(), undefined);
   }));
+
+Deno.test("CLI: init --empty writes a board with no sample nodes", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const r = await runCli(path, ["init", "--empty"]);
+    assert(r.code === 0, r.err);
+    const s = JSON.parse(Deno.readTextFileSync(path));
+    assertEquals([s.nodes.length, s.edges.length], [0, 0]);
+  }));
