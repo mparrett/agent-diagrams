@@ -239,6 +239,12 @@ Commands:
   set-row-gap <px|reset>     Space between rows (default 45, room for wires); frames still get their
                              clearance. update-group <id> --rowGap=<px|none> sets one inner group's
   set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
+  set-flow <field|none>      (spike) Flow field steering wires: right, left, down, up, swirl, snake,
+                             snake2, snake4, or two joined with > (right>down)
+  flow-place [--gap=px] [--frame=WxH]
+                             (spike) Pin the longest edge chain along the flow field's streamline and
+                             the other nodes beside their neighbours; the field spans the frame
+                             (default: the canvas)
   set-direction <down|right|reset>
                              Which way the board reads. Boxes diagonally apart get wires top-to-bottom
                              (down, default) or side-to-side (right); fromEdge/toEdge still win
@@ -1050,6 +1056,33 @@ function run(args) {
       const d = mutate((d) => d.setConnectorAnchor(v));
       renderUnlessDeferred(d);
       console.log(`connector anchor: ${v} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-flow": {
+      const v = args[1];
+      if (!v) {
+        console.error("Error: set-flow requires a field or none");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setFlow(v === "none" ? null : v));
+      renderUnlessDeferred(d);
+      console.log(`flow: ${v} (rev ${d.rev})`);
+      break;
+    }
+
+    case "flow-place": {
+      const gapArg = args.find((a) => a.startsWith("--gap="));
+      const gap = gapArg ? int("--gap", gapArg.slice(6), { min: 0 }) : 45;
+      const fr = args.find((a) => a.startsWith("--frame="))?.slice(8)
+        .match(/^(\d+)x(\d+)$/);
+      const frame = fr ? { W: +fr[1], H: +fr[2] } : undefined;
+      let order;
+      const d = mutate((d) => {
+        order = d.flowPlace({ gap, frame });
+      });
+      renderUnlessDeferred(d);
+      console.log(`flow-placed ${order.join(" → ")} (rev ${d.rev})`);
       break;
     }
 

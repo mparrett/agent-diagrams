@@ -272,6 +272,7 @@ function rebuild() {
     centerConnectors: diagramState.connectorAnchor === "center",
     edgeWidth: diagramState.edgeWidth,
     direction: diagramState.direction,
+    flow: diagramState.flow,
   });
 }
 

@@ -8,6 +8,8 @@
  * Layout engine converts abstract JSON positions to grid-space boxes.
  */
 
+import { fieldFn, flowSides, flowStepCost } from "./flow-field.js";
+
 // ================================================================
 // CONSTANTS
 // ================================================================
@@ -587,6 +589,7 @@ export function astar(
       // Penalize routing through other conn points (not hard block — dense layouts need it)
       if (t === T_CONN && !(nx === ex && ny === ey)) cost += costs.near * 2;
       if (cur.dir !== D_NONE && cur.dir !== mv.id) cost += costs.turn;
+      if (costs.flowStep) cost += costs.flowStep(nx, ny, mv.dx, mv.dy);
       // NB: `turn` is effectively near-boolean. The path the optimizer picks is
       // piecewise-constant in this cost: 0 = turns free (A* returns an arbitrary
       // shortest staircase → zigzag); any >0 = minimize turns (clean L/Z). The
@@ -2137,7 +2140,9 @@ export function edgeSides(edgeDefs, boxes, direction) {
     if (edge.fromEdge && edge.toEdge) {
       return { srcEdge: edge.fromEdge, tgtEdge: edge.toEdge };
     }
-    const sides = pickSide(srcBox, tgtBox, direction);
+    const sides = typeof direction === "function"
+      ? flowSides(srcBox, tgtBox, direction)
+      : pickSide(srcBox, tgtBox, direction);
     return {
       srcEdge: edge.fromEdge || SIDE_TO_EDGE[sides.srcSide],
       tgtEdge: edge.toEdge || SIDE_TO_EDGE[sides.tgtSide],
@@ -2186,7 +2191,7 @@ export function separateSlots(ideals, n, gap = 1) {
 
 function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
   const centerMode = opts.centerConnectors === true; // anchor on side center, not overlap band
-  const alloc = edgeSides(edgeDefs, boxById, opts.direction); // Pass 1 — sides (mutated below with symbols)
+  const alloc = edgeSides(edgeDefs, boxById, opts.flowAt ?? opts.direction); // Pass 1 — sides (mutated below with symbols)
 
   // Pass 2 — symbols. Explicit fromConn/toConn win. The rest are ordered
   // *barycentrically*: each box side's edges are sorted by where their
@@ -2290,6 +2295,13 @@ export function routeEdges(
   opts = {},
 ) {
   const boxById = new Map(boxes.map((b) => [b.id, b]));
+  // A flow field (opts.flow, a spec) sets the sides and taxes steps against it.
+  const field = fieldFn(opts.flow);
+  const flowAt = field ? (x, y) => field(x / grid.cols, y / grid.rows) : null;
+  if (flowAt) {
+    opts = { ...opts, flowAt };
+    costs = { ...costs, flowStep: flowStepCost(flowAt, opts.flowWeight ?? 6) };
+  }
   const alloc = allocateConnectors(edgeDefs, boxes, boxById, opts);
   const routes = [];
 

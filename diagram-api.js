@@ -57,6 +57,7 @@ import {
 } from "./diagram-core.js";
 export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
+import { fieldFn, flowPlace, flowSpine } from "./flow-field.js";
 
 /**
  * Resolve the state-file path: explicit arg > DIAGRAM_STATE env > zero-config default.
@@ -1293,6 +1294,39 @@ export class Diagram {
     else delete this._state.direction;
   }
 
+  // Flow field (spike): a preset name, or "a>b". Steers wire sides and
+  // routing; null clears it.
+  setFlow(spec) {
+    if (spec == null) {
+      delete this._state.flow;
+      return;
+    }
+    if (!fieldFn(spec)) throw new Error(`unknown flow field "${spec}"`);
+    this._state.flow = spec;
+  }
+
+  // Pin every board-level node along one streamline of the board's flow
+  // field: the longest edge chain along it, the rest beside their neighbours.
+  // `frame` ({W, H} px, default the canvas) is the area the field spans.
+  flowPlace({ gap = 45, field = this._state.flow, frame } = {}) {
+    if (!fieldFn(field)) throw new Error("flow-place needs a flow field");
+    const { positions } = this.solvePositions();
+    const { W, H } = frame ?? this._dims;
+    const nodes = this.nodes.filter((n) => positions[n.id]);
+    const { spine, side } = flowSpine(nodes, this.edges);
+    const dims = (id) => ({ id, w: positions[id].w, h: positions[id].h });
+    const pins = flowPlace(
+      spine.map(dims),
+      side.map((s) => ({ ...dims(s.id), near: s.near })),
+      field,
+      W,
+      H,
+      { gap, cell: CELL },
+    );
+    for (const [id, p] of Object.entries(pins)) this.layout[id] = p;
+    return spine;
+  }
+
   // ─── Dividers (boundary lines) ────────────────────────────
   // Annotation-only h/v dotted lines that partition the canvas into regions.
   addDivider(orient, at, opts = {}) {
@@ -2364,6 +2398,7 @@ export class Diagram {
         centerConnectors: this._state.connectorAnchor === "center",
         edgeWidth: this._state.edgeWidth,
         direction: this._state.direction,
+        flow: this._state.flow,
       },
     );
 
