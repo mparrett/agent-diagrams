@@ -239,10 +239,10 @@ Commands:
   set-row-gap <px|reset>     Space between rows (default 45, room for wires); frames still get their
                              clearance. update-group <id> --rowGap=<px|none> sets one inner group's
   set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
-  set-flow <field|none>      (spike) Flow field steering wires: right, left, down, up, swirl, snake,
+  set-flow <field|none>      Flow field steering wires: right, left, down, up, swirl, snake,
                              snake2, snake4, or two joined with > (right>down)
   flow-place [--gap=px] [--frame=WxH]
-                             (spike) Pin the longest edge chain along the flow field's streamline and
+                             Pin the longest edge chain along the flow field's streamline and
                              the other nodes beside their neighbours; the field spans the frame
                              (default: sized from the boxes' area at 16:10). Fits the canvas after
   set-direction <down|right|reset>

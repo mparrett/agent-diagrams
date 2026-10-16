@@ -2453,7 +2453,7 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
-// Place along flow (spike): the server lays the board out along its field and
+// Place along flow: the server lays the board out along its field and
 // pins every node; reload to pick the pins up.
 document.getElementById("bFlowPlace").onclick = async () => {
   if (!diagramState?.flow) {
@@ -2482,7 +2482,7 @@ document.getElementById("bFlowPlace").onclick = async () => {
   }
 };
 
-// Flow field (spike) — steers wire sides and routing; picking one shows it.
+// Flow field — steers wire sides and routing; picking one shows it.
 const flowSelect = document.getElementById("flowSelect");
 const syncFlowSelect = (st) => {
   const v = st?.flow ?? "";

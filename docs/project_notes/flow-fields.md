@@ -1,6 +1,8 @@
-# Flow-field spike
+# Flow fields
 
-Status: spike, on `spike/flow-field`. Not for merge as is.
+Status: experimental. Built as a spike on 2026-10-16 and merged as is; see
+"If it graduates" for what a full version needs. Ideas for the next round are
+in `flow-field-ideas.md`.
 
 A flow field gives the board a direction at every point. One field drives three
 things:
@@ -19,8 +21,13 @@ things:
 set-flow snake                  # right, left, down, up, swirl, snake, snake2, snake4
 set-flow 'right>down'           # first field for 55% of the board, then the second
 set-flow none
-flow-place --frame=1300x900     # pins every node; the field spans the frame
+flow-place                      # pins every node; frame sized from the boxes
+flow-place --frame=1300x900     # or give the area the field spans
 ```
+
+In the editor, the View group has a field picker and a **Flow** toggle that
+draws the field as arrows; **Place along flow** (Nodes & Layout) runs
+`flow-place`.
 
 `set-flow` alone changes only sides and routing. `flow-place` writes `layout`
 pins, so the result is a frozen arrangement: edit the board and run it again.
@@ -52,26 +59,9 @@ fixed 3x3 board routed under no field, `swirl` and `right`.
 - Only board-level placement; pins on inner-group members are ignored.
 - A side node sits beside its first placed neighbour only; a node joining two
   spine nodes is not placed between them.
-- No editor control; the editor reads `flow` for routing only.
 
 ## If it graduates
 
 Make the field a layout mode (`"layout": "flow"`) computed on every render, so
 the arrangement reflows like row/col does instead of being pinned once. Fit the
-frame to the content's total area. Then give the editor a field picker with a
-faint arrow overlay.
-
-## Ideas for a later spike
-
-- **Box fields.** Each box carries a short-range field pointing out of its
-  sides (radially out at the corners), fading over a few cells and added to the
-  global field. For a wire's source it pushes the wire out square to the side;
-  flipped for its target, it draws the wire in square; for every other box it
-  pushes wires away. That one mechanism could replace three that exist now: the
-  near-box cost halo, the forced perpendicular exit, and the forced
-  perpendicular entry.
-- **Growing connectors.** Animate each wire drawing itself from source to
-  target. The cheap version reveals the routed path over time with a dash
-  offset. The field version traces a streamline from the source, steered
-  between the field and the direction to the target, so the drawing shows the
-  field at work. Either could export as an animated SVG or GIF.
+frame to the content's total area (flow-place does this once today).

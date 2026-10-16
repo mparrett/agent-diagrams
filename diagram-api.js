@@ -1294,7 +1294,7 @@ export class Diagram {
     else delete this._state.direction;
   }
 
-  // Flow field (spike): a preset name, or "a>b". Steers wire sides and
+  // Flow field: a preset name, or "a>b". Steers wire sides and
   // routing; null clears it.
   setFlow(spec) {
     if (spec == null) {
