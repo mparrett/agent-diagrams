@@ -2475,6 +2475,51 @@ Deno.test("findIssues names each kind of layout defect", () => {
   );
 });
 
+Deno.test("a spanning inner group's frame fills its columns, content centred", () => {
+  const ctx = measureContext();
+  const state = (span) => ({
+    nodes: [
+      { id: "x", label: "X", color: "blue", row: 0, col: 0 },
+      { id: "y", label: "Y", color: "blue", row: 0, col: 1 },
+      {
+        id: "band",
+        label: "A band far wider than the group above it, spanning",
+        color: "blue",
+        row: 1,
+        col: 0,
+        w: 40,
+      },
+    ],
+    groups: [{
+      id: "g",
+      label: "G",
+      nodes: ["x", "y"],
+      layout: "inner",
+      ...span,
+    }],
+    edges: [],
+  });
+  const run = (span) => {
+    const s = state(span);
+    const boxes = computeLayout(ctx, s, 1500);
+    return { boxes, frame: groupFrames(s.groups, boxes)[0] };
+  };
+  const { boxes, frame } = run({ span: 1 });
+  const band = boxes.find((b) => b.id === "band");
+  assertEquals(frame.rect.x, band.col * CELL, "frame starts with the band");
+  assertEquals(frame.rect.x + frame.rect.w, (band.col + band.w) * CELL);
+  const [x, y] = ["x", "y"].map((id) => boxes.find((b) => b.id === id));
+  const left = x.col * CELL - frame.rect.x;
+  const right = frame.rect.x + frame.rect.w - (y.col + y.w) * CELL;
+  assert(
+    Math.abs(left - right) <= CELL,
+    `content centred: ${left} vs ${right}`,
+  );
+
+  const plain = run({});
+  assert(plain.frame.rect.w < frame.rect.w, "without span the frame hugs");
+});
+
 Deno.test("span stretches a box across columns without widening them", () => {
   const ctx = measureContext();
   const layout = (band) =>

@@ -1488,12 +1488,21 @@ export function computeLayout(ctx, state, canvasW) {
       const last = n.col + spanOf(n) - 1;
       return colX.get(last) + colW.get(last) - colX.get(n.col);
     };
+    // An inner group's box keeps its measured content; only its frame
+    // stretches.
+    const natural = new Map(
+      spanning.filter((n) => localBoxes.has(n.id)).map((n) => [
+        n.id,
+        pixDims.get(n.id),
+      ]),
+    );
     for (let pass = 0; pass < 4 && spanning.length; pass++) {
       let grew = false;
       for (const n of spanning) {
         const want = spanW(n);
         const { w: _w, minW: _m, ...bare } = n;
-        const dims = sizeAt(ctx, bare, want, FONT, SIZES);
+        const dims = natural.get(n.id) ??
+          sizeAt(ctx, bare, want, FONT, SIZES);
         if (dims.w > want + 0.5) {
           const last = n.col + spanOf(n) - 1;
           colW.set(last, colW.get(last) + dims.w - want);
@@ -1775,7 +1784,13 @@ export function computeLayout(ctx, state, canvasW) {
   const localBoxes = new Map();
   const groupItem = (gid) => {
     const g = tree.get(gid);
-    return { id: PSEUDO_PREFIX + gid, row: g.row, col: g.col };
+    const span = spanOf(authored.get(gid) ?? {});
+    return {
+      id: PSEUDO_PREFIX + gid,
+      row: g.row,
+      col: g.col,
+      ...(span && { span }),
+    };
   };
   // A group's relative pins, keyed by grid-box id. Entries for ids the group
   // does not list directly are stale and ignored.
@@ -1828,7 +1843,13 @@ export function computeLayout(ctx, state, canvasW) {
       bottom: Math.ceil((y1 - maxR * CELL + ins.bottom) / CELL),
     };
     const id = PSEUDO_PREFIX + g.id;
-    localBoxes.set(id, { boxes, minC, minR, pad });
+    localBoxes.set(id, {
+      boxes,
+      minC,
+      minR,
+      pad,
+      w: maxC - minC + pad.left + pad.right,
+    });
     pixDims.set(id, {
       w: (maxC - minC + pad.left + pad.right) * CELL,
       h: (maxR - minR + pad.top + pad.bottom) * CELL,
@@ -1886,8 +1907,11 @@ export function computeLayout(ctx, state, canvasW) {
         row: b.row + local.pad.top - local.minR,
       },
     });
+    // A spanning group is wider than its content; centre the content in it.
+    const slack = Math.max(0, Math.floor((b.w - local.w) / 2));
+    groupBoxes.get(b.id.slice(PSEUDO_PREFIX.length)).origin.col += slack;
     for (const m of local.boxes) {
-      const col = b.col + local.pad.left + (m.col - local.minC);
+      const col = b.col + slack + local.pad.left + (m.col - local.minC);
       const row = b.row + local.pad.top + (m.row - local.minR);
       emit({ ...m, col, row, _origCol: col, _origRow: row });
     }
@@ -3813,9 +3837,17 @@ export function groupFrames(groups, boxes, pal = DEFAULT_PALETTE, board = {}) {
     const out = st.reach - inside;
     const top = st.side === "top";
     const pad = (side) => ins[side] - (st.side === side ? out : 0);
-    const x0 = Math.min(...rects.map((r) => r.x)) - pad("left");
+    let x0 = Math.min(...rects.map((r) => r.x)) - pad("left");
     const y0 = Math.min(...rects.map((r) => r.y)) - pad("top");
-    const x1 = Math.max(...rects.map((r) => r.x + r.w)) + pad("right");
+    let x1 = Math.max(...rects.map((r) => r.x + r.w)) + pad("right");
+    // A spanning inner group's frame fills the columns its box was given.
+    const gb = v.g.layout === "inner" && spanOf(v.g)
+      ? boxes?.groupBoxes?.get(v.g.id)
+      : null;
+    if (gb) {
+      x0 = Math.min(x0, gb.col * CELL);
+      x1 = Math.max(x1, (gb.col + gb.w) * CELL);
+    }
     const y1 = Math.max(...rects.map((r) => r.y + r.h)) + pad("bottom");
     const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     const labelled = top

@@ -568,6 +568,22 @@ Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", asy
     assert(r.code === 0, r.err);
     assertEquals(read().nodes.find((n) => n.id === "a").span, undefined);
 
+    r = await runCli(path, [
+      "add-group",
+      "gs",
+      "G",
+      "a",
+      "--inner",
+      "--row=0",
+      "--col=0",
+    ]);
+    assert(r.code === 0, r.err);
+    r = await runCli(path, ["update-group", "gs", "--span=2"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().groups.find((g) => g.id === "gs").span, 2);
+    r = await runCli(path, ["remove-group", "gs"]);
+    assert(r.code === 0, r.err);
+
     r = await runCli(path, ["set-row-gap", "10"]);
     assert(r.code === 0, r.err);
     assertEquals(read().rowGap, 10);

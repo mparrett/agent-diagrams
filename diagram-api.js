@@ -1514,6 +1514,7 @@ export class Diagram {
       }
       c.rowGap = opts.rowGap;
     }
+    if (opts.span !== undefined) setSpan(c, opts.span);
     if (opts.layout === "annotation" && g.layout === "inner") {
       const parent = groups.find((o) =>
         o !== g && o.layout === "inner" && o.nodes.includes(id)

@@ -203,7 +203,9 @@ Commands:
                                        group's nodes may list other inner group ids, nesting them; node and
                                        group ids share one namespace.
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=NAME|none] [--dash=...|none]
-                    [--inner|--annotation] [--row=N] [--col=N]
+                    [--inner|--annotation] [--row=N] [--col=N] [--rowGap=px|none] [--span=N|0]
+                                       --span stretches an inner group's frame across N board columns;
+                                       its content keeps its size and centres. 0 clears
   add-group / update-group ... [--labelPos=top-border|top-inside|top-outside|bottom-border|bottom-inside|bottom-outside]
                     [--labelAlign=left|center|right] [--labelWeight=bold|normal] [--labelSize=px]
                                        Where the group's label sits; "none" clears a field back to the board default
@@ -669,6 +671,7 @@ function run(args) {
           "--row",
           "--col",
           "--rowGap",
+          "--span",
           ...LABEL_FLAGS,
         ],
       );
@@ -691,6 +694,8 @@ function run(args) {
           opts.rowGap = f.slice(9) === "none"
             ? null
             : int("--rowGap", f.slice(9), { min: 0 });
+        } else if (f.startsWith("--span=")) {
+          opts.span = int("--span", f.slice(7), { min: 0 });
         }
       }
       labelFlags(flags, opts);
