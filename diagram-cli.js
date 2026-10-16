@@ -215,6 +215,8 @@ Commands:
   set-edge-preset <name> <hex> [solid|dashed|dotted] | <name> reset
                              Define an edge style (or override solid, dashed, ...) for add-edge <style>
   set-background <hex|reset> Canvas background; reset = the theme's
+  set-row-gap <px|reset>     Space between rows (default 45, room for wires); frames still get their
+                             clearance. update-group <id> --rowGap=<px|none> sets one inner group's
   set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
   set-start-markers <on|off>   Start marker (a dot) where each wire leaves its box (default on); off draws wires from the box edge
@@ -578,6 +580,7 @@ function run() {
           "--annotation",
           "--row",
           "--col",
+          "--rowGap",
           ...LABEL_FLAGS,
         ],
       );
@@ -596,6 +599,11 @@ function run() {
         else if (f === "--annotation") opts.layout = "annotation";
         else if (f.startsWith("--row=")) opts.row = int("--row", f.slice(6));
         else if (f.startsWith("--col=")) opts.col = int("--col", f.slice(6));
+        else if (f.startsWith("--rowGap=")) {
+          opts.rowGap = f.slice(9) === "none"
+            ? null
+            : int("--rowGap", f.slice(9), { min: 0 });
+        }
       }
       labelFlags(flags, opts);
       if (Object.keys(opts).length === 0) {
@@ -897,6 +905,19 @@ function run() {
       const d = mutate((d) => d.setBackground(v === "reset" ? null : v));
       d.render();
       console.log(`background: ${v} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-row-gap": {
+      const v = args[1];
+      if (!v) {
+        console.error("Error: set-row-gap requires <px> or reset");
+        Deno.exit(1);
+      }
+      const px = v === "reset" ? null : int("set-row-gap", v, { min: 0 });
+      const d = mutate((d) => d.setRowGap(px));
+      d.render();
+      console.log(`rowGap: ${v} (rev ${d.rev})`);
       break;
     }
 

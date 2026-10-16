@@ -876,6 +876,41 @@ Deno.test("computeLayout stacks automatic rows by measured box height", () => {
   assert(gapPx >= 30, `expected visible row gap, got ${gapPx}px`);
 });
 
+Deno.test("rowGap sets the space between rows, on the board and per group", () => {
+  const ctx = measureContext();
+  const gapOf = (extra) => {
+    const boxes = computeLayout(ctx, {
+      nodes: [
+        { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "B", color: "blue", row: 1, col: 0 },
+        { id: "c", label: "C", color: "blue", row: 0, col: 0 },
+        { id: "d", label: "D", color: "blue", row: 1, col: 0 },
+      ],
+      edges: [],
+      groups: [{
+        id: "g",
+        label: "G",
+        nodes: ["c", "d"],
+        layout: "inner",
+        row: 0,
+        col: 1,
+        ...extra.group,
+      }],
+      ...extra.board,
+    }, 900);
+    const at = (id) => boxes.find((b) => b.id === id);
+    const gap = (top, bottom) =>
+      (at(bottom).row - at(top).row) * CELL - at(top).pixH;
+    return { board: gap("a", "b"), group: gap("c", "d") };
+  };
+  const base = gapOf({});
+  const tight = gapOf({ board: { rowGap: 0 } });
+  assert(tight.board < base.board, `board ${tight.board} < ${base.board}`);
+  assert(tight.group < base.group, "an inner group follows the board's rowGap");
+  const own = gapOf({ board: { rowGap: 0 }, group: { rowGap: 45 } });
+  assertEquals(own.group, base.group, "a group's own rowGap wins");
+});
+
 Deno.test("routeEdges is deterministic and avoids blocked cells", () => {
   const boxes = [
     { id: "a", col: 3, row: 8, w: 5, h: 3 },

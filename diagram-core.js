@@ -1217,6 +1217,11 @@ export function groupReach(groups, nodes, sizes = DEFAULT_SIZES, board = {}) {
 // Clear space kept between a group frame and the next frame or box.
 export const FRAME_GAP = 15;
 
+// Default space between rows: ≥3 grid cells of wiring room. `rowGap` on the
+// board or an inner group overrides it; a skipped row index always adds this
+// much, since skipping a row is how an author asks for extra air.
+export const ROW_GAP_PX = 45;
+
 // Grid-box ids for inner groups on the parent board. The NUL keeps them from
 // colliding with any node id.
 const PSEUDO_PREFIX = "\u0000group:";
@@ -1398,6 +1403,7 @@ export function computeLayout(ctx, state, canvasW) {
       offY = 0,
       margin = 0,
       top = 0,
+      rowGap = ROW_GAP_PX,
     } = opts;
     const overridden = new Set(
       nodes.filter((n) => layout[n.id]).map((n) => n.id),
@@ -1408,7 +1414,6 @@ export function computeLayout(ctx, state, canvasW) {
     // by the tallest box in each row plus a routing gap. (The old fixed 80px band
     // overlapped rows whenever a box had 3+ detail lines, which blocked its S-side
     // connectors against the box below → "Missing conn point" route failures.)
-    const ROW_GAP_PX = 45; // ≥3 grid cells of wiring room between rows
     // Every authored row, including ones whose nodes have all been pinned.
     //
     // Filtering to un-pinned nodes made a fully-pinned row vanish from the stack,
@@ -1455,7 +1460,7 @@ export function computeLayout(ctx, state, canvasW) {
       const next = rowIdxs[i + 1];
       const skipAir = next === undefined ? 0 : (next - r - 1) * ROW_GAP_PX;
       const gap = Math.max(
-        ROW_GAP_PX,
+        rowGap,
         frameGap(
           drawn(maxH) - maxH,
           reach.below.get(r) ?? 0,
@@ -1679,6 +1684,8 @@ export function computeLayout(ctx, state, canvasW) {
   // direct member relative to its group's content origin instead.
   const inner = innerGroups(state.groups, nodes);
   const tree = new Map(inner.map((g) => [g.id, g]));
+  const rowGapOf = (v) => Number.isFinite(v) && v >= 0 ? v : null;
+  const boardRowGap = rowGapOf(state.rowGap) ?? ROW_GAP_PX;
   const authored = new Map();
   for (const g of state.groups || []) {
     if (tree.has(g?.id) && !authored.has(g.id)) authored.set(g.id, g);
@@ -1752,7 +1759,11 @@ export function computeLayout(ctx, state, canvasW) {
     ];
     const groups = annotations.get(g.id) ?? [];
     const pins = localPins(g);
-    const boxes = place(items, { groups, layout: pins });
+    const boxes = place(items, {
+      groups,
+      layout: pins,
+      rowGap: rowGapOf(authored.get(g.id)?.rowGap) ?? boardRowGap,
+    });
     // With pins, the local grid's (0, 0) is the content origin, so a pin
     // never shifts it; the group grows right and down instead.
     const origin = Object.keys(pins).length ? [0] : [];
@@ -1809,6 +1820,7 @@ export function computeLayout(ctx, state, canvasW) {
     offY: Number.isFinite(state.offset?.y) ? state.offset.y : 0,
     margin: LAYOUT_MARGIN,
     top: 48,
+    rowGap: boardRowGap,
   });
 
   // Offset top down: a member sits at its group's cell, inside the insets,

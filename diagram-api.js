@@ -1236,6 +1236,15 @@ export class Diagram {
     } else this._state.wrapSlack = n;
   }
 
+  // Space between rows in px (default 45, room for wires); null returns to
+  // the default. Group frames still get their clearance on top.
+  setRowGap(px) {
+    if (px == null) delete this._state.rowGap;
+    else if (!Number.isFinite(px) || px < 0) {
+      throw new Error(`rowGap must be a number of px >= 0, got "${px}"`);
+    } else this._state.rowGap = px;
+  }
+
   // Whether each wire has a start marker (a dot at its source); off draws it
   // from the box edge. Stored only when off.
   setStartMarkers(on) {
@@ -1478,6 +1487,15 @@ export class Diagram {
       throw new Error(`group "${id}" would be empty; use remove-group`);
     }
     c.nodes = nodes;
+    if (opts.rowGap === null) delete c.rowGap;
+    else if (opts.rowGap !== undefined) {
+      if (!Number.isFinite(opts.rowGap) || opts.rowGap < 0) {
+        throw new Error(
+          `rowGap must be a number of px >= 0, got "${opts.rowGap}"`,
+        );
+      }
+      c.rowGap = opts.rowGap;
+    }
     if (opts.layout === "annotation" && g.layout === "inner") {
       const parent = groups.find((o) =>
         o !== g && o.layout === "inner" && o.nodes.includes(id)

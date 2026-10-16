@@ -555,6 +555,30 @@ Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", asy
     assertEquals(read().wrapSlack, 2);
     r = await runCli(path, ["set-wrap-slack", "0.5"]);
     assert(r.code !== 0, "wrapSlack below 1 must fail");
+
+    r = await runCli(path, ["set-row-gap", "10"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().rowGap, 10);
+    r = await runCli(path, ["set-row-gap", "reset"]);
+    assertEquals(read().rowGap, undefined);
+
+    r = await runCli(path, [
+      "add-group",
+      "g",
+      "G",
+      "b",
+      "c",
+      "--inner",
+      "--row=0",
+      "--col=1",
+    ]);
+    assert(r.code === 0, r.err);
+    r = await runCli(path, ["update-group", "g", "--rowGap=0"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().groups[0].rowGap, 0);
+    r = await runCli(path, ["update-group", "g", "--rowGap=none"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().groups[0].rowGap, undefined);
   }));
 
 Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>

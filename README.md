@@ -134,6 +134,10 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "noteLayout": {},                        // per-note absolute overrides { noteId: {x,y} } — set by GUI drags
   "pinned":  [],                           // optional: ids the human manually placed (editor markers; subset of layout)
   "rowY":    { "0": 60, "1": 220 },        // optional: row index → Y pixel (else auto-spaced)
+  "rowGap":  45,                           // optional: px between auto-spaced rows (default 45, room
+                                           //   for wires); an inner group's own rowGap wins. Frames
+                                           //   still get their clearance, and a skipped row index
+                                           //   still adds 45px. set-row-gap / update-group --rowGap=
   "offset":  { "x": 0, "y": 0 },           // managed: shift for auto-placed boxes, written by canvas
                                            //   resizes so moving content never pins it
   "rev":     0,                            // optimistic-concurrency counter (managed; see below)
@@ -278,6 +282,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   set-color <name> <bg> <border> | <name> reset   define a node color (or override one)
   set-edge-preset <name> <hex> [solid|dashed|dotted] | <name> reset   define an edge style
   set-background <hex|reset> / set-wrap-slack <n|reset>
+  set-row-gap <px|reset>     space between rows; update-group <id> --rowGap=<px|none> for one group
   set-legend auto|off|<color>[:<dash>]=<label>...   explicit entries take palette names
   set-box-style [--outlineWidth=] [--outlineDash=] [--corners=] [--reset]   Board-wide box defaults
   set-edge-style [--width=thin|medium|thick] [--reset]   Board-wide connector width
