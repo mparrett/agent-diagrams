@@ -3892,10 +3892,10 @@ export function legendEntries(state, nodes, pal) {
   for (const n of nodes) {
     if (n.color && !used.includes(n.color)) used.push(n.color);
   }
-  return used.map((c) => ({
-    color: resolveColorToken(pal, c).border,
-    label: c,
-  }));
+  return used.map((c) => {
+    const { border, bg } = resolveColorToken(pal, c);
+    return { color: border, bg, label: c };
+  });
 }
 
 // Swatch dash per token, sized for a 12px swatch: the box-outline patterns
@@ -3923,6 +3923,14 @@ export function drawLegend(ctx, legend, H, pal, footer) {
         );
         ctx.strokeRect(x + 1, legendY + 1, 10, 10);
         ctx.setLineDash([]);
+      } else if (item.bg) {
+        // A palette color draws as a small box, fill and border, so two
+        // colors with similar borders (two grays) still read apart.
+        ctx.fillStyle = item.bg;
+        ctx.fillRect(x, legendY, 12, 12);
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x + 0.75, legendY + 0.75, 10.5, 10.5);
       } else {
         ctx.fillStyle = item.color;
         ctx.fillRect(x, legendY, 12, 12);

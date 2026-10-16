@@ -14,6 +14,7 @@ import {
   deriveTheme,
   drawBoxes,
   drawGroups,
+  drawLegend,
   drawRoutes,
   fontFamily,
   fontSizes,
@@ -21,6 +22,8 @@ import {
   Grid,
   groupFrames,
   groupLabelStyle,
+  legendEntries,
+  makePalette,
   MIN_BOX_H,
   MIN_BOX_W,
   mixHex,
@@ -2341,4 +2344,32 @@ Deno.test("icons add height; a frameless box draws no frame", () => {
     strokes({ frame: "none", icon: "cylinder" }) === 2,
     "a frameless box still draws its icon",
   );
+});
+
+Deno.test("legend swatches for palette colors draw fill and border", () => {
+  const pal = makePalette(deriveTheme(SCHEMES.dawnfox));
+  const calls = [];
+  const ctx = new Proxy(measureContext(), {
+    get: (t, k) =>
+      k === "fillRect" || k === "strokeRect"
+        ? (...a) => calls.push([k, t.fillStyle, t.strokeStyle, ...a])
+        : k in t
+        ? (typeof t[k] === "function" ? t[k].bind(t) : t[k])
+        : () => {},
+    set: (t, k, v) => {
+      t[k] = v;
+      return true;
+    },
+  });
+  const entries = legendEntries({}, [{ id: "a", color: "gray" }], pal);
+  assertEquals(
+    entries[0].bg,
+    pal.colors.gray.bg,
+    "auto entries carry the fill",
+  );
+  drawLegend(ctx, entries, 400, pal, null);
+  const fill = calls.find((c) => c[0] === "fillRect");
+  const stroke = calls.find((c) => c[0] === "strokeRect");
+  assertEquals(fill[1], pal.colors.gray.bg, "swatch filled with the box fill");
+  assertEquals(stroke[2], pal.colors.gray.border, "and outlined in its border");
 });
