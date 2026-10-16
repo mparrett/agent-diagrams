@@ -371,6 +371,17 @@ function run(args) {
         );
         Deno.exit(1);
       }
+      // A flag add-node doesn't take would otherwise land in the box as a
+      // detail line ("--w=28" drawn as text).
+      const stray = details.find((a) => /^--[A-Za-z][\w-]*=/.test(a));
+      if (stray) {
+        console.error(
+          `Error: add-node: unknown flag "${
+            stray.split("=")[0]
+          }". add-node takes --shape= --icon= --frame= --span=; set the rest with update-node`,
+        );
+        Deno.exit(1);
+      }
       const row = int("add-node <row>", rowStr);
       const col = int("add-node <col>", colStr);
       const d = mutate((d) =>
