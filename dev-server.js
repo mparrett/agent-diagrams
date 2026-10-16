@@ -450,6 +450,10 @@ const WRITE_OPS = {
     domainStatus: 400,
     apply: (dd, b) => dd.setFlow(b.field ?? null), // a field spec, or null
   },
+  "/flowplace": {
+    domainStatus: 400,
+    apply: (dd) => dd.flowPlace(),
+  },
   "/startmarkers": {
     domainStatus: 400,
     apply: (dd, b) => dd.setStartMarkers(b.on !== false),

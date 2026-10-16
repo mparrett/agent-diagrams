@@ -1307,12 +1307,21 @@ export class Diagram {
 
   // Pin every board-level node along one streamline of the board's flow
   // field: the longest edge chain along it, the rest beside their neighbours.
-  // `frame` ({W, H} px, default the canvas) is the area the field spans.
+  // `frame` ({W, H} px) is the area the field spans; by default about twice
+  // the boxes' area with their gaps, at 16:10. The canvas is fitted after.
   flowPlace({ gap = 45, field = this._state.flow, frame } = {}) {
     if (!fieldFn(field)) throw new Error("flow-place needs a flow field");
     const { positions } = this.solvePositions();
-    const { W, H } = frame ?? this._dims;
     const nodes = this.nodes.filter((n) => positions[n.id]);
+    let { W, H } = frame ?? {};
+    if (!frame) {
+      const area = nodes.reduce(
+        (a, n) => a + (positions[n.id].w + gap) * (positions[n.id].h + gap),
+        0,
+      ) * 2;
+      W = Math.round(Math.sqrt(area * 1.6));
+      H = Math.round(area / W);
+    }
     const { spine, side } = flowSpine(nodes, this.edges);
     const dims = (id) => ({ id, w: positions[id].w, h: positions[id].h });
     const pins = flowPlace(
@@ -1324,6 +1333,7 @@ export class Diagram {
       { gap, cell: CELL },
     );
     for (const [id, p] of Object.entries(pins)) this.layout[id] = p;
+    this.fitCanvasToContent();
     return spine;
   }
 

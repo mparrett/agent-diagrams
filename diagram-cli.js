@@ -244,7 +244,7 @@ Commands:
   flow-place [--gap=px] [--frame=WxH]
                              (spike) Pin the longest edge chain along the flow field's streamline and
                              the other nodes beside their neighbours; the field spans the frame
-                             (default: the canvas)
+                             (default: sized from the boxes' area at 16:10). Fits the canvas after
   set-direction <down|right|reset>
                              Which way the board reads. Boxes diagonally apart get wires top-to-bottom
                              (down, default) or side-to-side (right); fromEdge/toEdge still win

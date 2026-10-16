@@ -17,9 +17,12 @@ const norm = ([x, y]) => {
 const snake = (bands) => (u, v) => {
   const b = Math.min(bands - 1, Math.floor(v * bands));
   const right = b % 2 === 0;
-  // Past the end of a band, turn down into the next one.
+  // Past the end of a band, turn down into the next one, and keep going down
+  // until that band's centre line, so the bands sit a full band apart.
   const atEnd = right ? u > 0.88 : u < 0.12;
   if (atEnd && b < bands - 1) return [0, 1];
+  const atStart = right ? u < 0.12 : u > 0.88;
+  if (atStart && b > 0 && v < (b + 0.5) / bands) return [0, 1];
   return right ? [1, 0] : [-1, 0];
 };
 

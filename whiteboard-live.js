@@ -2453,6 +2453,35 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
+// Place along flow (spike): the server lays the board out along its field and
+// pins every node; reload to pick the pins up.
+document.getElementById("bFlowPlace").onclick = async () => {
+  if (!diagramState?.flow) {
+    setStatus("pick a flow field first");
+    return;
+  }
+  newNonce();
+  try {
+    const r = await fetch(API + "/flowplace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseRev: lastRev, nonce: lastSentNonce }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus(
+        "place along flow rejected: " + (j.error || "HTTP " + r.status),
+      );
+      return;
+    }
+    lastRev = (await r.json()).rev;
+    await mergeReload();
+    setStatus("placed along " + diagramState.flow + " (rev " + lastRev + ")");
+  } catch (e) {
+    setStatus("place along flow failed: " + e.message);
+  }
+};
+
 // Flow field (spike) — steers wire sides and routing; picking one shows it.
 const flowSelect = document.getElementById("flowSelect");
 const syncFlowSelect = (st) => {
