@@ -175,6 +175,8 @@ Commands:
                           [--shape=box|cylinder|person]   cylinder for a store, person for an actor (also add-node --shape=)
                           [--icon=none|cylinder|person]   small icon above the label (also add-node --icon=)
                           [--frame=box|none]   none draws no border or fill; the box still holds its place (also add-node --frame=)
+                          [--span=N|0]   fill N columns from this node's col, gaps included (1 = as wide as its
+                                         column's widest box); spanning boxes don't widen columns. 0 clears
   update-edge <from> <to> [--style=...] [--label=...] [--fromEdge=N|S|E|W] [--toEdge=...] [--fromConn=C|C-1|...] [--toConn=...]
                           [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=NAME|SEMANTIC] [--styleReset]   style axes
                           [--cost-step=N] [--cost-turn=N] [--cost-near=N] [--cost-overlap=N] [--cost-reset]   per-edge routing bias
@@ -357,8 +359,10 @@ function run(args) {
       const [, id, label, color, rowStr, colStr, ...rest] = args;
       const look = {};
       const details = rest.filter((a) => {
-        const m = a.match(/^--(shape|icon|frame)=(.*)$/);
-        if (m) look[m[1]] = m[2];
+        const m = a.match(/^--(shape|icon|frame|span)=(.*)$/);
+        if (m) {
+          look[m[1]] = m[1] === "span" ? int("--span", m[2], { min: 0 }) : m[2];
+        }
         return !m;
       });
       if (!id || !label || !color || !rowStr || !colStr) {
@@ -1056,6 +1060,7 @@ function run(args) {
           "--shape",
           "--icon",
           "--frame",
+          "--span",
         ],
       );
       const opts = {};
@@ -1086,6 +1091,8 @@ function run(args) {
           opts.icon = arg.slice(7);
         } else if (arg.startsWith("--frame=")) {
           opts.frame = arg.slice(8);
+        } else if (arg.startsWith("--span=")) {
+          opts.span = int("--span", arg.slice(7), { min: 0 });
         } else if (arg === "--outlineReset") {
           opts.outlineWidth = null;
           opts.outlineDash = null;

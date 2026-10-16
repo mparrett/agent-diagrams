@@ -1222,6 +1222,9 @@ export const FRAME_GAP = 15;
 // much, since skipping a row is how an author asks for extra air.
 export const ROW_GAP_PX = 45;
 
+// Columns a node fills (`span`), or 0 for an ordinary auto-width box.
+const spanOf = (n) => Number.isInteger(n.span) && n.span > 0 ? n.span : 0;
+
 // Grid-box ids for inner groups on the parent board. The NUL keeps them from
 // colliding with any node id.
 const PSEUDO_PREFIX = "\u0000group:";
@@ -1327,7 +1330,7 @@ export function computeLayout(ctx, state, canvasW) {
   // BOX_UNIFORMITY_TOLERANCE extra area. Boxes with an explicit w/minW are left
   // alone — their size is a deliberate statement, not an optimisation result.
   {
-    const auto = nodes.filter((n) => !(n.w > 0) && !n.minW);
+    const auto = nodes.filter((n) => !(n.w > 0) && !n.minW && !spanOf(n));
     const popularity = new Map();
     for (const n of auto) {
       const w = pixDims.get(n.id).w;
@@ -1374,7 +1377,7 @@ export function computeLayout(ctx, state, canvasW) {
   // widest such box's width, so size variation reads as deliberate emphasis
   // (minW'd boxes) rather than as an artifact of label length.
   if (state.uniformWidth) {
-    const fixed = (node) => node.minW || node.w > 0; // minW'd or explicitly-sized boxes opt out
+    const fixed = (node) => node.minW || node.w > 0 || spanOf(node); // sized some other way: opt out
     let mw = 0;
     for (const node of nodes) {
       if (!fixed(node)) mw = Math.max(mw, pixDims.get(node.id).w);
@@ -1410,6 +1413,98 @@ export function computeLayout(ctx, state, canvasW) {
     );
     const isFixed = (id) => overridden.has(id);
 
+    // Group frames reach past their members; the gap between two rows widens to
+    // hold them, measured from the boxes as drawn (whole cells, up to a cell
+    // taller than measured). No groups, no change.
+    const reach = groupReach(groups, nodes, SIZES, state);
+    const drawn = (px) => Math.ceil(px / CELL) * CELL;
+    const frameGap = (overhang, out, inn) =>
+      out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
+
+    const usableWidth = canvasW - 2 * margin;
+    // Resolve `col` to a board-global x. A column is as wide as the widest box
+    // that declares it, columns run left to right, and every node in a column
+    // shares that column's x — so two boxes with the same `col` line up whatever
+    // rows they sit in.
+    //
+    // Placement used to be a per-row spread: `col` weighted a node between its
+    // own row's min and max col, so the same `col` landed at a different x in
+    // every row, and a box slid sideways whenever a sibling joined its row. The
+    // only way to get a straight column was to pin every node by hand, which
+    // left a board that no longer reflowed at all.
+    const COL_GAP_PX = 40; // ≥ DESIRED_GAP below, so columns are already settled
+    const autoNodes = nodes.filter((n) => !overridden.has(n.id));
+
+    // A node with `span: N` fills N columns from its own, gaps included, so a
+    // band can sit under a row of boxes (span 3) or as wide as the widest thing
+    // in its column (span 1). Spanning nodes don't set column widths.
+    const spanning = autoNodes.filter((n) => spanOf(n) > 0);
+    const colW = new Map();
+    for (const n of autoNodes) {
+      if (spanOf(n)) continue;
+      const w = pixDims.get(n.id).w;
+      colW.set(n.col, Math.max(colW.get(n.col) ?? 0, w));
+    }
+    for (const n of spanning) {
+      for (let c = n.col; c < n.col + spanOf(n); c++) {
+        if (!colW.has(c)) colW.set(c, 0);
+      }
+    }
+    const colIdxs = [...colW.keys()].sort((a, b) => a - b);
+    const colX = new Map();
+    const layoutColumns = () => {
+      let colCursor = 0, prevCol = null;
+      for (const [i, c] of colIdxs.entries()) {
+        // Skipped column indices are an authoring hint for extra air, the same way
+        // skipped row indices are.
+        if (prevCol !== null && c - prevCol > 1) {
+          colCursor += (c - prevCol - 1) * COL_GAP_PX;
+        }
+        colX.set(c, colCursor);
+        // The last column keeps the plain gap: colsTotal below subtracts it.
+        const next = colIdxs[i + 1];
+        const gap = next === undefined ? COL_GAP_PX : Math.max(
+          COL_GAP_PX,
+          frameGap(
+            drawn(colW.get(c)) - colW.get(c),
+            reach.right.get(c) ?? 0,
+            reach.left.get(next) ?? 0,
+          ) - (next - c - 1) * COL_GAP_PX,
+        );
+        colCursor += colW.get(c) + gap;
+        prevCol = c;
+      }
+      // Centre the whole block, so a board narrower than its canvas is not pinned
+      // to the left margin.
+      const colsTotal = Math.max(0, colCursor - COL_GAP_PX);
+      const colOffset = margin + Math.max(0, (usableWidth - colsTotal) / 2);
+      for (const c of colIdxs) colX.set(c, colX.get(c) + colOffset);
+    };
+    layoutColumns();
+    // Size each spanning node to its columns, re-measured so its text wraps to
+    // the span (not to maxNodeW). A span too narrow for its content widens its
+    // last column and the columns are laid out again.
+    const spanW = (n) => {
+      const last = n.col + spanOf(n) - 1;
+      return colX.get(last) + colW.get(last) - colX.get(n.col);
+    };
+    for (let pass = 0; pass < 4 && spanning.length; pass++) {
+      let grew = false;
+      for (const n of spanning) {
+        const want = spanW(n);
+        const { w: _w, minW: _m, ...bare } = n;
+        const dims = sizeAt(ctx, bare, want, FONT, SIZES);
+        if (dims.w > want + 0.5) {
+          const last = n.col + spanOf(n) - 1;
+          colW.set(last, colW.get(last) + dims.w - want);
+          grew = true;
+        }
+        pixDims.set(n.id, { ...dims, w: Math.max(want, dims.w) });
+      }
+      if (!grew) break;
+      layoutColumns();
+    }
+
     // Effective Y per row index. Explicit rowY entries win; otherwise rows stack
     // by the tallest box in each row plus a routing gap. (The old fixed 80px band
     // overlapped rows whenever a box had 3+ detail lines, which blocked its S-side
@@ -1431,13 +1526,6 @@ export function computeLayout(ctx, state, canvasW) {
     // right way to be wrong: a gap is recoverable by eye, a scrambled stack is
     // not.
     const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
-    // Group frames reach past their members; the gap between two rows widens to
-    // hold them, measured from the boxes as drawn (whole cells, up to a cell
-    // taller than measured). No groups, no change.
-    const reach = groupReach(groups, nodes, SIZES, state);
-    const drawn = (px) => Math.ceil(px / CELL) * CELL;
-    const frameGap = (overhang, out, inn) =>
-      out + inn > 0 ? drawn(overhang + out + inn + FRAME_GAP) : 0;
     const rowYEff = new Map();
     let rowCursor = top + offY, prevIdx = null;
     for (const [i, r] of rowIdxs.entries()) {
@@ -1482,7 +1570,6 @@ export function computeLayout(ctx, state, canvasW) {
 
     // Position nodes within rows
     const positions = new Map();
-    const usableWidth = canvasW - 2 * margin;
 
     // Overridden nodes get their absolute pixel position directly.
     for (const node of nodes) {
@@ -1492,59 +1579,13 @@ export function computeLayout(ctx, state, canvasW) {
       positions.set(node.id, { x: o.x, y: o.y, w: dims.w, h: dims.h });
     }
 
-    // Resolve `col` to a board-global x. A column is as wide as the widest box
-    // that declares it, columns run left to right, and every node in a column
-    // shares that column's x — so two boxes with the same `col` line up whatever
-    // rows they sit in.
-    //
-    // Placement used to be a per-row spread: `col` weighted a node between its
-    // own row's min and max col, so the same `col` landed at a different x in
-    // every row, and a box slid sideways whenever a sibling joined its row. The
-    // only way to get a straight column was to pin every node by hand, which
-    // left a board that no longer reflowed at all.
-    const COL_GAP_PX = 40; // ≥ DESIRED_GAP below, so columns are already settled
-    const autoNodes = nodes.filter((n) => !overridden.has(n.id));
-
-    const colW = new Map();
-    for (const n of autoNodes) {
-      const w = pixDims.get(n.id).w;
-      colW.set(n.col, Math.max(colW.get(n.col) ?? 0, w));
-    }
-    const colIdxs = [...colW.keys()].sort((a, b) => a - b);
-
-    const colX = new Map();
-    let colCursor = 0, prevCol = null;
-    for (const [i, c] of colIdxs.entries()) {
-      // Skipped column indices are an authoring hint for extra air, the same way
-      // skipped row indices are.
-      if (prevCol !== null && c - prevCol > 1) {
-        colCursor += (c - prevCol - 1) * COL_GAP_PX;
-      }
-      colX.set(c, colCursor);
-      // The last column keeps the plain gap: colsTotal below subtracts it.
-      const next = colIdxs[i + 1];
-      const gap = next === undefined ? COL_GAP_PX : Math.max(
-        COL_GAP_PX,
-        frameGap(
-          drawn(colW.get(c)) - colW.get(c),
-          reach.right.get(c) ?? 0,
-          reach.left.get(next) ?? 0,
-        ) - (next - c - 1) * COL_GAP_PX,
-      );
-      colCursor += colW.get(c) + gap;
-      prevCol = c;
-    }
-    // Centre the whole block, so a board narrower than its canvas is not pinned
-    // to the left margin.
-    const colsTotal = Math.max(0, colCursor - COL_GAP_PX);
-    const colOffset = margin + Math.max(0, (usableWidth - colsTotal) / 2);
-    for (const c of colIdxs) colX.set(c, colX.get(c) + colOffset);
-
     for (const node of autoNodes) {
       const dims = pixDims.get(node.id);
       // A box narrower than its column centres inside it, so the column reads as
       // one line through the middle of its boxes rather than a ragged edge.
-      const x = colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
+      const x = spanOf(node)
+        ? colX.get(node.col)
+        : colX.get(node.col) + (colW.get(node.col) - dims.w) / 2;
       positions.set(node.id, {
         x: Math.max(margin, x) + offX,
         y: rowYEff.get(node.row),

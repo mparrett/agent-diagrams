@@ -186,6 +186,20 @@ export const ANCHOR_FRACTIONS = {
 
 // Block the current thread for `ms` without busy-spinning (used only on the
 // rare lock-contention path). Atomics.wait is available in Deno's main thread.
+// Columns a node fills: a positive integer sets it, 0 or null clears it.
+function setSpan(node, span) {
+  if (span === null || span === 0) {
+    delete node.span;
+    return;
+  }
+  if (!Number.isInteger(span) || span < 1) {
+    throw new Error(
+      `span must be a whole number of columns >= 1, got "${span}"`,
+    );
+  }
+  node.span = span;
+}
+
 function requireHex(value, what) {
   if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value ?? "")) {
     throw new Error(`${what} must be a hex color like #c2410c, got "${value}"`);
@@ -672,6 +686,7 @@ export class Diagram {
       col: opts.col,
     };
     if (opts.minW) node.minW = opts.minW;
+    if (opts.span !== undefined) setSpan(node, opts.span);
     this.nodes.push(node);
     try {
       this._applyNodeLook(node, opts);
@@ -737,6 +752,7 @@ export class Diagram {
       if (opts.minW) node.minW = opts.minW;
       else delete node.minW;
     }
+    if (opts.span !== undefined) setSpan(node, opts.span);
     // Explicit size in *cells* (from a drag-resize). 0 clears → back to auto;
     // a positive count sets the target (computeLayout still clamps up to content
     // so a shrunk box can't clip). Reject garbage so an agent's bad value errors

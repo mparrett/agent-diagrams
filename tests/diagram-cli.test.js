@@ -556,6 +556,13 @@ Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", asy
     r = await runCli(path, ["set-wrap-slack", "0.5"]);
     assert(r.code !== 0, "wrapSlack below 1 must fail");
 
+    r = await runCli(path, ["update-node", "a", "--span=3"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().nodes.find((n) => n.id === "a").span, 3);
+    r = await runCli(path, ["update-node", "a", "--span=0"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().nodes.find((n) => n.id === "a").span, undefined);
+
     r = await runCli(path, ["set-row-gap", "10"]);
     assert(r.code === 0, r.err);
     assertEquals(read().rowGap, 10);

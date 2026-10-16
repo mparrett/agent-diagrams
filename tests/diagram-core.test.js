@@ -2474,3 +2474,65 @@ Deno.test("findIssues names each kind of layout defect", () => {
     ["frame-intruder", "group-label-overhang", "route-failed"],
   );
 });
+
+Deno.test("span stretches a box across columns without widening them", () => {
+  const ctx = measureContext();
+  const layout = (band) =>
+    computeLayout(ctx, {
+      nodes: [
+        { id: "a", label: "Mail Sender Task", color: "blue", row: 0, col: 0 },
+        { id: "b", label: "Compose", color: "blue", row: 0, col: 1 },
+        { id: "c", label: "Other zones", color: "blue", row: 0, col: 2 },
+        {
+          id: "band",
+          // Wraps to two lines as an ordinary box; fits the 3-column span.
+          label: "Config resolution: one call, rules and limits back",
+          color: "blue",
+          row: 1,
+          col: 0,
+          ...band,
+        },
+      ],
+      edges: [],
+    }, 1500);
+  const at = (boxes, id) => boxes.find((b) => b.id === id);
+
+  const spanned = layout({ span: 3 });
+  const [a, c, band] = ["a", "c", "band"].map((id) => at(spanned, id));
+  assertEquals(band.col, a.col, "band starts under the first column");
+  assert(
+    Math.abs(band.col + band.w - (c.col + c.w)) <= 1,
+    `band ends with the last column: ${band.col + band.w} vs ${c.col + c.w}`,
+  );
+  assertEquals(band.labelLines.length, 1, "the title wraps to the span");
+  assert(
+    at(layout({}), "band").labelLines.length > 1,
+    "as an ordinary box the same title wraps",
+  );
+
+  // Without span the long band sets column 0's width and pushes b and c right.
+  const plain = layout({});
+  assert(
+    at(plain, "b").col > at(spanned, "b").col,
+    "a spanning box leaves column widths to the boxes that declare them",
+  );
+
+  // span 1: as wide as the widest box in its own column.
+  const one = computeLayout(ctx, {
+    nodes: [
+      {
+        id: "wide",
+        label: "A wide box with a long title",
+        color: "blue",
+        row: 0,
+        col: 0,
+      },
+      { id: "fill", label: "X", color: "blue", row: 1, col: 0, span: 1 },
+    ],
+    edges: [],
+  }, 1500);
+  assert(
+    Math.abs(at(one, "fill").w - at(one, "wide").w) <= 1,
+    "span 1 fills its column",
+  );
+});
