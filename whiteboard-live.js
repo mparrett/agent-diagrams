@@ -2453,6 +2453,38 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
+// Flow field (spike) — steers wire sides and routing; picking one shows it.
+const flowSelect = document.getElementById("flowSelect");
+const syncFlowSelect = (st) => {
+  const v = st?.flow ?? "";
+  if (v && ![...flowSelect.options].some((o) => o.value === v)) {
+    flowSelect.add(new Option(v, v));
+  }
+  flowSelect.value = v;
+};
+flowSelect.addEventListener("change", async () => {
+  const field = flowSelect.value || null;
+  if (field) diagramState.flow = field;
+  else delete diagramState.flow;
+  if (field && !showFlow) document.getElementById("bFlow").click();
+  rebuild();
+  render();
+  newNonce();
+  try {
+    const r = await fetch(API + "/flow", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ field, baseRev: lastRev, nonce: lastSentNonce }),
+    });
+    if (r.ok) {
+      lastRev = (await r.json()).rev;
+      setStatus("flow: " + (field ?? "none") + " (rev " + lastRev + ")");
+    } else setStatus("flow save rejected: HTTP " + r.status);
+  } catch (e) {
+    setStatus("flow save failed: " + e.message);
+  }
+});
+
 // Start markers — the dot where each wire leaves its box, or none.
 const startMarkersBox = document.getElementById("startMarkers");
 startMarkersBox.addEventListener("change", async () => {
@@ -4078,6 +4110,7 @@ async function init() {
   fontSizeInput.value = diagramState.fontSize || "";
   centerConnectorsBox.checked = diagramState.connectorAnchor === "center";
   startMarkersBox.checked = diagramState.startMarkers !== false;
+  syncFlowSelect(diagramState);
 
   // Need canvas context for text measurement
   initCanvas();
@@ -4542,6 +4575,7 @@ async function mergeReload() {
     : { ...(fresh.noteLayout || {}) };
   fontSizeInput.value = fresh.fontSize || "";
   centerConnectorsBox.checked = fresh.connectorAnchor === "center";
+  syncFlowSelect(fresh);
 
   // Keep the human's unsaved placements on top of disk's. A conflict is
   // someone else moving the same box: its override on disk changed under ours.
