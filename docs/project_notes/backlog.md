@@ -6,6 +6,18 @@ Open work, roughly in priority order within each section. Remove an item when it
 
 - **Intermittent raster test failure.** `raster-parity.test.js`, "the checker tells drawn text from blank space", fails in about half of full-suite runs and passes alone. The font-buffer fix holds under the GC test; the cause is unknown and may mean text can drop in long-running processes. Blocks a clean PR.
 
+## From the layout study
+
+Rebuilding five D2 diagrams headless (layout study) left these open:
+
+- **Column span.** No way to put one wide box under a row of boxes, or to size a box "as wide as group X". The study used an invisible wrapper group plus a width read from `status --json`.
+- **Narrow channels between rows.** Several long wires and a fan-out share the one horizontal track under a box; skipping a row is the workaround.
+- **Title block.** No title size, rule, centering or subtitle; the subtitle goes in the footer.
+- **Legend edge entries.** The legend lists colors only; dashed and colored edge styles can't be keyed.
+- **Render once in a scripted build.** Every CLI call re-renders, so a 60-call build renders 60 times and prints raster-cap warnings for canvases `fit-canvas` later trims.
+- **Page shape** for callout cards; a note has no card behind it.
+- **The second raster flake.** "the shipped example board keeps its labels" also failed once in a full-suite run and passes alone, like the item under Next.
+
 ## Routing and groups
 
 - **Labels wider than their frame** overhang it; frames and group boxes are not sized by measured text.
