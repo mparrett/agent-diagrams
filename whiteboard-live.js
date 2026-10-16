@@ -321,6 +321,7 @@ function render() {
     boxes: BOXES,
     avoid: groupLabels,
     frames: frames.map((f) => f.rect),
+    frameFills: frames,
   }) || []; // stash for label hit-testing
   drawAlignGuides(); // smart alignment guides — under the boxes, so they peek out in the gaps
   drawGroupLabels(ctx, groupLabels, PAL);

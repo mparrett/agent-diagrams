@@ -2847,6 +2847,23 @@ export function drawRoutes(
   opts = {},
 ) {
   const chipColor = pal.background;
+  // A label's chip takes the colour it sits on: the board, under each colored
+  // frame's translucent fill that holds it, outermost first, as frames are
+  // drawn. A white chip on a tinted group reads as a hole in the frame.
+  const fills = (opts.frameFills || [])
+    .filter((f) => f.color)
+    .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
+  const chipUnder = (rect) => {
+    const x = rect.x + rect.w / 2, y = rect.y + rect.h / 2;
+    let c = pal.background;
+    for (const { rect: r, color } of fills) {
+      if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) continue;
+      try {
+        c = mixHex(c, resolveColorToken(pal, color).bg, 0.5);
+      } catch { /* a non-hex colour: keep the colour so far */ }
+    }
+    return c;
+  };
   const labelRects = [];
   const allPolys = []; // every drawn wire's points — for label/line avoidance
   const labelTasks = []; // deferred to a second pass so labels can avoid each other + wires
@@ -3160,7 +3177,7 @@ export function drawRoutes(
       label: t.label,
       lx: chosen.lx,
       ly: chosen.ly,
-      chipColor,
+      chipColor: chipUnder(chosen.rect),
     });
   }
   return labelRects;

@@ -2336,6 +2336,7 @@ export class Diagram {
       boxes: gridBoxes,
       avoid: groupLabels,
       frames: frames.map((f) => f.rect),
+      frameFills: frames,
     });
     drawGroupLabels(ctx, groupLabels, pal);
     drawBoxes(ctx, gridBoxes, CELL, pal, { shadow: shadows });

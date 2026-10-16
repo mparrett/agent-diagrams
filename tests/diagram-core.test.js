@@ -23,6 +23,7 @@ import {
   groupLabelStyle,
   MIN_BOX_H,
   MIN_BOX_W,
+  mixHex,
   nodeBoxHeight,
   nodeBoxSize,
   routeEdges,
@@ -1275,6 +1276,34 @@ Deno.test("an edge label stays off a group frame's border", () => {
   const r = ls.find((l) => l.edge.id === "e").rect;
   const onBorder = r.y < frameTop && r.y + r.h > frameTop;
   assert(!onBorder, `label straddles the frame border: ${JSON.stringify(r)}`);
+});
+
+Deno.test("an edge label's chip takes the fill of the frame it sits in", () => {
+  const m = measureContext();
+  const ctx = new Proxy(m, {
+    get: (t, k) => (k in t ? t[k] : () => {}),
+    set: (t, k, v) => {
+      t[k] = v;
+      return true;
+    },
+  });
+  const pal = deriveTheme(SCHEMES.dawnfox);
+  const frame = { x: 0, y: 0, w: 600, h: 400 };
+  const chipFor = (frameFills) =>
+    drawRoutes(
+      ctx,
+      [wire("e", [[2, 10], [30, 10]], "scoped by")],
+      CELL,
+      pal,
+      { frames: [frame], frameFills },
+    )[0].chipColor;
+  assertEquals(chipFor([]), pal.background, "no fill: the board color");
+  assertEquals(chipFor([{ rect: frame }]), pal.background, "uncolored frame");
+  assertEquals(
+    chipFor([{ rect: frame, color: "blue" }]),
+    mixHex(pal.background, pal.colors.blue.bg, 0.5),
+    "a colored frame tints the chip as the frame's fill is drawn",
+  );
 });
 
 Deno.test("a short title stays on one line when the wider box costs little", () => {
