@@ -239,6 +239,9 @@ Commands:
   set-row-gap <px|reset>     Space between rows (default 45, room for wires); frames still get their
                              clearance. update-group <id> --rowGap=<px|none> sets one inner group's
   set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
+  set-direction <down|right|reset>
+                             Which way the board reads. Boxes diagonally apart get wires top-to-bottom
+                             (down, default) or side-to-side (right); fromEdge/toEdge still win
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
   set-start-markers <on|off>   Start marker (a dot) where each wire leaves its box (default on); off draws wires from the box edge
   set-canvas <W>x<H> [--anchor=nw|n|ne|e|se|s|sw|w|c] [--grow]
@@ -1047,6 +1050,18 @@ function run(args) {
       const d = mutate((d) => d.setConnectorAnchor(v));
       renderUnlessDeferred(d);
       console.log(`connector anchor: ${v} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-direction": {
+      const v = args[1];
+      if (v !== "down" && v !== "right" && v !== "reset") {
+        console.error("Error: set-direction requires down|right|reset");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setDirection(v === "reset" ? null : v));
+      renderUnlessDeferred(d);
+      console.log(`direction: ${v === "reset" ? "down" : v} (rev ${d.rev})`);
       break;
     }
 

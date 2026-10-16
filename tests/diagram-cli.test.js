@@ -590,6 +590,14 @@ Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", asy
     r = await runCli(path, ["set-row-gap", "reset"]);
     assertEquals(read().rowGap, undefined);
 
+    r = await runCli(path, ["set-direction", "right"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().direction, "right");
+    r = await runCli(path, ["set-direction", "up"]);
+    assert(r.code !== 0, "an unknown direction must fail");
+    r = await runCli(path, ["set-direction", "reset"]);
+    assertEquals(read().direction, undefined);
+
     r = await runCli(path, [
       "add-group",
       "g",

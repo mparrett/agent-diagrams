@@ -10,7 +10,6 @@ Open work, roughly in priority order within each section. Remove an item when it
 
 Rebuilding five D2 diagrams headless (layout study) left these open:
 
-- **Flow direction.** A left-to-right board needs `--fromEdge=E --toEdge=W` on every edge whose boxes don't overlap vertically; a board-level `direction` would set the default sides.
 - **Narrow channels between rows.** Several long wires and a fan-out share the one horizontal track under a box; skipping a row is the workaround.
 - **Title block.** No title size, rule, centering or subtitle; the subtitle goes in the footer.
 - **Legend edge entries.** The legend lists colors only; dashed and colored edge styles can't be keyed.

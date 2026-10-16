@@ -30,6 +30,7 @@ import {
   mixHex,
   nodeBoxHeight,
   nodeBoxSize,
+  pickSide,
   routeEdges,
   separateSlots,
   simplifyPath,
@@ -2473,6 +2474,22 @@ Deno.test("findIssues names each kind of layout defect", () => {
     }),
     ["frame-intruder", "group-label-overhang", "route-failed"],
   );
+});
+
+Deno.test("direction sets the sides between diagonal boxes", () => {
+  const a = { col: 0, row: 0, w: 10, h: 4 };
+  const below = { col: 14, row: 10, w: 10, h: 4 }; // apart on both axes
+  assertEquals(pickSide(a, below), { srcSide: "bottom", tgtSide: "top" });
+  assertEquals(pickSide(a, below, "right"), {
+    srcSide: "right",
+    tgtSide: "left",
+  });
+  // A straight wire still wins over the board's direction.
+  const under = { col: 2, row: 10, w: 10, h: 4 };
+  assertEquals(pickSide(a, under, "right"), {
+    srcSide: "bottom",
+    tgtSide: "top",
+  });
 });
 
 Deno.test("a spanning inner group's frame fills its columns, content centred", () => {

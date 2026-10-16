@@ -642,7 +642,10 @@ export function simplifyPath(pts) {
 // ================================================================
 // SIDE SELECTION
 // ================================================================
-export function pickSide(srcBox, tgtBox) {
+// `direction` breaks the tie for boxes that sit diagonally apart: "down"
+// (default) joins them top to bottom unless they are far more apart
+// sideways, "right" joins them side to side unless far more apart vertically.
+export function pickSide(srcBox, tgtBox, direction = "down") {
   const srcCx = srcBox.col + srcBox.w / 2;
   const srcCy = srcBox.row + srcBox.h / 2;
   const tgtCx = tgtBox.col + tgtBox.w / 2;
@@ -666,7 +669,10 @@ export function pickSide(srcBox, tgtBox) {
       ? { srcSide: "right", tgtSide: "left" }
       : { srcSide: "left", tgtSide: "right" };
   }
-  if (Math.abs(dy) > Math.abs(dx) * 0.4) {
+  const vertical = direction === "right"
+    ? Math.abs(dx) <= Math.abs(dy) * 0.4
+    : Math.abs(dy) > Math.abs(dx) * 0.4;
+  if (vertical) {
     return dy > 0
       ? { srcSide: "bottom", tgtSide: "top" }
       : { srcSide: "top", tgtSide: "bottom" };
@@ -2119,7 +2125,7 @@ function resolveConn(connMap, box, requestedEdge, desiredIdx, otherBox, grid) {
 // leaves the source from (srcEdge) and enters the target on (tgtEdge) — N/E/S/W.
 // Explicit fromEdge/toEdge win; otherwise pickSide decides. Exported so the
 // editor can offer per-side connector spread/collapse without recomputing this.
-export function edgeSides(edgeDefs, boxes) {
+export function edgeSides(edgeDefs, boxes, direction) {
   const boxById = boxes instanceof Map
     ? boxes
     : new Map(boxes.map((b) => [b.id, b]));
@@ -2129,7 +2135,7 @@ export function edgeSides(edgeDefs, boxes) {
     if (edge.fromEdge && edge.toEdge) {
       return { srcEdge: edge.fromEdge, tgtEdge: edge.toEdge };
     }
-    const sides = pickSide(srcBox, tgtBox);
+    const sides = pickSide(srcBox, tgtBox, direction);
     return {
       srcEdge: edge.fromEdge || SIDE_TO_EDGE[sides.srcSide],
       tgtEdge: edge.toEdge || SIDE_TO_EDGE[sides.tgtSide],
@@ -2178,7 +2184,7 @@ export function separateSlots(ideals, n, gap = 1) {
 
 function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
   const centerMode = opts.centerConnectors === true; // anchor on side center, not overlap band
-  const alloc = edgeSides(edgeDefs, boxById); // Pass 1 — sides (mutated below with symbols)
+  const alloc = edgeSides(edgeDefs, boxById, opts.direction); // Pass 1 — sides (mutated below with symbols)
 
   // Pass 2 — symbols. Explicit fromConn/toConn win. The rest are ordered
   // *barycentrically*: each box side's edges are sorted by where their

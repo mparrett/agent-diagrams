@@ -271,6 +271,7 @@ function rebuild() {
   routes = routeEdges(astarState, grid, EDGES_DEF, BOXES, connMap, costs, PAL, {
     centerConnectors: diagramState.connectorAnchor === "center",
     edgeWidth: diagramState.edgeWidth,
+    direction: diagramState.direction,
   });
 }
 
@@ -3661,7 +3662,7 @@ const SIDE_NAME = { N: "top", E: "right", S: "bottom", W: "left" };
 // Group a box's edges by which of its sides they touch (core pass-1 sides).
 // Map<side, [{edge, end}]>; end is 'from' (box is the source) or 'to'.
 function boxSideEdges(boxId) {
-  const sides = edgeSides(EDGES_DEF, BOXES);
+  const sides = edgeSides(EDGES_DEF, BOXES, diagramState?.direction);
   const m = new Map();
   const push = (s, entry) => {
     (m.get(s) || m.set(s, []).get(s)).push(entry);

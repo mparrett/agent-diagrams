@@ -1283,6 +1283,16 @@ export class Diagram {
     else delete this._state.connectorAnchor;
   }
 
+  // Which way the board reads: "down" (default) or "right". Sets the sides
+  // an auto-routed wire takes between boxes that sit diagonally apart.
+  setDirection(dir) {
+    if (dir != null && dir !== "down" && dir !== "right") {
+      throw new Error(`direction must be "down" or "right", got "${dir}"`);
+    }
+    if (dir === "right") this._state.direction = "right";
+    else delete this._state.direction;
+  }
+
   // ─── Dividers (boundary lines) ────────────────────────────
   // Annotation-only h/v dotted lines that partition the canvas into regions.
   addDivider(orient, at, opts = {}) {
@@ -2353,6 +2363,7 @@ export class Diagram {
       {
         centerConnectors: this._state.connectorAnchor === "center",
         edgeWidth: this._state.edgeWidth,
+        direction: this._state.direction,
       },
     );
 
