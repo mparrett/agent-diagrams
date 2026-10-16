@@ -169,7 +169,8 @@ Commands:
   remove-divider <h|v> <at-px>
   add-note <x> <y> [--title=...] [--color=...] [--anchor=node:side:dx:dy] <line>...  Floating text annotation
                                        (--anchor puts the note just outside that side of the box: E/W centered
-                                        vertically, N/S horizontally; dx/dy shift it from there)
+                                        vertically, N/S horizontally; dx/dy shift it from there,
+                                        in screen terms: a gap left of a W box is dx < 0)
   remove-note <id> | <x> <y>           Remove a note
   free-note <id>                       Drop a note's drag override → back to its anchor/position
   add-group <id> <label> <node>... [--color=NAME] [--dash=dashed|dotted]
