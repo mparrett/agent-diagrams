@@ -66,7 +66,10 @@ Open in a browser:
 
 **Multiple whiteboards.** One server hosts many boards: the `--state` file is the
 `default` board, and every `diagram-state.json` under the repo's `diagrams/` tree is a
-board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). The editor
+board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). Symlinked
+directories are followed, so boards kept in another repo can be linked in
+(`ln -s ~/elsewhere/boards diagrams/scratch/elsewhere`); restart the server after adding
+a link so it watches the linked directory for live reload. The editor
 sidebar has a **Board** picker (or open `whiteboard-live.html?d=<name>` /
 `whiteboard.html?d=<name>` directly); agents target a board with
 `--state diagrams/<name>/diagram-state.json` as usual. `GET /diagrams` lists boards;

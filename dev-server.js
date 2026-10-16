@@ -106,13 +106,26 @@ function makeBoard(name, statePath) {
   };
 }
 
-/** (Re)discover boards: the default + every diagram-state.json under diagrams/.
- *  Existing entries are kept (they hold live watcher state). */
+// Real paths of directories reached through a symlink under diagrams/ that lie
+// outside it, so watch() can cover them too.
+const linkedDirs = new Set();
+
+/** (Re)discover boards: the default + every diagram-state.json under diagrams/,
+ *  following symlinked directories (a board kept in another repo can be linked
+ *  in). Existing entries are kept (they hold live watcher state). */
 function scanBoards() {
   if (!boards.has("default")) {
     boards.set("default", makeBoard("default", STATE_PATH));
   }
+  const diagramsReal = realOr(DIAGRAMS_DIR);
+  const seen = new Set(); // real paths walked this scan: a link cycle stops here
   const walk = (dir, rel) => {
+    const real = realOr(dir);
+    if (seen.has(real)) return;
+    seen.add(real);
+    if (real !== diagramsReal && !real.startsWith(diagramsReal + "/")) {
+      linkedDirs.add(real);
+    }
     let entries;
     try {
       entries = [...Deno.readDirSync(dir)];
@@ -120,7 +133,15 @@ function scanBoards() {
       return;
     }
     for (const e of entries) {
-      if (e.isDirectory) {
+      let isDir = e.isDirectory;
+      if (e.isSymlink) {
+        try {
+          isDir = Deno.statSync(join(dir, e.name)).isDirectory;
+        } catch {
+          continue; // a dangling link
+        }
+      }
+      if (isDir) {
         walk(join(dir, e.name), rel ? `${rel}/${e.name}` : e.name);
       } else if (e.isFile && e.name === "diagram-state.json" && rel) {
         const path = join(dir, e.name);
@@ -213,10 +234,12 @@ async function watch() {
   // (recursive, so boards created later are picked up automatically).
   // A missing directory (a board moved or deleted) is skipped with a warning:
   // watchFs throws on it, which used to take the whole server down.
+  // Linked board directories found by the first scan are watched as well;
+  // one linked in later is listed, but live-reloads only after a restart.
   const dirs =
     (DIAGRAMS_DIR.startsWith(STATE_DIR)
-      ? [STATE_DIR]
-      : [STATE_DIR, DIAGRAMS_DIR]).filter((d) => {
+      ? [STATE_DIR, ...linkedDirs]
+      : [STATE_DIR, DIAGRAMS_DIR, ...linkedDirs]).filter((d) => {
         try {
           return Deno.statSync(d).isDirectory;
         } catch {
