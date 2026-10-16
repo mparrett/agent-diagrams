@@ -93,6 +93,17 @@ function routeOnce(boxes, edges, cols = 44, rows = 24, opts = undefined) {
   return { grid, routes };
 }
 
+Deno.test("astar routes under fractional costs", () => {
+  const boxes = [
+    { id: "a", col: 2, row: 2, w: 6, h: 4 },
+    { id: "b", col: 20, row: 10, w: 6, h: 4 },
+  ];
+  const { routes } = routeOnce(boxes, [
+    { from: "a", to: "b", style: "solid", costs: { step: 1.3, turn: 0.7 } },
+  ]);
+  assert(routes[0].path, "a fractional edge cost must still route");
+});
+
 Deno.test("computeLayout round-trips a full persisted layout snapshot", () => {
   const ctx = measureContext();
   const state = {

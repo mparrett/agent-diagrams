@@ -600,7 +600,9 @@ export function astar(
       // folding turn bias into the heuristic, exposed on a log scale) — not a
       // rescale of this term.
 
-      const ng = cur.g + cost;
+      // gArr is Float32: round here too, or a fractional cost stores a g
+      // below the heap's copy and the node is skipped as stale.
+      const ng = Math.fround(cur.g + cost);
       const nk = K(nx, ny, mv.id);
       const prevG = state.genArr[nk] === gen ? state.gArr[nk] : Infinity;
       if (ng < prevG) {
