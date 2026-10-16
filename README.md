@@ -294,6 +294,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   expand-canvas --by=<W>x<H> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
   fit-canvas                 Trim the board to hug boxes, notes and group frames
   render
+  batch [file|-]             run CLI lines in one process, render once (see Scripted builds)
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)
   capture [label]            Snapshot diagram.png + state → artifacts/<ts>[-label]
@@ -307,6 +308,20 @@ diagram-cli.js [--state <path>] <command> [args...]
 Per node it reports `{x, y, w, h, pixW, pixH, col, row, pinned}`. **`w`/`h` are the drawn size** — a box is painted `ceil(pixW / CELL)` cells wide, up to a cell more than its text measures, so this is the rectangle the PNG actually contains. `pixW`/`pixH` are the content size underneath it. Aim annotations at `w`/`h`.
 
 Mutating commands save the JSON (with a `rev` compare-and-swap) and re-render in one step, printing the new `rev`.
+
+### Scripted builds
+
+A board built from a script of many calls doesn't need a PNG after each one. Two ways to render once:
+
+- **`batch`** runs a file of CLI lines (or stdin, with `-`) in one process and renders at the end. It is the fastest: one Deno start for the whole board. Lines use shell quoting, `#` starts a comment, and a trailing `\` continues a line. A failing line stops the batch and the error names it.
+
+  ```bash
+  deno task cli --state board/diagram-state.json batch board/build.batch
+  ```
+
+- **`--no-render`** on any call, or `DIAGRAM_NO_RENDER=1` for a whole shell script, saves without drawing; end with `render`. Use it when the script reads solved positions between calls (`status --json`), which a batch can't.
+
+Rebuilding a 60-call board took 41s with a render per call and 19s with `DIAGRAM_NO_RENDER=1`; a 43-line board ran as one batch in under half a second.
 
 ## Importing real graphs
 

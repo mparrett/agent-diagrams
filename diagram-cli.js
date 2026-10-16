@@ -24,10 +24,14 @@ const BUILTIN_STYLES = Object.keys(DEFAULT_EDGE_STYLES);
 // ─── Global --state flag (strip before command parsing) ────────────
 const rawArgs = [...Deno.args];
 let stateArg;
+let noRenderFlag = false;
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
   if (a.startsWith("--state=")) {
     stateArg = a.slice(8);
+    rawArgs.splice(i--, 1);
+  } else if (a === "--no-render") {
+    noRenderFlag = true;
     rawArgs.splice(i--, 1);
   } else if (a === "--state" || a === "-s") {
     stateArg = rawArgs[i + 1];
@@ -39,6 +43,17 @@ for (let i = 0; i < rawArgs.length; i++) {
   }
 }
 const STATE = resolveStatePath(stateArg);
+
+// A scripted build (many calls, then one `render`) skips the PNG on every
+// mutating call: --no-render on the call, or DIAGRAM_NO_RENDER=1 for a whole
+// script. `render` itself always renders.
+let deferRender = noRenderFlag ||
+  ["1", "true", "yes"].includes(
+    (Deno.env.get("DIAGRAM_NO_RENDER") ?? "").toLowerCase(),
+  );
+const renderUnlessDeferred = (d) => {
+  if (!deferRender) d.render();
+};
 
 const args = rawArgs;
 const cmd = args[0];
@@ -136,7 +151,8 @@ const STARTER_STATE = {
 };
 
 function usage() {
-  console.error(`Usage: diagram-cli.js [--state <path>] <command> [args...]
+  console.error(
+    `Usage: diagram-cli.js [--state <path>] [--no-render] <command> [args...]
 
 State file: --state <path> (any command) > DIAGRAM_STATE env > ./diagram-state.json
 in the cwd (so the CLI works from any project) > the bundled diagrams/example board.
@@ -197,8 +213,8 @@ Commands:
   set-title [text...]        Caption drawn top-left; no argument clears it
   set-footer [text...]       Caption drawn under the legend; no argument clears it
   set-theme <name|reset>     Color scheme (${
-    Object.keys(SCHEMES).join(", ")
-  }); reset = built-in palette
+      Object.keys(SCHEMES).join(", ")
+    }); reset = built-in palette
   set-legend auto|off|<color>[:<dash>]=<label>...
                              auto = one swatch per color in use, labeled with its name; off hides it;
                              entries take palette names, so they follow the theme
@@ -230,6 +246,11 @@ Commands:
   fit-canvas                 Trim board bounds B to hug boxes, notes and group frames (slides the diagram to a
                              uniform margin; auto-placed boxes stay auto)
   render
+  batch [file|-]             Run CLI lines from a file (or stdin) in one process and render once at the
+                             end: shell quoting, # comments, trailing \\ continues a line. A failing line
+                             stops the batch and is named
+  --no-render (any command)  Save without rendering the PNG; DIAGRAM_NO_RENDER=1 does it for a whole
+                             script. Finish with \`render\`
   spread                     Force-directed box spreading (bakes positions into layout)
   snap-h                     Snap-align box centers horizontally
   snap-v                     Snap-align box centers vertically
@@ -241,7 +262,8 @@ Commands:
 Built-in colors: ${BUILTIN_COLORS.join(", ")}
 Built-in styles: ${BUILTIN_STYLES.join(", ")}
 (Extend either via the "colors" / "edgeStyles" keys in diagram-state.json —
- custom names become valid for that diagram.)`);
+ custom names become valid for that diagram.)`,
+  );
   Deno.exit(1);
 }
 
@@ -275,7 +297,53 @@ if (cmd === "init") {
   Deno.exit(0);
 }
 
-function run() {
+// Split a batch script into commands: one per line, words split as a POSIX
+// shell would for the simple cases a build script uses ("double", 'single',
+// backslash escapes), # comments, and a trailing backslash joining lines.
+function parseBatch(text) {
+  const out = [];
+  const raw = text.split(/\r?\n/);
+  for (let i = 0; i < raw.length; i++) {
+    const first = i + 1;
+    let line = raw[i];
+    while (/(^|[^\\])\\$/.test(line) && i + 1 < raw.length) {
+      line = line.slice(0, -1) + " " + raw[++i];
+    }
+    const argv = [];
+    let word = null, q = null;
+    for (let j = 0; j < line.length; j++) {
+      const ch = line[j];
+      if (q === "'") {
+        if (ch === "'") q = null;
+        else word += ch;
+      } else if (q === '"') {
+        if (ch === '"') q = null;
+        else if (
+          ch === "\\" && j + 1 < line.length && '"\\$`'.includes(line[j + 1])
+        ) {
+          word += line[++j];
+        } else word += ch;
+      } else if (ch === "'" || ch === '"') {
+        q = ch;
+        word ??= "";
+      } else if (ch === "\\" && j + 1 < line.length) {
+        word = (word ?? "") + line[++j];
+      } else if (/\s/.test(ch)) {
+        if (word !== null) argv.push(word);
+        word = null;
+      } else if (ch === "#" && word === null) {
+        break;
+      } else word = (word ?? "") + ch;
+    }
+    if (q) throw new Error(`batch line ${first}: unclosed ${q} quote`);
+    if (word !== null) argv.push(word);
+    if (argv.length) out.push({ line: first, text: line.trim(), argv });
+  }
+  return out;
+}
+
+function run(args) {
+  const cmd = args[0];
   // Mutate through CAS-retry: loads fresh, applies the op, saves with rev guard,
   // retrying (reload + re-apply) on a concurrent write. Returns the saved Diagram.
   const mutate = (opFn) => Diagram.withRetry(STATE, opFn);
@@ -307,7 +375,7 @@ function run() {
           ...look,
         })
       );
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`Added node "${id}" (rev ${d.rev})`);
       break;
     }
@@ -320,7 +388,7 @@ function run() {
       }
       const label = rest.length > 0 ? rest.join(" ") : undefined;
       const d = mutate((d) => d.addEdge(from, to, style, label));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`Added edge "${from}" -> "${to}" (rev ${d.rev})`);
       break;
     }
@@ -335,7 +403,7 @@ function run() {
       const d = mutate((d) => {
         existed = d.removeNode(id);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         existed
           ? `Removed node "${id}" and connected edges (rev ${d.rev})`
@@ -355,7 +423,7 @@ function run() {
       const d = mutate((d) => {
         existed = d.removeEdge(from, to, id);
       });
-      d.render();
+      renderUnlessDeferred(d);
       const what = id ? `id "${id}"` : `"${from}" -> "${to}"`;
       console.log(
         existed
@@ -374,7 +442,7 @@ function run() {
       const row = int("move-node <row>", rowStr);
       const col = int("move-node <col>", colStr);
       const d = mutate((d) => d.moveNode(id, row, col));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Moved node "${id}" to row=${rowStr} col=${colStr} (rev ${d.rev})`,
       );
@@ -391,7 +459,7 @@ function run() {
       const d = mutate((d) => {
         freed = d.freeNode(id);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         freed
           ? `Freed "${id}" to auto-layout (rev ${d.rev})`
@@ -409,7 +477,7 @@ function run() {
       const label = labelParts.length ? labelParts.join(" ") : undefined;
       const at = int("add-divider <at-px>", atStr);
       const d = mutate((d) => d.addDivider(orient, at, { label }));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`Added ${orient} divider at ${atStr}px (rev ${d.rev})`);
       break;
     }
@@ -425,7 +493,7 @@ function run() {
       const d = mutate((d) => {
         existed = d.removeDivider(orient, at);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         existed
           ? `Removed ${orient} divider at ${atStr}px (rev ${d.rev})`
@@ -469,7 +537,7 @@ function run() {
       const d = mutate((d) => {
         id = d.addNote(x, y, positional, opts);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Added note "${id}"${
           anchored ? ` anchored to "${opts.anchor.to}"` : ` at (${x}, ${y})`
@@ -494,7 +562,7 @@ function run() {
       const d = mutate((d) => {
         existed = byId ? d.removeNote(a) : d.removeNote(Number(a), Number(b));
       });
-      d.render();
+      renderUnlessDeferred(d);
       const what = byId ? `"${a}"` : `at (${a}, ${b})`;
       console.log(
         existed
@@ -514,7 +582,7 @@ function run() {
       const d = mutate((d) => {
         freed = d.freeNote(id);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         freed
           ? `Freed note "${id}" back to its anchor/position (rev ${d.rev})`
@@ -551,7 +619,7 @@ function run() {
       }
       labelFlags(flags, opts);
       const d = mutate((d) => d.addGroup(id, label, nodes, opts));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Added group "${id}" (${nodes.length} node${
           nodes.length === 1 ? "" : "s"
@@ -612,7 +680,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.updateGroup(id, opts));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`Updated group "${id}" (rev ${d.rev})`);
       break;
     }
@@ -629,7 +697,7 @@ function run() {
         moved = d.listGroups().find((g) => g.id === id)?.nodes;
         existed = d.removeGroup(id);
       });
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         existed
           ? `Removed group "${id}" (rev ${d.rev})`
@@ -666,7 +734,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setUniformWidth(v === "on"));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`uniform-width ${v} (rev ${d.rev})`);
       break;
     }
@@ -678,7 +746,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setFont(v));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`font: ${v} (rev ${d.rev})`);
       break;
     }
@@ -710,7 +778,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setBoxStyle(opts));
-      d.render();
+      renderUnlessDeferred(d);
       const s = d._state;
       console.log(
         `box style: ${s.outlineWidth ?? "medium"} ${s.outlineDash ?? "solid"} ${
@@ -732,7 +800,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setEdgeStyle(opts));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `edge style: ${d._state.edgeWidth ?? "medium"} (rev ${d.rev})`,
       );
@@ -758,7 +826,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setGroupStyle(opts));
-      d.render();
+      renderUnlessDeferred(d);
       const s = d._state;
       console.log(
         `group labels: ${s.groupLabelPos ?? "top-border"} ${
@@ -778,7 +846,7 @@ function run() {
       const d = mutate((d) =>
         field === "title" ? d.setTitle(text) : d.setFooter(text)
       );
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`${field}: ${text || "(cleared)"} (rev ${d.rev})`);
       break;
     }
@@ -795,7 +863,7 @@ function run() {
       }
       const name = v === "reset" ? null : v;
       const d = mutate((d) => d.setTheme(name));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`theme: ${name ?? "(default palette)"} (rev ${d.rev})`);
       break;
     }
@@ -826,7 +894,7 @@ function run() {
         });
       }
       const d = mutate((d) => d.setLegend(entries));
-      d.render();
+      renderUnlessDeferred(d);
       const what = entries === null
         ? "auto (colors in use)"
         : entries === false
@@ -846,7 +914,7 @@ function run() {
         ? null
         : int("set-font-size <px>", v);
       const d = mutate((d) => d.setFontSize(px));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`font size: ${px ?? "default (13)"} (rev ${d.rev})`);
       break;
     }
@@ -864,7 +932,7 @@ function run() {
       const d = mutate((d) =>
         reset ? d.setColor(name, null) : d.setColor(name, bg, border)
       );
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `color ${name}: ${
           reset ? "removed" : `${bg} / ${border}`
@@ -888,7 +956,7 @@ function run() {
           ? d.setEdgePreset(name, null)
           : d.setEdgePreset(name, color, dash ?? "solid")
       );
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `edge preset ${name}: ${
           reset ? "removed" : `${color} ${dash ?? "solid"}`
@@ -904,7 +972,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setBackground(v === "reset" ? null : v));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`background: ${v} (rev ${d.rev})`);
       break;
     }
@@ -917,7 +985,7 @@ function run() {
       }
       const px = v === "reset" ? null : int("set-row-gap", v, { min: 0 });
       const d = mutate((d) => d.setRowGap(px));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`rowGap: ${v} (rev ${d.rev})`);
       break;
     }
@@ -929,7 +997,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setWrapSlack(v === "reset" ? null : Number(v)));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`wrapSlack: ${v} (rev ${d.rev})`);
       break;
     }
@@ -941,7 +1009,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setStartMarkers(v === "on"));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`start markers: ${v} (rev ${d.rev})`);
       break;
     }
@@ -953,7 +1021,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.setConnectorAnchor(v));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`connector anchor: ${v} (rev ${d.rev})`);
       break;
     }
@@ -1025,7 +1093,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.updateNode(id, opts));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`Updated node "${id}" (rev ${d.rev})`);
       break;
     }
@@ -1115,7 +1183,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.updateEdge(from, to, opts, id));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Updated edge ${
           id ? `id "${id}"` : `"${from}" -> "${to}"`
@@ -1132,7 +1200,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.reverseEdge(from, to, id));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Reversed edge ${
           id ? `id "${id}"` : `"${from}" -> "${to}"`
@@ -1173,7 +1241,7 @@ function run() {
         Deno.exit(1);
       }
       const d = mutate((d) => d.retargetEdge(from, to, newFrom, newTo, id));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Retargeted edge ${id ? `id "${id}"` : `"${from}" -> "${to}"`}${
           newFrom ? ` newFrom=${newFrom}` : ""
@@ -1205,7 +1273,7 @@ function run() {
       const width = int("set-canvas <width>", size[0], { min: 1 });
       const height = int("set-canvas <height>", size[1], { min: 1 });
       const d = mutate((d) => d.setCanvas(width, height, anchor, { grow }));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Canvas set to ${d._state.width}×${d._state.height} (anchor ${anchor}, rev ${d.rev})`,
       );
@@ -1261,7 +1329,7 @@ function run() {
           return mutate((d) => d.expandCanvasBy(dw, dh, anchor ?? "nw"));
         })()
         : mutate((d) => d.expandCanvas(opts));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Canvas now ${d._state.width}×${d._state.height} (rev ${d.rev})`,
       );
@@ -1271,7 +1339,7 @@ function run() {
     case "fit-canvas": {
       // Trim B to hug the content (slides the diagram to a uniform margin).
       const d = mutate((d) => d.fitCanvasToContent());
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `Canvas trimmed to content: ${d._state.width}×${d._state.height} (rev ${d.rev})`,
       );
@@ -1283,9 +1351,47 @@ function run() {
       break;
     }
 
+    case "batch": {
+      // batch [file|-]: run CLI lines from a file (or stdin) in one process,
+      // rendering once at the end. Same syntax as the shell: quotes group
+      // words, # starts a comment, a trailing \ continues the line.
+      const src = args[1] && args[1] !== "-" ? args[1] : "/dev/stdin";
+      const lines = parseBatch(Deno.readTextFileSync(src));
+      const outer = deferRender;
+      deferRender = true;
+      let at = null;
+      const onExit = () => {
+        if (at) console.error(`batch: stopped at line ${at.line}: ${at.text}`);
+      };
+      globalThis.addEventListener("unload", onExit);
+      for (const l of lines) {
+        if (l.argv[0] === "init" || l.argv[0] === "batch") {
+          throw new Error(
+            `batch line ${l.line}: ${l.argv[0]} can't run in a batch`,
+          );
+        }
+        at = l;
+        try {
+          run(l.argv);
+        } catch (err) {
+          at = null;
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`batch line ${l.line}: ${l.text}\n  ${msg}`);
+        }
+      }
+      at = null;
+      globalThis.removeEventListener("unload", onExit);
+      deferRender = outer;
+      if (!outer) Diagram.load(STATE).render();
+      console.log(
+        `batch: ${lines.length} commands${outer ? "" : ", rendered once"}`,
+      );
+      break;
+    }
+
     case "spread": {
       const d = mutate((d) => d.spreadBoxes());
-      d.render();
+      renderUnlessDeferred(d);
       console.log(
         `spread complete — positions baked into layout (rev ${d.rev})`,
       );
@@ -1294,14 +1400,14 @@ function run() {
 
     case "snap-h": {
       const d = mutate((d) => d.snapAlign("h"));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`snap-h complete (rev ${d.rev})`);
       break;
     }
 
     case "snap-v": {
       const d = mutate((d) => d.snapAlign("v"));
-      d.render();
+      renderUnlessDeferred(d);
       console.log(`snap-v complete (rev ${d.rev})`);
       break;
     }
@@ -1405,7 +1511,7 @@ function run() {
 }
 
 try {
-  run();
+  run(args);
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`Error: ${msg}`);

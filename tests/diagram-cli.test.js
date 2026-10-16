@@ -581,6 +581,65 @@ Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", asy
     assertEquals(read().groups[0].rowGap, undefined);
   }));
 
+Deno.test("CLI: --no-render saves without drawing; render draws", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const png = `${dir}/diagram.png`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const exists = () => {
+      try {
+        Deno.statSync(png);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    let r = await runCli(path, ["--no-render", "set-title", "Deferred"]);
+    assert(r.code === 0, r.err);
+    assertEquals(JSON.parse(Deno.readTextFileSync(path)).title, "Deferred");
+    assert(!exists(), "--no-render must not write the PNG");
+    r = await runCli(path, ["render"]);
+    assert(r.code === 0, r.err);
+    assert(exists(), "render writes the PNG");
+  }));
+
+Deno.test("CLI: batch runs a script in one process and renders once", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const png = `${dir}/diagram.png`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const script = `${dir}/build.txt`;
+    Deno.writeTextFileSync(
+      script,
+      [
+        "# a comment, then a blank line",
+        "",
+        'add-node api "API Gateway" blue 2 0 "auth, routing" # trailing',
+        "add-node q 'Event queue' green 2 1 \\",
+        "  order.created",
+        'set-title "It\'s \\"quoted\\""',
+        "add-edge api q solid",
+      ].join("\n"),
+    );
+    const r = await runCli(path, ["batch", script]);
+    assert(r.code === 0, r.err);
+    const st = JSON.parse(Deno.readTextFileSync(path));
+    const node = (id) => st.nodes.find((n) => n.id === id);
+    assertEquals(node("api").label, "API Gateway");
+    assertEquals(node("api").details, ["auth, routing"]);
+    assertEquals(node("q").label, "Event queue");
+    assertEquals(node("q").details, ["order.created"]);
+    assertEquals(st.title, 'It\'s "quoted"');
+    assertEquals(st.edges.length, 1);
+    assert(r.out.includes("batch: 4 commands, rendered once"), r.out);
+    Deno.statSync(png);
+
+    Deno.writeTextFileSync(script, "set-title ok\nadd-node x X blue nope 0\n");
+    const bad = await runCli(path, ["batch", script]);
+    assert(bad.code !== 0, "a failing line fails the batch");
+    assert(bad.err.includes("line 2"), `names the line: ${bad.err}`);
+  }));
+
 Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;
