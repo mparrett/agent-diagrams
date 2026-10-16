@@ -256,3 +256,36 @@ export function flowSpine(nodes, edges) {
   }
   return { spine, side };
 }
+
+/**
+ * Draw the field as faint arrows every `every` cells over a `cols` x `rows`
+ * grid, sampled as the router samples it. Nothing for an unknown spec.
+ */
+export function drawFlowField(ctx, spec, cols, rows, cell, every = 3) {
+  const f = fieldFn(spec);
+  if (!f) return;
+  const len = cell * every * 0.32, head = cell * 0.32;
+  ctx.save();
+  ctx.strokeStyle = "rgba(0,140,160,0.55)";
+  ctx.fillStyle = "rgba(0,140,160,0.55)";
+  ctx.lineWidth = 1.2;
+  for (let y = Math.floor(every / 2); y < rows; y += every) {
+    for (let x = Math.floor(every / 2); x < cols; x += every) {
+      const [dx, dy] = f(x / cols, y / rows);
+      if (!dx && !dy) continue;
+      const cx = (x + 0.5) * cell, cy = (y + 0.5) * cell;
+      const tx = cx + dx * len, ty = cy + dy * len;
+      ctx.beginPath();
+      ctx.moveTo(cx - dx * len, cy - dy * len);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(tx + dx * head, ty + dy * head);
+      ctx.lineTo(tx - dy * head * 0.6, ty + dx * head * 0.6);
+      ctx.lineTo(tx + dy * head * 0.6, ty - dx * head * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}

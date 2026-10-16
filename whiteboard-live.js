@@ -56,6 +56,7 @@ import {
   spreadBoxes as coreSpread,
 } from "./diagram-core.js";
 import { DEFAULT_SCHEME, SCHEMES } from "./themes.js";
+import { drawFlowField } from "./flow-field.js";
 
 // Active palette — built per-diagram, passed to every draw call (no module
 // state in the engine, so theme changes can't leak between diagrams).
@@ -94,7 +95,7 @@ let COLS = 100, ROWS = 60;
 let CSS_W, CSS_H;
 
 let costs = { ...DEFAULT_COSTS };
-let showGrid = false, showHeat = false, showConn = false;
+let showGrid = false, showHeat = false, showConn = false, showFlow = false;
 let dragMode = true, drag = null, didDrag = false;
 let connectMode = false, connectSourceId = null, connectCursor = null;
 // Hover affordances: the box/edge under the cursor (held by id / by from-to,
@@ -312,6 +313,9 @@ function render() {
 
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
+  if (showFlow && grid) {
+    drawFlowField(ctx, diagramState?.flow, grid.cols, grid.rows, CELL);
+  }
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
@@ -2072,6 +2076,14 @@ document.getElementById("bGrid").onclick = function () {
 document.getElementById("bHeat").onclick = function () {
   showHeat = !showHeat;
   this.classList.toggle("on", showHeat);
+  render();
+};
+document.getElementById("bFlow").onclick = function () {
+  showFlow = !showFlow;
+  this.classList.toggle("on", showFlow);
+  if (showFlow && !diagramState?.flow) {
+    setStatus("no flow field on this board (set-flow <field>)");
+  }
   render();
 };
 document.getElementById("bConn").onclick = function () {
