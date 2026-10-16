@@ -794,6 +794,28 @@ Deno.test("fit-canvas keeps notes and group frames on the board", () =>
     assert(sp.canvas.width < 1500, "it should still trim");
   }));
 
+Deno.test("fit-canvas keeps a group label wider than its frame on the board", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const fittedWidth = (label) => {
+      writeState(path, {
+        width: 1500,
+        height: 900,
+        nodes: [{ id: "a", label: "A", color: "blue", row: 1, col: 0 }],
+        groups: [{ id: "g", label, nodes: ["a"], labelSize: 20 }],
+      });
+      const d = Diagram.load(path);
+      d.fitCanvasToContent();
+      return d.solvePositions().canvas.width;
+    };
+    const short = fittedWidth("G");
+    const long = fittedWidth("Shared Document Store (part 3), a long label");
+    assert(
+      long > short + 200,
+      `canvas ${long} should hold the label (${short})`,
+    );
+  }));
+
 Deno.test("legend entries are spaced by their own widths", () => {
   const widths = [140, 40, 60, 160];
   const xs = legendSwatchXs(widths);

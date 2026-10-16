@@ -40,6 +40,7 @@ import {
   GROUP_LABEL_POS,
   GROUP_LABEL_WEIGHT,
   groupFrames,
+  groupLabelRects,
   innerGroups,
   isColorToken,
   legendEntries,
@@ -2144,9 +2145,17 @@ export class Diagram {
     // must keep on the canvas. `content` stays boxes-only.
     const drawn = gridBoxes.length ? [content] : [];
     for (const n of Object.values(notes)) drawn.push(n.rect);
-    for (
-      const f of groupFrames(this._state.groups, gridBoxes, pal, this._state)
-    ) {
+    const frames = groupFrames(
+      this._state.groups,
+      gridBoxes,
+      pal,
+      this._state,
+    );
+    // A label wider than its frame overhangs it; keep the whole label on.
+    for (const l of groupLabelRects(sctx, frames, pal)) {
+      drawn.push({ x: l.x, y: l.y, w: l.w, h: l.h });
+    }
+    for (const f of frames) {
       groups[f.id] = {
         ...f.rect,
         members: f.members,
