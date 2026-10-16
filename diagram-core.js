@@ -649,6 +649,23 @@ export function pickSide(srcBox, tgtBox) {
   const tgtCy = tgtBox.row + tgtBox.h / 2;
   const dx = tgtCx - srcCx;
   const dy = tgtCy - srcCy;
+  // Boxes that overlap along one axis and sit apart on the other can be joined
+  // by a straight wire, whatever their centers say: a narrow box over the end
+  // of a wide one drops into its top.
+  const overlapX = srcBox.col < tgtBox.col + tgtBox.w &&
+    tgtBox.col < srcBox.col + srcBox.w;
+  const overlapY = srcBox.row < tgtBox.row + tgtBox.h &&
+    tgtBox.row < srcBox.row + srcBox.h;
+  if (overlapX && !overlapY) {
+    return dy > 0
+      ? { srcSide: "bottom", tgtSide: "top" }
+      : { srcSide: "top", tgtSide: "bottom" };
+  }
+  if (overlapY && !overlapX) {
+    return dx > 0
+      ? { srcSide: "right", tgtSide: "left" }
+      : { srcSide: "left", tgtSide: "right" };
+  }
   if (Math.abs(dy) > Math.abs(dx) * 0.4) {
     return dy > 0
       ? { srcSide: "bottom", tgtSide: "top" }
@@ -2060,6 +2077,28 @@ function alignedIdx(side, box, other) {
   return Math.max(0, Math.min(bSpan - 1, Math.round(coord - bLo)));
 }
 
+/**
+ * Slots on one box side for edges already in barycentric order: each edge
+ * keeps its ideal slot where it can, and edges are pushed `gap` slots apart
+ * only where ideals collide or fall out of order. Stays within 0..n-1, closing
+ * the gap toward one slot when the side is too short for it. Exported for tests.
+ */
+export function separateSlots(ideals, n, gap = 1) {
+  const k = ideals.length;
+  const g = k > 1
+    ? Math.max(1, Math.min(gap, Math.floor((n - 1) / (k - 1))))
+    : 1;
+  const slots = [];
+  for (const [i, ideal] of ideals.entries()) {
+    slots.push(i === 0 ? ideal : Math.max(ideal, slots[i - 1] + g));
+  }
+  for (let i = k - 1; i >= 0; i--) {
+    const ceiling = i === k - 1 ? n - 1 : slots[i + 1] - g;
+    slots[i] = Math.max(0, Math.min(slots[i], ceiling));
+  }
+  return slots;
+}
+
 function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
   const centerMode = opts.centerConnectors === true; // anchor on side center, not overlap band
   const alloc = edgeSides(edgeDefs, boxById); // Pass 1 — sides (mutated below with symbols)
@@ -2109,44 +2148,37 @@ function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
     autos.sort((x, y) =>
       (axisCoord(side, x.other) - axisCoord(side, y.other)) || (x.i - y.i)
     );
-    // Anchor the cluster on the overlap-aligned cell (median of members'
-    // targets) instead of the box center, so a lone edge runs straight and a
-    // cluster biases toward its counterparts. Barycentric order is preserved;
-    // the symmetric ±spread keeps multi-edge sides evenly fanned. Indices are
-    // emitted directly (resolveIdx passes numbers through); explicit pins win.
+    // Indices are emitted directly (resolveIdx passes numbers through);
+    // explicit pins win. Barycentric order is preserved in both modes.
     const center = Math.floor((n - 1) / 2); // side-center connector index
-    let anchor = center;
-    // The offset that maps each ordered auto to a slot. center mode uses a
-    // fractional base ((total-1)/2) so the fan is symmetric about the center —
-    // a lone edge lands dead-center, even counts straddle it instead of
-    // left-biasing. align mode (the de-kinker) uses an integer base and the
-    // overlap-aligned anchor below.
-    let offsetBase = (total - 1) / 2;
-    if (!centerMode) {
-      offsetBase = Math.floor((total - 1) / 2);
-      // A lone destination connector defaults to the side center — the clean
-      // "first connect" look — instead of the overlap-aligned cell. Multi-edge
-      // sides still fan barycentrically, and lone *source* connectors keep their
-      // overlap alignment, so the de-kinker's straight runs survive there.
-      const loneDest = total === 1 && autos.length === 1 &&
-        autos[0].role === "tgt";
-      if (autos.length && !loneDest) {
-        const targets = autos.map((e) => alignedIdx(side, box, e.other)).sort((
-          a,
-          b,
-        ) => a - b);
-        anchor = targets[Math.floor((targets.length - 1) / 2)];
-        const hiBound = Math.max(offsetBase, n - total + offsetBase); // keep the ±spread on the side
-        anchor = Math.max(offsetBase, Math.min(hiBound, anchor));
-      }
+    // A lone destination connector takes the side center — the clean "first
+    // connect" look — instead of the overlap-aligned cell. Lone *source*
+    // connectors keep their overlap alignment, so straight runs survive there.
+    const loneDest = total === 1 && autos.length === 1 &&
+      autos[0].role === "tgt";
+    let slots;
+    if (centerMode || loneDest) {
+      // A fan symmetric about the side center: a fractional base
+      // ((total-1)/2) lands a lone edge dead-center and lets even counts
+      // straddle it instead of left-biasing.
+      const offsetBase = (total - 1) / 2;
+      slots = autos.map((_, k) =>
+        Math.max(0, Math.min(n - 1, Math.round(center + (k - offsetBase))))
+      );
+    } else {
+      // align (the de-kinker): each edge takes the cell where its own
+      // counterpart overlaps this side, so N sources above one wide target
+      // drop straight in. Edges move apart only where those cells collide,
+      // by up to 3 cells so a pushed-aside arrow doesn't hug its neighbour.
+      slots = separateSlots(
+        autos.map((e) => alignedIdx(side, box, e.other)),
+        n,
+        Math.min(3, Math.floor(n / (total + 1))),
+      );
     }
     autos.forEach((e, k) => {
-      const idx = Math.max(
-        0,
-        Math.min(n - 1, Math.round(anchor + (k - offsetBase))),
-      );
-      if (e.role === "src") alloc[e.i].srcSym = idx;
-      else alloc[e.i].tgtSym = idx;
+      if (e.role === "src") alloc[e.i].srcSym = slots[k];
+      else alloc[e.i].tgtSym = slots[k];
     });
     for (const e of entries) {
       if (!isPinned(e)) continue;

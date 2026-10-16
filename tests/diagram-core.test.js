@@ -26,6 +26,7 @@ import {
   nodeBoxHeight,
   nodeBoxSize,
   routeEdges,
+  separateSlots,
   simplifyPath,
   snapAlign,
   T_BLOCKED,
@@ -930,10 +931,44 @@ Deno.test("connectorAnchor center fans symmetrically; align clusters toward sour
   const center =
     routeOnce(boxes, edges, 44, 24, { centerConnectors: true }).routes;
 
-  // align: overlap-aligned → both clustered at the left (toward the sources).
-  assertEquals([entryCol(align, "s1"), entryCol(align, "s2")], [0, 1]);
+  // align: overlap-aligned → both toward the sources at the left, spaced
+  // apart by the collision gap (3 cells on a 14-cell side with two edges).
+  assertEquals([entryCol(align, "s1"), entryCol(align, "s2")], [0, 3]);
   // center: symmetric straddle of the side center (index 6).
   assertEquals([entryCol(center, "s1"), entryCol(center, "s2")], [6, 7]);
+});
+
+Deno.test("separateSlots keeps ideal slots and pushes apart only collisions", () => {
+  assertEquals(separateSlots([2, 9, 15], 20), [2, 9, 15]);
+  assertEquals(separateSlots([4, 4, 4], 20), [4, 5, 6]);
+  assertEquals(separateSlots([19, 19, 19], 20), [17, 18, 19]);
+  assertEquals(separateSlots([0, 0], 1), [0, 0]);
+  assertEquals(separateSlots([0, 5, 5, 11, 11], 12, 2), [0, 5, 7, 9, 11]);
+  assertEquals(separateSlots([2, 2], 4, 3), [0, 3], "gap shrinks to fit");
+});
+
+Deno.test("align mode drops each source straight into a wide target below", () => {
+  // Three narrow sources sit over different parts of one wide target. Each
+  // should enter the target's N side directly under its own center column.
+  const boxes = [
+    { id: "wide", col: 4, row: 12, w: 30, h: 3 },
+    { id: "a", col: 5, row: 0, w: 5, h: 2 },
+    { id: "b", col: 16, row: 0, w: 5, h: 2 },
+    { id: "c", col: 27, row: 0, w: 5, h: 2 },
+  ];
+  const edges = ["a", "b", "c"].map((from) => ({
+    from,
+    to: "wide",
+    fromEdge: "S",
+    toEdge: "N",
+  }));
+  const { routes } = routeOnce(boxes, edges, 44, 24);
+  for (const r of routes) {
+    const src = boxes.find((b) => b.id === r.edge.from);
+    const xs = new Set(r.path.map((p) => p.x));
+    assertEquals(xs.size, 1, `${r.edge.from} runs straight down`);
+    assertEquals(r.path[0].x, src.col + 2, `${r.edge.from} leaves its center`);
+  }
 });
 
 Deno.test("explicit fromConn/toConn pin endpoints to the exact slot cell", () => {
