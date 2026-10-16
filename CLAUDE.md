@@ -37,6 +37,17 @@ human exploring a board and an agent changing the engine are editing the same
 files, and board churn stops being attributable — you cannot tell a real layout
 change from someone's drag, or from the unstable PNG output of #10.
 
+## A stale server will re-render your boards
+
+**Check for other dev servers before trusting a PNG under `diagrams/`:**
+`pgrep -fl dev-server.js`. Any server started from this checkout watches the
+whole `diagrams/` tree and re-renders a board whenever its `diagram-state.json`
+changes, using the engine it loaded at startup. After an engine change, a server
+left running from an earlier session overwrites a fresh render a moment later
+with the old engine's output, and the PNG no longer matches the code.
+`just restart` fixes your own server; for one started by someone else, build
+test boards outside `diagrams/` (any directory, with `--state`) instead.
+
 ## Stop the server before git operations that touch boards
 
 **`just stop` first, then rebase / checkout / `gh stack sync`.** The server
