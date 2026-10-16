@@ -255,6 +255,10 @@ Commands:
   snap-h                     Snap-align box centers horizontally
   snap-v                     Snap-align box centers vertically
   capture [label]            Snapshot diagram.png + state into artifacts/<ts>[-label]
+  issues [--json]            List layout defects without opening the PNG: wires sharing a track, wires
+                             bunched on a side with room to spread, labels on boxes, on each other or off
+                             the board, group labels wider than their frame, frame intruders, failed
+                             routes. Each names its ids. Exits 1 if there are any
   status [--positions|--json]  rev + counts; --positions dumps solved {x,y,w,h} per node + canvas/content bbox
   list-nodes
   list-edges
@@ -1348,6 +1352,24 @@ function run(args) {
 
     case "render": {
       Diagram.load(STATE).render();
+      break;
+    }
+
+    case "issues": {
+      // Layout defects, without opening the PNG. Exits 1 when there are any,
+      // so a build script can stop on them.
+      const flags = args.slice(1);
+      rejectUnknownFlags("issues", flags, ["--json"]);
+      const found = Diagram.load(STATE).issues();
+      if (flags.includes("--json")) {
+        console.log(JSON.stringify(found, null, 2));
+      } else if (found.length === 0) {
+        console.log("no issues");
+      } else {
+        for (const i of found) console.log(`${i.kind}: ${i.message}`);
+        console.log(`${found.length} issue(s)`);
+      }
+      if (found.length) Deno.exit(1);
       break;
     }
 

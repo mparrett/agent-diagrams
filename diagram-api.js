@@ -35,6 +35,7 @@ import {
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
+  findIssues,
   Grid,
   GROUP_LABEL_ALIGN,
   GROUP_LABEL_POS,
@@ -2378,7 +2379,16 @@ export class Diagram {
       routes,
       pal,
       frames,
+      labelRects,
+      groupLabels,
     };
+  }
+
+  // Layout defects in the solved board (wires sharing a track, bunched
+  // connectors, labels on boxes or off the board, group labels wider than
+  // their frame, frame intruders, failed routes). See findIssues.
+  issues() {
+    return findIssues(this.renderToCanvas());
   }
 }
 

@@ -2663,6 +2663,217 @@ export function drawHeatmap(ctx, grid, cell, nearCost) {
   }
 }
 
+// ─── Layout issues ────────────────────────────────────────────────
+// Defects a person would spot in the PNG, found from the solved scene so an
+// agent can fix a board without looking at it. Each issue names the ids
+// involved. `scene` is what renderToCanvas computes: gridBoxes, routes,
+// labelRects (edge labels), groupLabels, frames, and the board's W and H.
+const ISSUE_MIN_SHARED = 2; // cells two wires may share before it reads as one
+const edgeName = (e) => e.id ?? `${e.from}~${e.to}`;
+
+// The unit grid segments a route's path covers, as "x,y>x,y" keys with the
+// lower cell first. Fills any straight gap between listed cells.
+function routeSegments(path) {
+  const segs = [];
+  for (let i = 1; i < path.length; i++) {
+    let { x, y } = path[i - 1];
+    const { x: tx, y: ty } = path[i];
+    while (x !== tx || y !== ty) {
+      const nx = x + Math.sign(tx - x), ny = y + Math.sign(ty - y);
+      const [a, b] = nx < x || ny < y ? [[nx, ny], [x, y]] : [[x, y], [nx, ny]];
+      segs.push(`${a[0]},${a[1]}>${b[0]},${b[1]}`);
+      [x, y] = [nx, ny];
+    }
+  }
+  return segs;
+}
+
+// Which side of `box` a connector cell (one cell outside it) sits on.
+function connectorSide(box, p) {
+  if (p.y < box.row) return "N";
+  if (p.y >= box.row + box.h) return "S";
+  return p.x < box.col ? "W" : "E";
+}
+
+export function findIssues(scene, cell = CELL) {
+  const {
+    gridBoxes = [],
+    routes = [],
+    labelRects = [],
+    groupLabels = [],
+    frames = [],
+    W = Infinity,
+    H = Infinity,
+  } = scene;
+  const issues = [];
+  const boxById = new Map(gridBoxes.map((b) => [b.id, b]));
+  const pxOf = (b) => ({
+    x: b.col * cell,
+    y: b.row * cell,
+    w: b.w * cell,
+    h: b.h * cell,
+  });
+
+  for (const r of routes) {
+    if (r.path === null && !r.srcFree && !r.tgtFree) {
+      issues.push({
+        kind: "route-failed",
+        ids: [edgeName(r.edge)],
+        message: `${r.edge.from} -> ${r.edge.to} found no route`,
+      });
+    }
+  }
+
+  // Two wires on the same grid track read as one wire.
+  const drawn = routes.filter((r) => r.path?.length > 1);
+  const owners = new Map();
+  for (const [i, r] of drawn.entries()) {
+    for (const s of new Set(routeSegments(r.path))) {
+      if (!owners.has(s)) owners.set(s, []);
+      owners.get(s).push(i);
+    }
+  }
+  const shared = new Map();
+  for (const idx of owners.values()) {
+    for (let a = 0; a < idx.length; a++) {
+      for (let b = a + 1; b < idx.length; b++) {
+        const k = `${idx[a]}|${idx[b]}`;
+        shared.set(k, (shared.get(k) ?? 0) + 1);
+      }
+    }
+  }
+  // Wires that share an endpoint and look alike form a trunk (one source
+  // feeding several targets along a common bus), which reads fine. Sharing is
+  // a defect when the wires look different, or have nothing in common.
+  const sameLook = (r, o) =>
+    r.color === o.color && String(r.dash ?? []) === String(o.dash ?? []);
+  const shareEnd = (e, o) =>
+    [e.from, e.to].some((id) => id === o.from || id === o.to);
+  for (const [k, n] of shared) {
+    if (n < ISSUE_MIN_SHARED) continue;
+    const [ra, rb] = k.split("|").map((i) => drawn[i]);
+    if (sameLook(ra, rb) && shareEnd(ra.edge, rb.edge)) continue;
+    const [a, b] = [ra.edge, rb.edge];
+    issues.push({
+      kind: "shared-track",
+      ids: [edgeName(a), edgeName(b)],
+      message:
+        `${a.from} -> ${a.to} and ${b.from} -> ${b.to} share ${n} cells of track`,
+    });
+  }
+
+  // Wires one cell apart on a side with room to spread them.
+  const ends = new Map();
+  for (const r of drawn) {
+    for (
+      const [id, p] of [[r.edge.from, r.path[0]], [r.edge.to, r.path.at(-1)]]
+    ) {
+      const box = boxById.get(id);
+      if (!box) continue;
+      const side = connectorSide(box, p);
+      const k = `${id}|${side}`;
+      if (!ends.has(k)) ends.set(k, { box, side, at: [] });
+      ends.get(k).at.push({
+        pos: side === "N" || side === "S" ? p.x : p.y,
+        edge: r.edge,
+      });
+    }
+  }
+  for (const { box, side, at } of ends.values()) {
+    if (at.length < 2) continue;
+    const span = side === "N" || side === "S" ? box.w : box.h;
+    if (span < 3 * at.length) continue; // no room to spread: crowding is forced
+    at.sort((a, b) => a.pos - b.pos);
+    // Exactly one apart: wires leaving one connector cell are a trunk, and
+    // shared-track reports them if they look different.
+    const tight = at.filter((e, i) =>
+      (i > 0 && e.pos - at[i - 1].pos === 1) ||
+      (i < at.length - 1 && at[i + 1].pos - e.pos === 1)
+    );
+    if (tight.length) {
+      issues.push({
+        kind: "bunched-connectors",
+        ids: [box.id, ...tight.map((e) => edgeName(e.edge))],
+        message:
+          `${tight.length} wires one cell apart on ${box.id}'s ${side} side`,
+      });
+    }
+  }
+
+  // Edge labels on a box, another label, or off the board.
+  for (const [i, l] of labelRects.entries()) {
+    if (!l.label) continue;
+    const who = `label "${l.label}" (${l.edge.from} -> ${l.edge.to})`;
+    const on = gridBoxes.filter((b) => rectsOverlap(l.rect, pxOf(b)));
+    if (on.length) {
+      issues.push({
+        kind: "label-on-box",
+        ids: [edgeName(l.edge), ...on.map((b) => b.id)],
+        message: `${who} overlaps ${on.map((b) => b.id).join(", ")}`,
+      });
+    }
+    for (const o of labelRects.slice(i + 1)) {
+      if (o.label && rectsOverlap(l.rect, o.rect)) {
+        issues.push({
+          kind: "label-overlap",
+          ids: [edgeName(l.edge), edgeName(o.edge)],
+          message: `${who} overlaps label "${o.label}"`,
+        });
+      }
+    }
+    const r = l.rect;
+    if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) {
+      issues.push({
+        kind: "off-board",
+        ids: [edgeName(l.edge)],
+        message: `${who} runs off the board`,
+      });
+    }
+  }
+
+  // Group labels wider than their frame, and frames holding non-members.
+  const frameById = new Map(frames.map((f) => [f.id, f]));
+  for (const l of groupLabels) {
+    const f = frameById.get(l.id);
+    if (!f) continue;
+    const over = Math.max(
+      f.rect.x - l.x,
+      l.x + l.w - (f.rect.x + f.rect.w),
+    );
+    if (over > 1) {
+      issues.push({
+        kind: "group-label-overhang",
+        ids: [l.id],
+        message: `group "${l.id}" label runs ${
+          Math.round(over)
+        }px past its frame`,
+      });
+    }
+  }
+  for (const f of frames) {
+    if (f.intruders?.length) {
+      issues.push({
+        kind: "frame-intruder",
+        ids: [f.id, ...f.intruders],
+        message: `group "${f.id}" frame contains non-member(s): ${
+          f.intruders.join(", ")
+        }`,
+      });
+    }
+  }
+  for (const b of gridBoxes) {
+    const r = pxOf(b);
+    if (r.x < 0 || r.y < 0 || r.x + r.w > W || r.y + r.h > H) {
+      issues.push({
+        kind: "off-board",
+        ids: [b.id],
+        message: `box ${b.id} runs off the board`,
+      });
+    }
+  }
+  return issues;
+}
+
 // ─── Label-placement geometry (Phase 2b) ──────────────────────────
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h &&

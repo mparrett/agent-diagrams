@@ -640,6 +640,32 @@ Deno.test("CLI: batch runs a script in one process and renders once", async () =
     assert(bad.err.includes("line 2"), `names the line: ${bad.err}`);
   }));
 
+Deno.test("CLI: issues exits 0 on a clean board and 1 with the defects", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    let r = await runCli(path, ["issues"]);
+    assertEquals(r.code, 0, r.err);
+    assert(r.out.includes("no issues"), r.out);
+
+    writeState(path, {
+      nodes: NODES,
+      edges: [],
+      groups: [{
+        id: "g",
+        label: "A label far wider than the one small box it frames",
+        nodes: ["a"],
+      }],
+    });
+    r = await runCli(path, ["issues", "--json"]);
+    assertEquals(r.code, 1, "issues found exits 1");
+    const found = JSON.parse(r.out);
+    assert(
+      found.some((i) => i.kind === "group-label-overhang" && i.ids[0] === "g"),
+      r.out,
+    );
+  }));
+
 Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

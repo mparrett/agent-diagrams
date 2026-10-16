@@ -16,6 +16,7 @@ import {
   drawGroups,
   drawLegend,
   drawRoutes,
+  findIssues,
   fontFamily,
   fontSizes,
   FRAME_GAP,
@@ -2372,4 +2373,104 @@ Deno.test("legend swatches for palette colors draw fill and border", () => {
   const stroke = calls.find((c) => c[0] === "strokeRect");
   assertEquals(fill[1], pal.colors.gray.bg, "swatch filled with the box fill");
   assertEquals(stroke[2], pal.colors.gray.border, "and outlined in its border");
+});
+
+Deno.test("findIssues names each kind of layout defect", () => {
+  const box = (id, col, row, w = 6, h = 3) => ({ id, col, row, w, h });
+  const route = (from, to, cells) => ({
+    edge: { id: `${from}~${to}`, from, to },
+    path: cells.map(([x, y]) => ({ x, y })),
+  });
+  const kinds = (scene) => findIssues(scene).map((i) => i.kind).sort();
+
+  // Two wires on one track for 3 cells; one crossing alone is fine.
+  const a = box("a", 0, 0), b = box("b", 20, 0), t = box("t", 10, 10, 12);
+  assertEquals(
+    kinds({
+      gridBoxes: [a, b, t],
+      routes: [
+        {
+          ...route("a", "t", [[3, 3], [3, 6], [12, 6], [12, 9]]),
+          color: "#c2410c",
+        },
+        {
+          ...route("b", "t", [[23, 3], [23, 6], [9, 6], [9, 9]]),
+          color: "#1e3fae",
+        },
+      ],
+    }),
+    ["shared-track"],
+  );
+  assertEquals(
+    kinds({
+      gridBoxes: [a, b, t],
+      routes: [
+        route("a", "t", [[3, 3], [3, 7], [12, 7], [12, 9]]),
+        route("b", "t", [[23, 3], [23, 5], [16, 5], [16, 9]]),
+      ],
+    }),
+    [],
+    "separate tracks",
+  );
+  // A trunk: same source, same look, shared run. Not a defect.
+  const trunk = (color) =>
+    kinds({
+      gridBoxes: [a, box("t1", 0, 12), box("t2", 12, 12)],
+      routes: [
+        {
+          ...route("a", "t1", [[3, 3], [3, 8], [2, 8], [2, 11]]),
+          color: "#888",
+        },
+        { ...route("a", "t2", [[3, 3], [3, 8], [14, 8], [14, 11]]), color },
+      ],
+    });
+  assertEquals(trunk("#888"), [], "a same-look trunk from one source");
+  assertEquals(trunk("#f00"), ["shared-track"], "different looks on one track");
+
+  // Two arrows one cell apart on a 12-cell side; fine on a 4-cell side.
+  const bunched = (w) =>
+    kinds({
+      gridBoxes: [a, b, box("t", 10, 10, w)],
+      routes: [
+        route("a", "t", [[3, 3], [3, 6], [11, 6], [11, 9]]),
+        route("b", "t", [[23, 3], [23, 7], [12, 7], [12, 9]]),
+      ],
+    });
+  assertEquals(bunched(12), ["bunched-connectors"]);
+  assertEquals(bunched(4), [], "no room to spread: not reported");
+
+  // Labels: on a box, on another label, off the board.
+  const lbl = (label, x, y, edge = { from: "a", to: "b" }) => ({
+    label,
+    edge,
+    rect: { x, y, w: 40, h: 14 },
+  });
+  assertEquals(
+    kinds({
+      gridBoxes: [a],
+      labelRects: [
+        lbl("on box", 10, 10),
+        lbl("x", 300, 300),
+        lbl("y", 310, 305, { from: "b", to: "a" }),
+        lbl("off", 990, 10),
+      ],
+      W: 1000,
+      H: 800,
+    }),
+    ["label-on-box", "label-overlap", "off-board"],
+  );
+
+  // A group label wider than its frame; a failed route; an intruder.
+  assertEquals(
+    kinds({
+      frames: [{
+        id: "g",
+        rect: { x: 0, y: 0, w: 100, h: 100 },
+        intruders: ["z"],
+      }],
+      groupLabels: [{ id: "g", x: 10, y: -8, w: 150, h: 16 }],
+      routes: [{ edge: { from: "a", to: "b" }, path: null }],
+    }),
+    ["frame-intruder", "group-label-overhang", "route-failed"],
+  );
 });

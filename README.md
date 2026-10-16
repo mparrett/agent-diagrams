@@ -298,10 +298,13 @@ diagram-cli.js [--state <path>] <command> [args...]
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)
   capture [label]            Snapshot diagram.png + state → artifacts/<ts>[-label]
+  issues [--json]            layout defects by id (shared tracks, bunched wires, label clashes, ...); exit 1 if any
   status [--positions|--json]  rev + counts; --positions/--json dumps the solved
                                {x,y,w,h} per node, note and group frame, plus canvas + content bounding box
   list-nodes / list-edges / list-groups
 ```
+
+`issues [--json]` reports layout defects a person would otherwise find by opening the PNG: two differently styled (or unrelated) wires sharing a track, wires one cell apart on a side with room to spread, edge labels on a box, on each other or off the board, group labels wider than their frame, boxes inside a frame they don't belong to, and failed routes. Each issue names the ids involved, and the command exits 1 when there are any, so a build script can stop on them. Wires that share an endpoint and look alike count as a trunk and aren't reported.
 
 `status --positions` is the headless read-back of the solved layout: place notes and dividers against real pixels instead of guessing, without rendering a PNG. The dev server exposes the same data at `GET /positions` (board-scoped under `/d/<name>/positions`).
 
