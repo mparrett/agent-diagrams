@@ -518,6 +518,45 @@ Deno.test("CLI: set-theme sets and resets the scheme", async () =>
     assert(r.err.includes("dawnfox"), "error should list the themes");
   }));
 
+Deno.test("CLI: set-color, set-edge-preset, set-background, set-wrap-slack", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path));
+
+    let r = await runCli(path, ["set-color", "eng", "#fde7d9", "#c2410c"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().colors, { eng: { bg: "#fde7d9", border: "#c2410c" } });
+    r = await runCli(path, ["add-node", "x", "X", "eng", "2", "2"]);
+    assert(r.code === 0, "a defined color is valid for add-node: " + r.err);
+    r = await runCli(path, ["set-color", "eng", "reset"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().colors, undefined);
+    r = await runCli(path, ["set-color", "bad", "red", "#000"]);
+    assert(r.code !== 0, "a non-hex color must fail");
+
+    r = await runCli(path, ["set-edge-preset", "scope", "#c2410c", "dashed"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().edgeStyles, {
+      scope: { color: "#c2410c", dash: [6, 3] },
+    });
+    r = await runCli(path, ["set-edge-preset", "scope", "reset"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().edgeStyles, undefined);
+
+    r = await runCli(path, ["set-background", "#ffffff"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().background, "#ffffff");
+    r = await runCli(path, ["set-background", "reset"]);
+    assertEquals(read().background, undefined);
+
+    r = await runCli(path, ["set-wrap-slack", "2"]);
+    assert(r.code === 0, r.err);
+    assertEquals(read().wrapSlack, 2);
+    r = await runCli(path, ["set-wrap-slack", "0.5"]);
+    assert(r.code !== 0, "wrapSlack below 1 must fail");
+  }));
+
 Deno.test("CLI: add-group / update-group / remove-group round-trip", async () =>
   await withTempDir(async (dir) => {
     const path = `${dir}/diagram-state.json`;

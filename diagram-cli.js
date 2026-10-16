@@ -209,6 +209,13 @@ Commands:
                              Board-wide connector width; an edge's own update-edge --width wins. --reset = medium
   set-font <mono|sans>       Typeface: monospace (default) or Instrument Sans
   set-font-size <px|reset>   Base font size (box-label px, default 13); scales the whole diagram
+  set-color <name> <bg-hex> <border-hex> | <name> reset
+                             Define a node color (or override a built-in); wins over the theme, and
+                             works in add-node, --color and set-legend
+  set-edge-preset <name> <hex> [solid|dashed|dotted] | <name> reset
+                             Define an edge style (or override solid, dashed, ...) for add-edge <style>
+  set-background <hex|reset> Canvas background; reset = the theme's
+  set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
   set-connector-anchor <align|center>   Connector anchoring: align (de-kink straight runs, default) or center (fan symmetric about each side's center)
   set-start-markers <on|off>   Start marker (a dot) where each wire leaves its box (default on); off draws wires from the box edge
   set-canvas <W>x<H> [--anchor=nw|n|ne|e|se|s|sw|w|c] [--grow]
@@ -832,6 +839,76 @@ function run() {
       const d = mutate((d) => d.setFontSize(px));
       d.render();
       console.log(`font size: ${px ?? "default (13)"} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-color": {
+      // set-color <name> <bg> <border> | set-color <name> reset
+      const [, name, bg, border] = args;
+      if (!name || !bg || (bg !== "reset" && !border)) {
+        console.error(
+          "Error: set-color requires <name> <bg-hex> <border-hex>, or <name> reset",
+        );
+        Deno.exit(1);
+      }
+      const reset = bg === "reset";
+      const d = mutate((d) =>
+        reset ? d.setColor(name, null) : d.setColor(name, bg, border)
+      );
+      d.render();
+      console.log(
+        `color ${name}: ${
+          reset ? "removed" : `${bg} / ${border}`
+        } (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "set-edge-preset": {
+      // set-edge-preset <name> <hex> [solid|dashed|dotted] | <name> reset
+      const [, name, color, dash] = args;
+      if (!name || !color) {
+        console.error(
+          "Error: set-edge-preset requires <name> <hex> [solid|dashed|dotted], or <name> reset",
+        );
+        Deno.exit(1);
+      }
+      const reset = color === "reset";
+      const d = mutate((d) =>
+        reset
+          ? d.setEdgePreset(name, null)
+          : d.setEdgePreset(name, color, dash ?? "solid")
+      );
+      d.render();
+      console.log(
+        `edge preset ${name}: ${
+          reset ? "removed" : `${color} ${dash ?? "solid"}`
+        } (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "set-background": {
+      const v = args[1];
+      if (!v) {
+        console.error("Error: set-background requires <hex> or reset");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setBackground(v === "reset" ? null : v));
+      d.render();
+      console.log(`background: ${v} (rev ${d.rev})`);
+      break;
+    }
+
+    case "set-wrap-slack": {
+      const v = args[1];
+      if (!v) {
+        console.error("Error: set-wrap-slack requires <n> (>= 1) or reset");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.setWrapSlack(v === "reset" ? null : Number(v)));
+      d.render();
+      console.log(`wrapSlack: ${v} (rev ${d.rev})`);
       break;
     }
 

@@ -184,6 +184,12 @@ export const ANCHOR_FRACTIONS = {
 
 // Block the current thread for `ms` without busy-spinning (used only on the
 // rare lock-contention path). Atomics.wait is available in Deno's main thread.
+function requireHex(value, what) {
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value ?? "")) {
+    throw new Error(`${what} must be a hex color like #c2410c, got "${value}"`);
+  }
+}
+
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -1166,9 +1172,70 @@ export class Diagram {
     this.palette = paletteFromState(this._state);
   }
 
-  // Connector anchoring mode: "align" (overlap-band de-kinker, default) or
-  // "center" (every auto connector fans symmetrically about the side center).
-  // "align"/null are stored as the absent default to keep state minimal.
+  // Define or override a node color: `name` becomes valid for add-node/--color
+  // and the legend, and wins over the theme. null bg removes the entry.
+  setColor(name, bg, border) {
+    if (!name) throw new Error("setColor requires a color name");
+    if (bg == null) {
+      if (this._state.colors) delete this._state.colors[name];
+      if (this._state.colors && !Object.keys(this._state.colors).length) {
+        delete this._state.colors;
+      }
+    } else {
+      requireHex(bg, "background");
+      requireHex(border, "border");
+      this._state.colors = { ...this._state.colors, [name]: { bg, border } };
+    }
+    this.palette = paletteFromState(this._state);
+  }
+
+  // Define or override a named edge style (the `style` an edge is added with).
+  // null color removes the entry.
+  setEdgePreset(name, color, dash = "solid") {
+    if (!name) throw new Error("setEdgePreset requires a style name");
+    if (color == null) {
+      if (this._state.edgeStyles) delete this._state.edgeStyles[name];
+      if (
+        this._state.edgeStyles && !Object.keys(this._state.edgeStyles).length
+      ) {
+        delete this._state.edgeStyles;
+      }
+    } else {
+      requireHex(color, "color");
+      if (!Object.hasOwn(DASH_TOKENS, dash)) {
+        throw new Error(
+          `dash must be one of ${
+            Object.keys(DASH_TOKENS).join(", ")
+          }, got "${dash}"`,
+        );
+      }
+      this._state.edgeStyles = {
+        ...this._state.edgeStyles,
+        [name]: { color, dash: DASH_TOKENS[dash] },
+      };
+    }
+    this.palette = paletteFromState(this._state);
+  }
+
+  // Canvas background color; null returns to the theme's.
+  setBackground(hex) {
+    if (hex == null) delete this._state.background;
+    else {
+      requireHex(hex, "background");
+      this._state.background = hex;
+    }
+    this.palette = paletteFromState(this._state);
+  }
+
+  // How much extra box area (x the smallest fit) a box may take to avoid
+  // wrapping its text; null returns to the default.
+  setWrapSlack(n) {
+    if (n == null) delete this._state.wrapSlack;
+    else if (!Number.isFinite(n) || n < 1) {
+      throw new Error(`wrapSlack must be a number >= 1, got "${n}"`);
+    } else this._state.wrapSlack = n;
+  }
+
   // Whether each wire has a start marker (a dot at its source); off draws it
   // from the box edge. Stored only when off.
   setStartMarkers(on) {
@@ -1176,6 +1243,9 @@ export class Diagram {
     else this._state.startMarkers = false;
   }
 
+  // Connector anchoring mode: "align" (overlap-band de-kinker, default) or
+  // "center" (every auto connector fans symmetrically about the side center).
+  // "align"/null are stored as the absent default to keep state minimal.
   setConnectorAnchor(mode) {
     if (mode != null && mode !== "align" && mode !== "center") {
       throw new Error(
