@@ -2052,10 +2052,10 @@ function downloadJSON(json) {
 
 // The loaded diagram's own title shows as a subtitle under the static brand
 // ("Diagram Tool"); the brand no longer gets hijacked by per-diagram titles.
+// The sidebar heading: the board's title, or its name when it has none.
 function setDiagramTitle(t) {
   const el = document.getElementById("diagramTitle");
-  el.textContent = t || "";
-  el.hidden = !t;
+  el.textContent = t || (BOARD === "default" ? "Diagram" : BOARD);
 }
 
 function setStatus(msg) {
@@ -2077,6 +2077,7 @@ document.getElementById("bGrid").onclick = function () {
 document.getElementById("bHeat").onclick = function () {
   showHeat = !showHeat;
   this.classList.toggle("on", showHeat);
+  document.getElementById("heatLegend").hidden = !showHeat;
   render();
 };
 document.getElementById("bFlow").onclick = function () {
@@ -3029,8 +3030,6 @@ async function growFrameToView(edge) {
   }
 }
 
-document.getElementById("bExpandAll").onclick = () => growFrameToView("nesw");
-
 // Double-click a note to edit its text, or a node to edit its text/color.
 // Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
@@ -3907,8 +3906,23 @@ document.getElementById("tuningToggle").onclick = function () {
   const collapsed = document.getElementById("tuningDock").classList.toggle(
     "collapsed",
   );
-  this.classList.toggle("on", !collapsed);
+  this.classList.toggle("open", !collapsed);
 };
+
+// Collapsible sidebar sections, remembered per browser.
+for (const sec of document.querySelectorAll(".sec[data-sec]")) {
+  const key = "wb-sec-" + sec.dataset.sec;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved !== null) sec.classList.toggle("collapsed", saved === "1");
+  } catch { /* storage blocked: keep the default */ }
+  sec.querySelector(".sec-toggle").onclick = () => {
+    const collapsed = sec.classList.toggle("collapsed");
+    try {
+      localStorage.setItem(key, collapsed ? "1" : "0");
+    } catch { /* storage blocked */ }
+  };
+}
 
 // Info-icon toggle
 document.querySelectorAll(".info-btn").forEach((btn) => {

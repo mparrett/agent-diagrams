@@ -29,113 +29,169 @@
   font-weight: bold;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #0d1117;
-  color: #c9d1d9;
-  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
-  margin: 0; height: 100vh; box-sizing: border-box;
-  display: flex; flex-direction: row;
+:root {
+  /* UI type: Instrument Sans (bundled for diagrams as DiagramSans); monospace
+     only for values — zoom, sizes, slider readouts. */
+  --ui-sans: 'DiagramSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --bg: #0d1117; --panel: #0b0e13; --raised: #151a21; --raised-hover: #1c232c;
+  --line: #2b323c; --line-soft: #1c2129;
+  --text: #c9d1d9; --text-strong: #e6edf3; --text-dim: #9aa4af; --text-faint: #7d8590;
+  --accent: #1f6feb; --accent-text: #79b0ff; --warn: #f0883e;
 }
-h1 { color: #58a6ff; font-size: 14px; letter-spacing: .3px; margin: 0; }
-.sub { color: #6e7681; font-size: 11px; line-height: 1.4; margin: 4px 0 0; }
-.sub a { color: #58a6ff; text-decoration: none; }
-.sub a:hover { text-decoration: underline; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--ui-sans);
+  margin: 0; height: 100vh; display: flex; flex-direction: row;
+}
 
 /* ---- App shell: left sidebar + main canvas area ---- */
 .sidebar {
-  width: 230px; flex-shrink: 0; height: 100vh; box-sizing: border-box;
-  background: #0b0e13; border-right: 1px solid #21262d;
-  padding: 16px 14px; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 13px;
+  width: 240px; flex-shrink: 0; height: 100vh;
+  background: var(--panel); border-right: 1px solid var(--line-soft);
+  padding: 14px 14px 18px; overflow-y: auto; font-size: 13px;
+  display: flex; flex-direction: column; gap: 16px;
 }
-.brand { border-bottom: 1px solid #21262d; padding-bottom: 11px; }
-.brand-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.head { display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+.head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.board-name { font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text-strong); overflow-wrap: anywhere; }
 .nav-collapse-btn {
-  width: 22px; height: 22px; padding: 0; border-radius: 5px;
-  font-size: 14px; line-height: 1; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px; flex-shrink: 0;
+  font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 /* Sidebar dock: collapse the controls so the canvas gets the full width (esp.
    on phones). The expand affordance floats over the stage when collapsed. */
 body.nav-collapsed .sidebar { display: none; }
 #navExpand {
-  position: absolute; top: 10px; left: 10px; z-index: 6; box-sizing: border-box;
+  position: absolute; top: 10px; left: 10px; z-index: 6;
   width: 34px; height: 34px; padding: 0; display: none;
   align-items: center; justify-content: center; font-size: 16px; line-height: 1;
-  background: #0b0e13cc; border: 1px solid #30363d; border-radius: 6px;
+  background: #0b0e13cc; border: 1px solid var(--line); border-radius: 6px;
 }
 body.nav-collapsed #navExpand { display: flex; }
-.sub[hidden] { display: none; }
-.group { display: flex; flex-direction: column; gap: 6px; }
-.group-label {
-  color: #6e7681; font-size: 10px; font-weight: 600;
-  letter-spacing: .6px; text-transform: uppercase; margin-bottom: 1px;
-}
-.main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: column; padding: 14px 14px 14px 10px; box-sizing: border-box; }
 
+/* Sections. A .sec-toggle heading collapses its section (state remembered). */
+.sec { display: flex; flex-direction: column; gap: 6px; }
+.sec-label {
+  color: var(--text-faint); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; margin-bottom: 1px;
+}
+.sidebar .sec-toggle {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  background: none; border: none; padding: 0; text-align: left; cursor: pointer;
+}
+.sidebar .sec-toggle:hover { background: none; color: var(--text); }
+.sec-toggle .chev::after { content: '▾'; letter-spacing: 0; }
+.sec.collapsed .sec-toggle .chev::after { content: '▸'; }
+.sec.collapsed > :not(.sec-toggle) { display: none; }
+.sec.collapsed + .sec.collapsed { margin-top: -6px; }
+.hint { color: var(--text-faint); font-size: 11.5px; line-height: 1.4; }
+
+/* Buttons: default, .primary (the one main action), .quiet (text only),
+   .warn (clears work), .mini (inline in a row). */
 button {
-  background: #161b22; color: #8b949e;
-  border: 1px solid #30363d; padding: 6px 12px;
-  cursor: pointer; border-radius: 6px; font-size: 12px;
-  font-family: inherit; transition: all .15s;
+  background: var(--raised); color: var(--text);
+  border: 1px solid var(--line); padding: 6px 10px;
+  cursor: pointer; border-radius: 6px; font: inherit; font-size: 12.5px;
+  transition: background .12s, border-color .12s, color .12s;
 }
-button:hover { background: #21262d; color: #c9d1d9; border-color: #6e7681; }
-button.on { background: #1f6feb22; color: #58a6ff; border-color: #1f6feb; }
-/* Sidebar controls stretch full width and read left-aligned like a menu. */
-.sidebar .group > button { width: 100%; text-align: left; }
+button:hover { background: var(--raised-hover); border-color: #3d4652; }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sidebar .sec > button { width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: baseline; }
+.sidebar button.primary { background: #1f6feb26; border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.sidebar button.primary:hover { background: #1f6feb40; }
+.sidebar button.quiet { background: none; border-color: transparent; color: var(--text-dim); padding: 4px 0; }
+.sidebar button.quiet:hover { color: var(--text); }
+.sidebar button.warn .aside { color: var(--warn); font-size: 11px; }
+.sidebar button.warn:hover { border-color: #f0883e88; }
+button.mini { padding: 5px 0; min-width: 34px; flex: 0 0 64px; text-align: center; }
+button.mini.icon { flex: 0 0 30px; min-width: 30px; }
 
-/* Multi-control rows: equal-width buttons sharing a line, optional leading label. */
-.btn-row { display: flex; gap: 6px; align-items: stretch; }
-.btn-row button { flex: 1; text-align: center; padding: 6px 4px; }
-.btn-row .row-label {
-  flex: 0 0 auto; align-self: center; color: #8b949e; font-size: 11px;
-  padding-right: 2px;
-}
-/* Segmented radio (Drag | Connect): one piece active at a time. */
-.segmented { display: flex; gap: 0; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-.segmented button { flex: 1; border: none; border-radius: 0; text-align: center; }
-.segmented button + button { border-left: 1px solid #30363d; }
-.segmented button.on { background: #1f6feb33; }
+/* A labelled row: label on the left, controls on the right. */
+.row { display: flex; align-items: center; gap: 6px; }
+.row > .lbl { flex: 1; color: var(--text-dim); }
+.switch-row { cursor: pointer; }
+
+/* Segmented control (Select | Connect): one piece active at a time. */
+.seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { flex: 1; border: none; border-radius: 0; text-align: center; padding: 7px 0; background: var(--raised); color: var(--text-dim); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--accent); color: #fff; font-weight: 600; }
+
+/* Form controls, styled for the dark panel. */
 select {
-  background: #161b22; color: #8b949e;
-  border: 1px solid #30363d; padding: 6px 10px;
-  cursor: pointer; border-radius: 6px; font-size: 12px;
-  font-family: inherit; width: 100%;
+  appearance: none; -webkit-appearance: none;
+  background: var(--raised) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237d8590' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center;
+  color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 26px 6px 9px; font: inherit; font-size: 12.5px; cursor: pointer; width: 100%;
 }
-select:hover { border-color: #6e7681; color: #c9d1d9; }
+select:hover { border-color: #3d4652; }
+select.compact { width: 116px; flex: none; }
+input[type=number] {
+  width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 7px; font: 12px var(--ui-mono); text-align: right;
+}
+input[type=number]:focus, select:focus-visible, button:focus-visible { outline: 2px solid #1f6feb99; outline-offset: 1px; }
+input.switch {
+  appearance: none; -webkit-appearance: none; flex: none; cursor: pointer;
+  width: 30px; height: 17px; border-radius: 9px; background: var(--line); position: relative;
+  transition: background .12s;
+}
+input.switch::after {
+  content: ''; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px;
+  border-radius: 50%; background: var(--text-dim); transition: left .12s, background .12s;
+}
+input.switch:checked { background: var(--accent); }
+input.switch:checked::after { left: 15px; background: #fff; }
+
+.main { flex: 1; min-width: 0; height: 100vh; display: flex; flex-direction: column; padding: 14px 14px 14px 10px; }
 
 /* Stage fills the main area; the canvas fills the stage and the board is drawn
    into it through a pan/zoom view transform (no longer fit-to-window). */
 .stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 canvas { display: block; cursor: default; touch-action: none; /* the app owns touch gestures (drag/pan); no native scroll/zoom steal */
   -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } /* no iOS selection callout on long-press */
-/* View HUD: zoom controls + board/content size readout, pinned top-right
-   (clear of the top-left expand button and the sidebar). */
-#viewHud { position: absolute; right: 10px; top: 10px; z-index: 5; display: flex; align-items: center; gap: 6px;
-  font: 11px ui-monospace, monospace; color: #8b949e; background: #0b0e13cc; border: 1px solid #30363d;
-  border-radius: 6px; padding: 3px 6px; user-select: none; }
-#viewHud button { font: 14px ui-monospace, monospace; color: #c9d1d9; background: #161b22; border: 1px solid #30363d;
-  border-radius: 4px; width: 22px; height: 22px; line-height: 1; cursor: pointer; padding: 0; }
-#viewHud button:hover { background: #21262d; }
+/* Canvas toolbar: zoom, the view overlays and the board/content size, pinned
+   top-right (clear of the top-left expand button). */
+#viewHud { position: absolute; right: 10px; top: 10px; z-index: 5; display: flex; flex-wrap: wrap; justify-content: flex-end;
+  align-items: center; gap: 5px; max-width: calc(100% - 60px);
+  font: 11px var(--ui-mono); color: var(--text-dim); background: #0b0e13e6; border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 6px; user-select: none; }
+#viewHud button { font: 13px var(--ui-mono); color: var(--text); background: var(--raised); border: 1px solid var(--line);
+  border-radius: 5px; width: 24px; height: 24px; line-height: 1; padding: 0; }
+#viewHud button:hover { background: var(--raised-hover); }
 #viewHud #zoomFit, #viewHud #zoomCenter { width: auto; padding: 0 8px; font-size: 11px; }
+#viewHud .hud-toggle { width: auto; padding: 0 9px; font: 12px var(--ui-sans); color: var(--text-dim); }
+#viewHud .hud-toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 #viewHud #zoomPct { min-width: 40px; text-align: center; cursor: pointer; }
-#viewHud #sizeReadout { margin-left: 4px; color: #6e7681; }
+#viewHud .hud-sep { width: 1px; height: 16px; background: var(--line); margin: 0 2px; }
+#viewHud #sizeReadout { color: var(--text-faint); }
+.heat-legend {
+  position: absolute; right: 10px; top: 48px; z-index: 5; display: flex; gap: 12px;
+  font-size: 11px; color: var(--text-dim); background: #0b0e13e6; border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 10px;
+}
+.heat-legend[hidden] { display: none; }
+.heat-legend > span { display: flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+/* What the last action did; fades out on its own (setStatus). */
+.status-pill {
+  position: absolute; left: 10px; bottom: 10px; z-index: 5; max-width: calc(100% - 20px);
+  font-size: 12px; color: var(--text); background: #0b0e13e6; border: 1px solid var(--line);
+  border-radius: 8px; padding: 5px 10px; pointer-events: none;
+}
+.status-pill:empty { display: none; }
+body.nav-collapsed .status-pill { left: 54px; }
 /* Loading / load-error message over the stage, until the board's state arrives. */
 .stage-msg { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px; color: #8b949e; font-size: 13px;
-  background: #0d1117; }
+  align-items: center; justify-content: center; gap: 12px; color: var(--text-dim); font-size: 13px;
+  background: var(--bg); }
 .stage-msg[hidden] { display: none; }
-/* Sidebar foot: legend + live status, pinned to the bottom. */
-.sidebar-foot { margin-top: auto; border-top: 1px solid #21262d; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
-.legend { color: #6e7681; font-size: 10px; display: flex; flex-direction: column; gap: 5px; }
-.legend span { display: flex; align-items: center; gap: 6px; }
-.dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
-.sep { color: #30363d; }
 
 /* Routing-params: collapsible section inside the sidebar */
 #tuningDock.collapsed #tuningPanel { display: none; }
 #tuningDock.collapsed #tuningToggle::after { content: '▸'; }
-#tuningToggle::after { content: '▾'; float: right; color: #6e7681; }
+#tuningToggle { width: 100%; text-align: left; }
+#tuningToggle::after { content: '▾'; float: right; color: var(--text-faint); }
 .panel {
   display: grid;
   grid-template-columns: 1fr;
@@ -147,7 +203,7 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 .param { display: flex; flex-direction: column; gap: 3px; }
 .param label {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 11px; color: #8b949e;
+  font-size: 12px; color: var(--text-dim);
 }
 .param label .val {
   color: #c9d1d9; font-weight: 600;
@@ -173,7 +229,8 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
   height: 4px; background: #30363d; border-radius: 2px;
 }
 .param .label-row { display: flex; align-items: center; gap: 5px; }
-.param .label-row .name { font-size: 11px; color: #8b949e; }
+.param .label-row .name { font-size: 12px; color: var(--text-dim); }
+.param label .val { font-family: var(--ui-mono); font-size: 11px; }
 .info-btn {
   width: 14px; height: 14px; border-radius: 50%;
   background: transparent; border: 1px solid #30363d;
@@ -189,10 +246,6 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 }
 .param-desc.show { display: block; }
 
-#status {
-  color: #6e7681; font-size: 10px; min-height: 14px; line-height: 1.4;
-}
-#tuningToggle { font-size: 11px; color: #8b949e; }
 
 /* Node editor popover */
 .node-editor {
@@ -318,10 +371,9 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
     order: 2; width: 100%; height: auto; padding: 10px 12px; gap: 10px;
     border-right: none; border-top: 1px solid #21262d;
   }
-  .sidebar-foot { margin-top: 12px; }            /* no longer pinned to a 100vh column */
   /* Touch-friendly hit areas */
   button, select { padding: 11px 12px; font-size: 14px; }
-  .btn-row button { padding: 11px 6px; }
+  select { padding-right: 28px; }
   .chip { padding: 10px 8px; font-size: 13px; }
   .ctx-menu > button { padding: 12px 12px; }
   .ctx-menu .ctx-swatch, .color-picker .ctx-swatch { width: 24px; height: 24px; }
@@ -336,111 +388,98 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 @media (max-height: 560px) {
   .main { padding: 6px; }
   .sidebar { padding: 10px 12px; gap: 9px; }
-  .brand { padding-bottom: 8px; }
 }
 </style>
 </head>
 <body>
 <aside class="sidebar">
-  <div class="brand">
-    <div class="brand-head">
-      <h1 id="brand">Diagram Tool</h1>
-      <button id="navCollapse" class="nav-collapse-btn" title="Collapse sidebar">‹</button>
+  <header class="head">
+    <div class="head-row">
+      <h1 id="diagramTitle" class="board-name">Diagram</h1>
+      <button id="navCollapse" class="nav-collapse-btn" title="Hide the sidebar">‹</button>
     </div>
-    <p class="sub" id="diagramTitle" hidden></p>
-  </div>
+    <select id="boardSelect" title="Open another board"></select>
+  </header>
 
-  <div class="group">
-    <div class="group-label">Board</div>
-    <select id="boardSelect" title="Switch whiteboard"></select>
-  </div>
-
-  <div class="group">
-    <div class="group-label">View</div>
-    <div class="btn-row">
-      <button id="bGrid" title="Toggle the grid overlay">Grid</button>
-      <button id="bHeat" title="Toggle the routing-cost heat map">Heat</button>
-      <button id="bConn" title="Toggle connection points">Conn</button>
-      <button id="bFlow" title="Toggle the flow-field arrows">Flow</button>
+  <section class="sec">
+    <div class="sec-label">Tool</div>
+    <div class="seg">
+      <button id="bDrag" class="on" title="Select: click a box or wire to edit it, drag to move, right-click for more">Select</button>
+      <button id="bConnect" title="Connect: click a box, then another, to draw a wire between them">Connect</button>
     </div>
-    <select id="flowSelect" title="Flow field: steers wire sides and routing">
-      <option value="">flow: none</option>
-      <option>right</option>
-      <option>down</option>
-      <option>left</option>
-      <option>up</option>
-      <option>swirl</option>
-      <option>snake</option>
-      <option>snake2</option>
-      <option>snake4</option>
-      <option>right&gt;down</option>
-      <option>down&gt;right</option>
-    </select>
-  </div>
+  </section>
 
-  <div class="group">
-    <div class="group-label">Mode</div>
-    <div class="segmented">
-      <button id="bDrag" class="on" title="Drag mode: click and drag nodes to move them">Drag</button>
-      <button id="bConnect" title="Connect mode: reveals connector slots; click a source node, then a target node, to draw an edge">Connect</button>
-    </div>
-  </div>
+  <section class="sec">
+    <div class="sec-label">Add</div>
+    <button id="bAddNode" class="primary" title="Add a node and open its editor">+ Node</button>
+    <p class="hint">Notes, pins, and wire options: right-click the canvas or a box.</p>
+  </section>
 
-  <div class="group">
-    <div class="group-label">Nodes &amp; layout</div>
-    <button id="bAddNode" title="Add a new node (then edit it)">+ Node</button>
-    <div class="btn-row">
-      <span class="row-label">Align</span>
-      <button id="bAlignH" title="Nudge nearly-aligned box centers onto the same column">H</button>
-      <button id="bAlignV" title="Nudge nearly-aligned box centers onto the same row">V</button>
+  <section class="sec">
+    <div class="sec-label">Layout</div>
+    <button id="bAutoLayout" class="warn" title="Clear every pin and lay out the whole board from its rows and columns">Auto layout <span class="aside">clears pins</span></button>
+    <button id="bAutoLayoutKeep" title="Lay out the unpinned boxes again; pinned boxes stay where they are">Re-flow unpinned</button>
+    <button id="bFlowPlace" title="Lay the board out along its flow field: the longest chain of wires follows the field and the other boxes sit beside their neighbours. Pins every box">Lay out along flow</button>
+    <div class="row">
+      <span class="lbl">Spread</span>
+      <button id="bContract" class="mini" title="Pull the boxes closer together; press again to go further">−</button>
+      <button id="bExpand" class="mini" title="Push the boxes further apart; press again to go further">+</button>
     </div>
-    <div class="btn-row">
-      <span class="row-label">Spread</span>
-      <button id="bContract" title="Pull boxes back together — steps down the expand slider (100→50→0), then compacts toward the center">Contract</button>
-      <button id="bExpand" title="Spread boxes apart with force-directed repulsion — press again to go further (50%, 100%, 150%)">Expand</button>
+    <div class="row">
+      <span class="lbl">Line up</span>
+      <button id="bAlignV" class="mini" title="Snap boxes that are nearly in a row onto the same row">Rows</button>
+      <button id="bAlignH" class="mini" title="Snap boxes that are nearly in a column onto the same column">Columns</button>
     </div>
-    <button id="bAutoLayout" title="Clear all pins and re-run the automatic layout from scratch">Auto Layout</button>
-    <button id="bFlowPlace" title="Lay the nodes out along the board's flow field: the longest chain follows the field, the rest sit beside their neighbours (pins every node)">Place along flow</button>
-    <button id="bAutoLayoutKeep" title="Re-run automatic layout on the unpinned nodes only — pinned nodes stay put and the rest re-flow around them">Auto Layout (keep pins)</button>
-  </div>
+  </section>
 
-  <div class="group">
-    <div class="group-label">Canvas</div>
-    <button id="bTrimCanvas" title="Shrink the board/export frame to hug the diagram (slides the diagram to a uniform margin)">Shrink to content</button>
-    <button id="bExpandCanvas" title="Grow the board/export frame to the current visible area (never crops content)">Zoom to extents</button>
-    <button id="bGrowCanvas" title="Add 60px of space on every side of the board/export frame">Expand</button>
-    <button id="bExpandAll" title="Extend every edge of the board/export frame to the edge of the view (never shrinks)">Expand all</button>
-  </div>
-
-  <div class="group">
-    <div class="group-label">Theme &amp; export</div>
-    <select id="themeSelect" title="Color scheme"></select>
-    <div style="display:flex;gap:6px;align-items:center">
-      <span style="flex:1;color:#8b949e;font-size:11px">Font size</span>
-      <input id="fontSizeInput" type="number" min="6" max="48" placeholder="13" title="Base font size (px); blank = default 13" style="width:64px">
-      <button id="fontSizeReset" title="Reset to default" style="width:auto;padding:6px 8px">↺</button>
-    </div>
-    <label style="display:flex;gap:6px;align-items:center;color:#8b949e;font-size:11px;cursor:pointer"
-           title="Center connectors on each box side (vs the default: align to keep straight runs)">
-      <input id="centerConnectors" type="checkbox" style="width:auto"> Center connectors
+  <section class="sec">
+    <div class="sec-label">Board</div>
+    <label class="row">
+      <span class="lbl">Flow field</span>
+      <select id="flowSelect" class="compact" title="A direction at every point of the board: wires follow it, and Lay out along flow places boxes along it">
+        <option value="">None</option>
+        <option>right</option>
+        <option>down</option>
+        <option>left</option>
+        <option>up</option>
+        <option>swirl</option>
+        <option>snake</option>
+        <option>snake2</option>
+        <option>snake4</option>
+        <option>right&gt;down</option>
+        <option>down&gt;right</option>
+      </select>
     </label>
-    <label style="display:flex;gap:6px;align-items:center;color:#8b949e;font-size:11px;cursor:pointer"
-           title="Draw a dot where each wire leaves its box; off starts wires at the box edge">
-      <input id="startMarkers" type="checkbox" style="width:auto"> Start markers
+    <label class="row">
+      <span class="lbl">Theme</span>
+      <select id="themeSelect" class="compact" title="Color scheme"></select>
     </label>
-    <button id="bSave" title="Copy the current layout JSON to the clipboard">Copy to Clipboard</button>
-    <button id="bViewer" title="Open the live PNG viewer in a new tab">PNG Viewer ↗</button>
-  </div>
+    <div class="row">
+      <label class="lbl" for="fontSizeInput">Font size</label>
+      <input id="fontSizeInput" type="number" min="6" max="48" placeholder="13" title="Base font size in px; empty for the default, 13">
+      <button id="fontSizeReset" class="mini icon" title="Back to the default size">↺</button>
+    </div>
+  </section>
 
-  <div class="group collapsed" id="tuningDock">
-    <button class="group-toggle" id="tuningToggle" title="A* routing parameters">Routing parameters</button>
-    <div class="panel" id="tuningPanel">
+  <section class="sec" data-sec="wires">
+    <button class="sec-label sec-toggle">Wires <span class="chev"></span></button>
+    <label class="row switch-row" title="Fan each side's wires out from its center; off lines them up for straight runs">
+      <span class="lbl">Center connectors</span>
+      <input id="centerConnectors" type="checkbox" class="switch">
+    </label>
+    <label class="row switch-row" title="Draw a dot where each wire leaves its box; off starts wires at the box edge">
+      <span class="lbl">Start markers</span>
+      <input id="startMarkers" type="checkbox" class="switch">
+    </label>
+    <div class="collapsed" id="tuningDock">
+      <button class="quiet" id="tuningToggle" title="How the router weighs steps, turns, and clearance">Routing parameters</button>
+      <div class="panel" id="tuningPanel">
   <div class="param">
     <label>
-      <span class="label-row"><span class="name">Base step cost</span><button class="info-btn" data-info="dStep">i</button></span>
+      <span class="label-row"><span class="name">Step cost</span><button class="info-btn" data-info="dStep">i</button></span>
       <span class="val" id="vStep">10</span>
     </label>
-    <div class="param-desc" id="dStep">Per-cell movement cost. Higher values relative to turn penalty make the router prefer shorter paths even with more bends.</div>
+    <div class="param-desc" id="dStep">Cost of each cell a wire crosses. Higher, relative to the turn penalty, makes the router prefer shorter wires even with more bends.</div>
     <input type="range" id="sStep" min="1" max="50" value="10">
   </div>
   <div class="param">
@@ -448,7 +487,7 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
       <span class="label-row"><span class="name">Turn penalty</span><button class="info-btn" data-info="dTurn">i</button></span>
       <span class="val" id="vTurn">30</span>
     </label>
-    <div class="param-desc" id="dTurn">Extra cost each time a route changes direction. At 0 routes zigzag freely. High values force long detours to avoid a single bend.</div>
+    <div class="param-desc" id="dTurn">Extra cost each time a wire changes direction. At 0 wires zigzag freely; high values force long detours to save a bend.</div>
     <input type="range" id="sTurn" min="0" max="100" value="30">
   </div>
   <div class="param">
@@ -456,7 +495,7 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
       <span class="label-row"><span class="name">Near-box cost</span><button class="info-btn" data-info="dNear">i</button></span>
       <span class="val" id="vNear">40</span>
     </label>
-    <div class="param-desc" id="dNear">Clearance penalty for cells adjacent to a box. At 0, wires hug box edges. Higher values push routes further away from boxes.</div>
+    <div class="param-desc" id="dNear">Cost of the cells next to a box. At 0 wires hug box edges; higher values keep them further away.</div>
     <input type="range" id="sNear" min="0" max="100" value="40">
   </div>
   <div class="param">
@@ -464,20 +503,25 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
       <span class="label-row"><span class="name">Overlap penalty</span><button class="info-btn" data-info="dOver">i</button></span>
       <span class="val" id="vOver">20</span>
     </label>
-    <div class="param-desc" id="dOver">Cost stamped on cells after each route is computed. At 0, wires freely stack on each other. Higher values force subsequent routes to spread apart.</div>
+    <div class="param-desc" id="dOver">Cost added to the cells each routed wire uses. At 0 wires stack on each other; higher values spread later wires apart.</div>
     <input type="range" id="sOver" min="0" max="100" value="20">
   </div>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="sidebar-foot">
-    <div class="legend">
-      <span><span class="dot" style="background:#da363333;border:1px solid #da3633"></span>blocked</span>
-      <span><span class="dot" style="background:#ff980033"></span>near-box (<span id="legNear">+40</span>)</span>
-      <span><span class="dot" style="background:#f0c040;border-radius:50%"></span>conn point</span>
-    </div>
-    <div id="status"></div>
-  </div>
+  <section class="sec collapsed" data-sec="frame">
+    <button class="sec-label sec-toggle">Frame <span class="chev"></span></button>
+    <button id="bTrimCanvas" title="Shrink the frame (the exported area) to hug the diagram, with an even margin">Fit to content</button>
+    <button id="bExpandCanvas" title="Set the frame to the area you can see; it never crops the diagram">Fit to view</button>
+    <button id="bGrowCanvas" title="Add 60px to every side of the frame">Add margin</button>
+  </section>
+
+  <section class="sec collapsed" data-sec="export">
+    <button class="sec-label sec-toggle">Export <span class="chev"></span></button>
+    <button id="bSave" title="Copy the board's box positions as JSON">Copy layout JSON</button>
+    <button id="bViewer" title="Open the rendered PNG for this board in a new tab">Open PNG viewer ↗</button>
+  </section>
 </aside>
 
 <main class="main">
@@ -489,12 +533,24 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
     <button id="navExpand" title="Show controls">☰</button>
     <div id="viewHud">
       <button id="zoomOut" title="Zoom out">−</button>
-      <span id="zoomPct" title="Reset to fit">100%</span>
+      <span id="zoomPct" title="Zoom to fit the board">100%</span>
       <button id="zoomIn" title="Zoom in">+</button>
-      <button id="zoomFit" title="Fit board to view">fit</button>
-      <button id="zoomCenter" title="Center the board frame in the view, keeping the zoom">center</button>
+      <button id="zoomFit" title="Zoom to fit the board">fit</button>
+      <button id="zoomCenter" title="Center the board, keeping the zoom">center</button>
+      <span class="hud-sep"></span>
+      <button id="bGrid" class="hud-toggle" title="Show the routing grid">Grid</button>
+      <button id="bHeat" class="hud-toggle" title="Show what routing costs: blocked cells and the cost near boxes">Heat</button>
+      <button id="bConn" class="hud-toggle" title="Show the connection points on each box">Ports</button>
+      <button id="bFlow" class="hud-toggle" title="Show the flow field as arrows">Flow</button>
+      <span class="hud-sep"></span>
       <span id="sizeReadout"></span>
     </div>
+    <div id="heatLegend" class="heat-legend" hidden>
+      <span><span class="dot" style="background:#da363333;border:1px solid #da3633"></span>blocked</span>
+      <span><span class="dot" style="background:#ff9800aa"></span><span>near a box (<span id="legNear">+40</span>)</span></span>
+      <span><span class="dot" style="background:#f0c040;border-radius:50%"></span>connection point</span>
+    </div>
+    <div id="status" class="status-pill" role="status"></div>
   </div>
 </main>
 
