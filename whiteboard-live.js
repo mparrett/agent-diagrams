@@ -302,6 +302,7 @@ function buildNotes() {
 }
 
 function render() {
+  if (!diagramState || !ctx) return; // nothing to draw until the board loads
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, cvs.width, cvs.height);
   ctx.fillStyle = DESK; // the "desk" outside the board
@@ -2326,10 +2327,20 @@ function placeableIds() {
       .flatMap((pins) => Object.keys(pins || {})),
   ]);
 }
-document.getElementById("bAutoLayout").onclick = () => {
+document.getElementById("bAutoLayout").onclick = async () => {
+  // Older boards can carry saved positions without a pin list; both reset.
+  const n =
+    new Set([...pinnedSet, ...Object.keys(diagramState.layout || {})]).size;
+  if (
+    n &&
+    !await askConfirm(
+      `Clear ${n} pin${n === 1 ? "" : "s"} and lay out the whole board again?`,
+      "Clear pins",
+    )
+  ) return;
   pinnedSet.clear();
   resolveAuto(placeableIds());
-  setStatus("auto-layout: re-solved, pins cleared");
+  setStatus("auto layout: re-solved, pins cleared");
 };
 // Auto Layout (keep pins): re-flow only the unpinned nodes; pinned nodes keep
 // their positions and act as fixed obstacles the rest lay out around. Lets you
@@ -3539,8 +3550,9 @@ let cmResolve = null;
 const confirmOpen = () =>
   confirmModalEl.style.display !== "" &&
   confirmModalEl.style.display !== "none";
-function askConfirm(message) {
+function askConfirm(message, okLabel = "Delete") {
   cmMsg.textContent = message;
+  cmOk.textContent = okLabel;
   confirmModalEl.style.display = "flex";
   cmOk.focus();
   return new Promise((res) => {
@@ -4084,8 +4096,20 @@ function updateZoomLabel() {
 // ================================================================
 // STARTUP
 // ================================================================
+// A message over the stage while the board loads, or why it didn't; Retry
+// runs init again.
+const stageMsg = document.getElementById("stageMsg");
+const stageRetry = document.getElementById("stageRetry");
+function showStageMsg(text, { retry = false } = {}) {
+  document.getElementById("stageMsgText").textContent = text;
+  stageRetry.hidden = !retry;
+  stageMsg.hidden = false;
+}
+stageRetry.onclick = () => init();
+
 async function init() {
-  setStatus("Loading diagram-state.json...");
+  const name = BOARD === "default" ? "board" : BOARD;
+  showStageMsg(`Loading ${name}…`);
   try {
     const resp = await fetch(API + "/diagram-state.json", {
       cache: "no-store",
@@ -4093,7 +4117,7 @@ async function init() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     diagramState = await resp.json();
   } catch (e) {
-    setStatus("Failed to load diagram-state.json: " + e.message);
+    showStageMsg(`Couldn't load ${name}: ${e.message}`, { retry: true });
     return;
   }
   noteLayoutLocal = { ...(diagramState.noteLayout || {}) };
@@ -4165,6 +4189,7 @@ async function init() {
   updateCursor();
 
   rebuild();
+  stageMsg.hidden = true;
   render();
 
   const failCount = routes.filter((r) => r.path === null).length;

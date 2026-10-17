@@ -1,6 +1,11 @@
 # Sidebar redesign
 
-Status: audit done 2026-10-16; no phase started.
+Status: plan signed off 2026-10-17; phases 1–3 in progress.
+
+Decisions at sign-off: overlays move to the canvas toolbar; Expand all merges
+into Fit to view; the sidebar uses a sans UI font (Instrument Sans, already
+bundled for diagrams) with monospace kept for values; Drag is renamed Select.
+Tooltips and the README get a final pass once phases 1–3 land.
 
 The editor's left sidebar grew one control at a time. This is the audit of what
 is wrong with it and a phased plan to fix it. Each phase ships on its own and

@@ -120,6 +120,11 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 #viewHud #zoomFit, #viewHud #zoomCenter { width: auto; padding: 0 8px; font-size: 11px; }
 #viewHud #zoomPct { min-width: 40px; text-align: center; cursor: pointer; }
 #viewHud #sizeReadout { margin-left: 4px; color: #6e7681; }
+/* Loading / load-error message over the stage, until the board's state arrives. */
+.stage-msg { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; color: #8b949e; font-size: 13px;
+  background: #0d1117; }
+.stage-msg[hidden] { display: none; }
 /* Sidebar foot: legend + live status, pinned to the bottom. */
 .sidebar-foot { margin-top: auto; border-top: 1px solid #21262d; padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .legend { color: #6e7681; font-size: 10px; display: flex; flex-direction: column; gap: 5px; }
@@ -477,6 +482,10 @@ canvas { display: block; cursor: default; touch-action: none; /* the app owns to
 
 <main class="main">
   <div class="stage"><canvas id="c"></canvas>
+    <div id="stageMsg" class="stage-msg" hidden>
+      <span id="stageMsgText"></span>
+      <button id="stageRetry" hidden>Retry</button>
+    </div>
     <button id="navExpand" title="Show controls">☰</button>
     <div id="viewHud">
       <button id="zoomOut" title="Zoom out">−</button>
