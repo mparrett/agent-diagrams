@@ -13,7 +13,7 @@ Mermaid/Graphviz are great but their auto-layout is hard to nudge and the output
 - **Data-first** — the whole diagram is one JSON file an agent can read, diff, and edit.
 - **Real orthogonal routing** — A\* on a cost grid, so wires avoid boxes and each other, with tunable turn/clearance/overlap penalties.
 - **Deterministic, reviewable** — same JSON → same PNG, byte for byte; the JSON lives in git. (Set `"timestamp": true` to stamp the render time into the image — that trades the byte-stability away, so `diagram.png` then changes on every render.)
-- **A human escape hatch** — open the live editor, drag things, click *Save positions*, paste back into the JSON.
+- **A human escape hatch** — open the live editor, drag things, click *Copy layout JSON*, paste back into the JSON.
 
 ## Requirements
 
@@ -70,7 +70,7 @@ board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). Symli
 directories are followed, so boards kept in another repo can be linked in
 (`ln -s ~/elsewhere/boards diagrams/scratch/elsewhere`); restart the server after adding
 a link so it watches the linked directory for live reload. The editor
-sidebar has a **Board** picker (or open `whiteboard-live.html?d=<name>` /
+sidebar has a board picker at the top (or open `whiteboard-live.html?d=<name>` /
 `whiteboard.html?d=<name>` directly); agents target a board with
 `--state diagrams/<name>/diagram-state.json` as usual. `GET /diagrams` lists boards;
 board-scoped endpoints live under `/d/<name>/…`; unprefixed endpoints keep operating
@@ -79,12 +79,17 @@ and it's in the picker. Board names map to paths server-side only.
 
 **As a human (in the editor):**
 
-- **Drag** a box to move it — auto-saves (debounced) and re-renders.
-- **+ Node** adds one; **double-click** a node to edit label / color / details; **Delete** removes it.
-- **Connect** mode draws an edge between two nodes.
-- **Align** / **Expand** / **Contract** tidy the layout; **Auto Layout** drops all manual positions (and pins) back to auto-layout — *persisted*, so a reload won't bring the old drags back.
-- The **theme** dropdown and the four **A\* routing sliders** (⚙, right side) apply live **and persist to the file** (so the CLI/PNG render reproduces what you tuned).
-- **Save positions** copies the full state — including the authoritative `layout` map — to your clipboard for paste-back into the JSON.
+The sidebar runs top to bottom in the order you work on a board:
+
+- **Tool:** **Select** to move boxes (drag), edit them (double-click), or open their menu (right-click); **Connect** to draw a wire by clicking one box, then another. Moves auto-save and re-render.
+- **Add:** **+ Node** adds a box and opens its editor. Notes, pins, and wire options are on the right-click menus; **Delete** removes the hovered box.
+- **Layout:** **Auto layout** clears every pin and lays the board out again from rows and columns (it asks first); **Re-flow unpinned** does the same for unpinned boxes only; **Lay out along flow** places boxes along the board's flow field. **Spread − / +** pulls boxes together or pushes them apart, and **Line up rows / columns** snaps nearly-aligned boxes into line. Layout changes persist, so a reload won't bring old drags back.
+- **Board:** the flow field, the theme, and the font size, saved to the file.
+- **Wires:** **Center connectors** and **Start markers**, plus the four A\* **Routing parameters** (collapsed). All persist, so the CLI and PNG render reproduce what you tuned.
+- **Frame** (the exported area): **Fit to content**, **Fit to view**, **Add margin**. Dragging a frame handle resizes one edge; double-clicking a handle extends that edge to the view.
+- **Export:** **Copy layout JSON** copies the full state, including the authoritative `layout` map, for paste-back into the file; **Open PNG viewer** opens the rendered PNG.
+
+The canvas toolbar (top right) has zoom, **fit**, and **center**, and the view overlays: **Grid**, **Heat** (routing cost, with a legend), **Ports** (connection points), and **Flow** (the flow field as arrows). What the last action did shows in a pill at the bottom left.
 
 **As an agent (file or CLI, while the server runs):**
 
@@ -369,12 +374,12 @@ d.render();                               // writes diagram.png next to the stat
 `whiteboard-live.html` is a browser editor that loads `diagram-state.json` and lets you:
 
 - **drag boxes** to position them (auto-saves, debounced, syncs live),
-- **add a node** (`+ Node`) and **edit one** (double-click it) — label, color, details — via a small popover (Save creates/updates, Delete removes, Cancel discards),
+- **add a node** (`+ Node`) and **edit one** (double-click it) — label, color, details — via a small popover (changes apply live; Reset reverts them, Delete removes the node, Close finishes),
 - **right-click for a context menu** — on a box: *Connect from here*, *Edit…*, color swatches, *Connector layout* (per-side spread/collapse), *Pin/Unpin*, *Delete*; on an edge (its **label** counts too): *Edit…*, *Reverse direction*, *Delete*,
 - **hover affordances** — the box/edge under the cursor is highlighted and the cursor telegraphs the target (grab / pointer / crosshair),
-- **pin manually-placed nodes** — dragging a box pins it (corner marker); *Unpin* (box menu) frees one node back to auto-layout; **Auto Layout** clears all pins and re-solves the whole board, while **Auto Layout (keep pins)** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Auto Layout (keep pins)** releases everything but the pins,
-- **switch boards** via the sidebar **Board** picker (multi-whiteboard; see above),
-- pick a **color scheme**, run **align/spread**, **reset** to auto-layout, and live-tune the four A\* routing knobs (collapsible *Routing parameters* section in the sidebar).
+- **pin manually-placed nodes** — dragging a box pins it (corner marker); *Unpin* (box menu) frees one node back to auto-layout; **Auto layout** clears all pins and re-solves the whole board, while **Re-flow unpinned** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Re-flow unpinned** releases everything but the pins,
+- **switch boards** via the board picker at the top of the sidebar (multi-whiteboard; see above),
+- pick a **color scheme**, **line up** or **spread** boxes, **reset** to auto layout, and live-tune the four A\* routing knobs (*Routing parameters*, under Wires in the sidebar).
 
 Dividers and groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
 
@@ -457,10 +462,10 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 - Auto row spacing accounts for real node heights (tallest box per row + a routing gap), so plain `row`/`col` authoring shouldn't produce route failures. Skipped row indices add extra vertical air. Explicit `rowY` still overrides per row.
 - If a connector cell is unavailable (covered by an adjacent box), the router falls back to the nearest open connector on that side, then to the next-best side — a tight layout degrades to a less-ideal wire instead of a red ✕. A red ✕ now only appears when a box is fully walled in.
 - Connector placement is optimized automatically: each box side's connectors are ordered by where their counterpart sits (barycentric port assignment), so wires leave a box already pointing toward their destination — fewer crossings, shorter runs. It recomputes from the current layout on every render; explicit `--fromConn`/`--toConn` pins always win.
-- `startMarkers` (state field, or `set-start-markers <on|off>`): `false` drops each wire's start marker (the dot where it leaves its box) and draws the wire from the box edge. The editor's "Start markers" checkbox sets the same field.
+- `startMarkers` (state field, or `set-start-markers <on|off>`): `false` drops each wire's start marker (the dot where it leaves its box) and draws the wire from the box edge. The editor's **Start markers** switch (Wires) sets the same field.
 - `direction` (state field, or `set-direction <down|right|reset>`) is which way the board reads. It settles the sides for boxes that sit diagonally apart: `down` joins them bottom to top unless they are much further apart sideways, `right` joins them side to side unless they are much further apart vertically. Boxes that overlap on one axis still get a straight wire, and an edge's own `fromEdge`/`toEdge` wins. A left-to-right board that needed `--fromEdge=E --toEdge=W` on its diagonal edges needs only `set-direction right`.
-- `flow` (experimental; state field, `set-flow <field|none>`, or the editor's field picker) gives the board a direction at every point: `right`, `left`, `down`, `up`, `swirl`, `snake` (also `snake2`, `snake4`), or two joined with `>` such as `right>down`. Wires between diagonal boxes take their sides from it and routing pays extra to run against it. `flow-place` (or **Place along flow** in the editor) pins the longest chain of edges along the field and the other nodes beside their neighbours. The editor's **Flow** toggle draws the field as arrows. Notes: `docs/project_notes/flow-fields.md`.
-- `connectorAnchor` (state field, editor "Center connectors" toggle, or `set-connector-anchor <align|center>`) chooses how auto connectors anchor on a side. `align` (default) anchors on the overlap band between the two boxes so a lone edge between offset-but-aligned boxes runs perfectly straight (the de-kinker). `center` instead fans every side's connectors symmetrically about its center — a lone edge lands dead-center, multiple straddle it evenly — at the cost of a jog on edges into/out of offset boxes.
+- `flow` (experimental; state field, `set-flow <field|none>`, or the editor's field picker) gives the board a direction at every point: `right`, `left`, `down`, `up`, `swirl`, `snake` (also `snake2`, `snake4`), or two joined with `>` such as `right>down`. Wires between diagonal boxes take their sides from it and routing pays extra to run against it. `flow-place` (or **Lay out along flow** in the editor) pins the longest chain of edges along the field and the other nodes beside their neighbours. The editor's **Flow** toggle draws the field as arrows. Notes: `docs/project_notes/flow-fields.md`.
+- `connectorAnchor` (state field, the editor's **Center connectors** switch, or `set-connector-anchor <align|center>`) chooses how auto connectors anchor on a side. `align` (default) anchors on the overlap band between the two boxes so a lone edge between offset-but-aligned boxes runs perfectly straight (the de-kinker). `center` instead fans every side's connectors symmetrically about its center — a lone edge lands dead-center, multiple straddle it evenly — at the cost of a jog on edges into/out of offset boxes.
 - Auto edge-side selection is heuristic; pin specific sides/connectors with `--fromEdge`/`--toEdge`/`--fromConn`/`--toConn` (or the live editor) when you need exact control. In the editor, hovering a box reveals one nub per connector slot on each side; drag from a slot (pins `fromEdge`+`fromConn`) onto a target slot (pins `toEdge`+`toConn`).
 - **Parallel edges** between the same node pair are allowed — they land on distinct connector slots. Each edge has a stable `id` (`from~to`, suffixed `~2`, `~3`…) that is its identity for edits/reverse/retarget; the `id` stays put even as endpoints move. Legacy diagrams without ids are backfilled deterministically on load and materialized on the next save. The editor addresses edges by `id` internally; the CLI accepts `--id=` (see `list-edges`).
 - Both bundled faces (`assets/fonts/`, free licenses) carry full symbol coverage, so `→ ✓ ✗ ◀ ·` and other arrows/dingbats render correctly in labels and details — in mono and sans alike.

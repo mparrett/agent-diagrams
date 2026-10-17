@@ -25,9 +25,9 @@ flow-place                      # pins every node; frame sized from the boxes
 flow-place --frame=1300x900     # or give the area the field spans
 ```
 
-In the editor, the View group has a field picker and a **Flow** toggle that
-draws the field as arrows; **Place along flow** (Nodes & Layout) runs
-`flow-place`.
+In the editor, the field picker is under Board, the **Flow** toggle in the
+canvas toolbar draws the field as arrows, and **Lay out along flow** (Layout)
+runs `flow-place`.
 
 `set-flow` alone changes only sides and routing. `flow-place` writes `layout`
 pins, so the result is a frozen arrangement: edit the board and run it again.

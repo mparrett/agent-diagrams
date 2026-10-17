@@ -2029,7 +2029,7 @@ function savePositions() {
   const json = JSON.stringify(exported, null, 2);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(json).then(
-      () => setStatus("Positions copied to clipboard"),
+      () => setStatus("layout JSON copied"),
       () => downloadJSON(json),
     );
   } else {
@@ -2121,7 +2121,7 @@ document.getElementById("bConnect").onclick = () => setMode("connect");
 // loaded board. There is also no coherent behavior it could have had: "back to
 // auto-layout" means dropping every override, after which nothing is manually
 // placed, so the pin set must clear too — which is exactly Auto Layout. Removed
-// rather than duplicated; see Auto Layout / Auto Layout (keep pins) below.
+// rather than duplicated; see Auto layout / Re-flow unpinned below.
 // Align moves boxes that share one parent: the board's. Members of inner
 // groups are skipped.
 function alignBoard(axis) {
@@ -2133,15 +2133,15 @@ function alignBoard(axis) {
     schedulePersist();
   }
   if (skipped) {
-    setStatus(`aligned board boxes; skipped ${skipped} in inner groups`);
+    setStatus(`lined up board boxes; skipped ${skipped} in inner groups`);
   }
 }
 document.getElementById("bAlignH").onclick = () => alignBoard("h");
 document.getElementById("bAlignV").onclick = () => alignBoard("v");
-// ── Expand / Contract ─────────────────────────────────────────────
+// ── Spread − / + ──────────────────────────────────────────────────
 // A shared slider between the layout at session start (level 0) and the fully
-// force-spread layout (level 1) and one stop past it (1.5), in 50% steps. Expand
-// climbs (0→0.5→1→1.5), Contract descends; at the floor it compacts toward the centroid.
+// force-spread layout (level 1) and one stop past it (1.5), in 50% steps. +
+// climbs (0→0.5→1→1.5), − descends; at the floor it compacts toward the centroid.
 // Any other layout change (drag, reset, auto-layout) invalidates the session — we
 // detect that by comparing a position signature against our own last result.
 const SPREAD_MAX = 1.5; // stops at 0 → 50% → 100% → 150% (150% extrapolates past the force-equilibrium)
@@ -2225,24 +2225,24 @@ function compactTowardCentroid() {
 document.getElementById("bExpand").onclick = () => {
   ensureSpreadSession();
   if (spreadSession.level >= SPREAD_MAX) {
-    setStatus("already fully expanded");
+    setStatus("already spread as far as it goes");
     return;
   }
   applySpreadLevel(Math.min(SPREAD_MAX, spreadSession.level + 0.5));
-  setStatus("expand " + Math.round(spreadSession.level * 100) + "%");
+  setStatus("spread " + Math.round(spreadSession.level * 100) + "%");
 };
 document.getElementById("bContract").onclick = () => {
   ensureSpreadSession();
   if (spreadSession.level > 0) {
     applySpreadLevel(Math.max(0, spreadSession.level - 0.5));
-    setStatus("contract → " + Math.round(spreadSession.level * 100) + "%");
+    setStatus("spread " + Math.round(spreadSession.level * 100) + "%");
   } else if (compactTowardCentroid()) {
     recordMoves();
     resolveBoxes();
     schedulePersist();
     spreadSession = null; // compaction moved the baseline; next expand re-bases
-    setStatus("compacted");
-  } else setStatus("nothing to compact");
+    setStatus("pulled together");
+  } else setStatus("nothing to pull together");
 };
 // Release `freeIds` back to auto-layout: drop their overrides locally and on
 // disk, then re-solve as the renderer will.
@@ -2257,7 +2257,7 @@ function resolveAuto(freeIds) {
   schedulePersist();
 }
 // Auto Layout: clear every pin and re-solve the whole board from scratch.
-// Shrink to content: trim B to hug the diagram. The server slides the content
+// Fit to content: trim B to hug the diagram. The server slides the content
 // to a uniform margin; the view pans by the same amount, so only the frame
 // changes on screen.
 document.getElementById("bTrimCanvas").onclick = async () => {
@@ -2272,10 +2272,10 @@ document.getElementById("bTrimCanvas").onclick = async () => {
     }
     render();
     setStatus(
-      `trimmed to content (${diagramState.width}×${diagramState.height})`,
+      `frame fits the content (${diagramState.width}×${diagramState.height})`,
     );
   } catch (e) {
-    setStatus("trim failed: " + e.message);
+    setStatus("fit to content failed: " + e.message);
   }
 };
 // Expand the export frame to the current visible area (board px). The server clamps
@@ -2294,10 +2294,10 @@ document.getElementById("bExpandCanvas").onclick = async () => {
     zoomToFit();
     render();
     setStatus(
-      `zoomed to extents (${diagramState.width}×${diagramState.height})`,
+      `frame fits the view (${diagramState.width}×${diagramState.height})`,
     );
   } catch (e) {
-    setStatus("expand failed: " + e.message);
+    setStatus("fit to view failed: " + e.message);
   }
 };
 // Grow B by the same amount on every side. Content shifts by (GROW, GROW) in
@@ -2343,7 +2343,7 @@ document.getElementById("bAutoLayout").onclick = async () => {
   resolveAuto(placeableIds());
   setStatus("auto layout: re-solved, pins cleared");
 };
-// Auto Layout (keep pins): re-flow only the unpinned nodes; pinned nodes keep
+// Re-flow unpinned: re-flow only the unpinned nodes; pinned nodes keep
 // their positions and act as fixed obstacles the rest lay out around. Lets you
 // place a few anchors by hand, then re-solve everything else around them.
 document.getElementById("bAutoLayoutKeep").onclick = () => {

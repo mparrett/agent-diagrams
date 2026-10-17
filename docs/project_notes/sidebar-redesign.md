@@ -1,6 +1,9 @@
 # Sidebar redesign
 
-Status: plan signed off 2026-10-17; phases 1–3 in progress.
+Status: phases 1–3 done 2026-10-17, with the tooltip and README pass. Phases 4–5
+not started. One change from the plan: the status line is a pill at the
+canvas's bottom left, not in the toolbar, so its changing length doesn't
+make the toolbar jump.
 
 Decisions at sign-off: overlays move to the canvas toolbar; Expand all merges
 into Fit to view; the sidebar uses a sans UI font (Instrument Sans, already
