@@ -450,6 +450,31 @@ const WRITE_OPS = {
     domainStatus: 400,
     apply: (dd, b) => dd.setFlow(b.field ?? null), // a field spec, or null
   },
+  // Groups: { action: add | update | remove, id, label?, nodes?, opts? }.
+  // opts are Diagram.updateGroup's (color, dash, labelPos, add, remove, ...).
+  "/group": {
+    domainStatus: 400,
+    validate: (b) =>
+      !b.id
+        ? "id required"
+        : !["add", "update", "remove"].includes(b.action)
+        ? "action must be add, update or remove"
+        : null,
+    apply: (dd, b) => {
+      if (b.action === "add") {
+        dd.addGroup(b.id, b.label ?? "", b.nodes || [], b.opts || {});
+      } else if (b.action === "update") dd.updateGroup(b.id, b.opts || {});
+      else if (!dd.removeGroup(b.id)) {
+        throw new Error(`Group "${b.id}" not found`);
+      }
+    },
+  },
+  // Legend: { entries } — null derives it from the colors in use, false hides
+  // it, an array of { color, label, dash? } sets it.
+  "/legend": {
+    domainStatus: 400,
+    apply: (dd, b) => dd.setLegend(b.entries ?? null),
+  },
   // Board-wide settings, one per request: { field, value }. null resets.
   "/board": {
     domainStatus: 400,

@@ -1,9 +1,10 @@
 # Sidebar redesign
 
 Status: phases 1–3 done 2026-10-17, with the tooltip and README pass. From
-phase 5, the board settings are done (title, font, row gap, uniform width,
-direction, saved through `POST /board`); undo and groups are not started, nor
-is phase 4. One change from the plan: the status line is a pill at the
+phase 5, the board settings (title, font, row gap, uniform width, direction,
+through `POST /board`) and group and legend editing (`POST /group`,
+`POST /legend`) are done. Undo and phase 4 are not started; undo needs a rule
+for edits other writers make between a change and its undo. One change from the plan: the status line is a pill at the
 canvas's bottom left, not in the toolbar, so its changing length doesn't
 make the toolbar jump.
 

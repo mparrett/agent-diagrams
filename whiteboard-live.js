@@ -114,6 +114,7 @@ let labelRects = []; // [{edge, rect}] from the last drawRoutes — edge-label h
 // Inner groups' drag handles from the last render, innermost first:
 // [{ id, rect (frame), label (chip rect | null) }].
 let groupHandles = [];
+let allFrameHandles = []; // every group frame, for the right-click menu
 let hoverGroup = null; // inner group id whose label or border is under the cursor
 // Nodes the human manually placed (a subset of the full layout snapshot). Pure
 // metadata — drives the pin marker; positions still come from the layout map.
@@ -321,6 +322,7 @@ function render() {
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
   groupHandles = innerGroupHandles(frames, groupLabels);
+  allFrameHandles = allGroupHandles(frames, groupLabels);
   // boxes: labels prefer a spot clear of them; painting is deferred below so a
   // chip in a narrow gap survives drawBoxes.
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
@@ -2510,6 +2512,12 @@ function syncBoardControls(st) {
   uniformWidthBox.checked = !!st?.uniformWidth;
   segValue("boardFont", st?.font === "sans" ? "sans" : "mono");
   segValue("boardDirection", st?.direction === "right" ? "right" : "down");
+  const lm = legendMode(st);
+  document.getElementById("bLegend").textContent = lm === "custom"
+    ? `Custom (${st.legend.length})`
+    : lm === "auto"
+    ? "Auto"
+    : "Hidden";
 }
 boardTitleInput.addEventListener("change", () => {
   const t = boardTitleInput.value.trim();
@@ -2695,7 +2703,11 @@ function buildChipGroup(options, current, onPick) {
 // Color-token picker: semantic chips (error → red, re-maps per theme) above a
 // row of named-color dots. One value across both rows; onPick(token). When
 // allowDefault, a leading "default" chip clears the override (token = null).
-function buildColorPicker(current, onPick, { allowDefault = false } = {}) {
+function buildColorPicker(
+  current,
+  onPick,
+  { allowDefault = false, defaultTitle = "theme's default edge color" } = {},
+) {
   const wrap = document.createElement("div");
   wrap.className = "color-picker";
   const semRow = document.createElement("div");
@@ -2733,7 +2745,7 @@ function buildColorPicker(current, onPick, { allowDefault = false } = {}) {
     d.className = "chip";
     d.textContent = "default";
     d.dataset.v = "";
-    d.title = "theme's default edge color";
+    d.title = defaultTitle;
     d.onclick = () => pick("");
     semRow.appendChild(d);
   }
@@ -3685,7 +3697,9 @@ const isTypingTarget = (el) =>
   el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
 const overlaysOpen = () =>
   nodeEditor.style.display !== "none" || edgeEditor.style.display !== "none" ||
-  noteEditor.style.display !== "none" || ctxOpen() || confirmOpen();
+  noteEditor.style.display !== "none" || ctxOpen() || confirmOpen() ||
+  groupEditor.style.display !== "none" ||
+  legendEditor.style.display !== "none";
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Backspace" && e.key !== "Delete") return;
   if (isTypingTarget(e.target) || overlaysOpen()) return; // let fields/overlays own the key
@@ -3745,6 +3759,8 @@ function openContextMenuFor(clientX, clientY) {
   if (hit.kind === "label" || hit.kind === "edge" || hit.kind === "endpoint") {
     return openEdgeMenu(hit.edge, clientX, clientY);
   }
+  const grp = groupFrameAt(p); // an annotation group's label or border
+  if (grp) return openGroupMenu(grp, clientX, clientY);
   // Empty canvas → offer to drop a note at the point.
   openCtxMenu(clientX, clientY, [
     {
@@ -3924,6 +3940,7 @@ function openBoxMenu(id, x, y) {
       label: "Connector layout ▸",
       action: () => openConnectorLayoutMenu(id, x, y),
     },
+    { label: "Group ▸", action: () => openBoxGroupMenu(id, x, y) },
     pinnedSet.has(id)
       ? {
         label: "Unpin",
@@ -3960,19 +3977,354 @@ function pinWhereItIs(id) {
 }
 
 function openGroupMenu(id, x, y) {
+  const inner = innerTree().has(id);
   openCtxMenu(x, y, [
-    pinnedSet.has(id)
-      ? {
-        label: "Unpin group",
-        action: () => {
-          pinnedSet.delete(id);
-          resolveAuto(new Set([id]));
-          setStatus("unpinned — re-laid out");
-        },
-      }
-      : { label: "Pin group", action: () => pinWhereItIs(id) },
+    { label: "Edit group…", action: () => openGroupEditor(id, x, y) },
+    ...(!inner ? [] : [
+      pinnedSet.has(id)
+        ? {
+          label: "Unpin group",
+          action: () => {
+            pinnedSet.delete(id);
+            resolveAuto(new Set([id]));
+            setStatus("unpinned — re-laid out");
+          },
+        }
+        : { label: "Pin group", action: () => pinWhereItIs(id) },
+    ]),
+    null,
+    {
+      label: "Delete group (keep boxes)",
+      danger: true,
+      action: () => deleteGroup(id),
+    },
   ]);
 }
+
+// ── Groups ───────────────────────────────────────────────────────
+// Every group frame, inner or annotation, smallest first: right-clicking its
+// label or border opens the group menu.
+function allGroupHandles(frames, labels) {
+  const chip = new Map(labels.map((l) => [l.id, l]));
+  return frames
+    .map((f) => ({ id: f.id, rect: f.rect, label: chip.get(f.id) ?? null }))
+    .sort((a, b) => a.rect.w * a.rect.h - b.rect.w * b.rect.h);
+}
+function groupFrameAt(p) {
+  const t = screenTol(coarsePointer ? 8 : 4, CELL / 2);
+  return allFrameHandles.find(({ rect: r, label }) =>
+    (label && inRect(p, label)) ||
+    (inRect(p, { x: r.x - t, y: r.y - t, w: r.w + 2 * t, h: r.h + 2 * t }) &&
+      !inRect(p, { x: r.x + t, y: r.y + t, w: r.w - 2 * t, h: r.h - 2 * t }))
+  )?.id ?? null;
+}
+const groupName = (g) => g.label || g.id;
+
+async function postGroup(payload, done) {
+  payload.baseRev = lastRev;
+  payload.nonce = newNonce();
+  try {
+    const r = await fetch(API + "/group", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus("group: " + (j.error || "HTTP " + r.status));
+      return false;
+    }
+    lastRev = (await r.json()).rev;
+    await mergeReload();
+    setStatus(done + " (rev " + lastRev + ")");
+    return true;
+  } catch (e) {
+    setStatus("group failed: " + e.message);
+    return false;
+  }
+}
+function deleteGroup(id) {
+  const g = (diagramState.groups || []).find((x) => x.id === id);
+  postGroup(
+    { action: "remove", id },
+    `group "${g ? groupName(g) : id}" deleted; its boxes stay`,
+  );
+}
+
+// Box menu → Group ▸: start a group with this box, or add it to / remove it
+// from an existing one.
+function openBoxGroupMenu(boxId, x, y) {
+  const groups = diagramState.groups || [];
+  const items = [{
+    label: "New group with this box…",
+    action: () => openGroupEditor(null, x, y, [boxId]),
+  }];
+  const into = groups.filter((g) => !g.nodes.includes(boxId));
+  const outOf = groups.filter((g) => g.nodes.includes(boxId));
+  if (into.length || outOf.length) items.push(null);
+  for (const g of into) {
+    items.push({
+      label: `Add to "${groupName(g)}"`,
+      action: () =>
+        postGroup(
+          { action: "update", id: g.id, opts: { add: [boxId] } },
+          `added to "${groupName(g)}"`,
+        ),
+    });
+  }
+  for (const g of outOf) {
+    items.push({
+      label: `Remove from "${groupName(g)}"`,
+      action: () =>
+        g.nodes.length === 1
+          ? setStatus(
+            `it's the only box in "${groupName(g)}"; delete the group instead`,
+          )
+          : postGroup(
+            { action: "update", id: g.id, opts: { remove: [boxId] } },
+            `removed from "${groupName(g)}"`,
+          ),
+    });
+  }
+  items.push(null, { label: "‹ Back", action: () => openBoxMenu(boxId, x, y) });
+  openCtxMenu(x, y, items);
+}
+
+// Group editor: one popover for a new group (members given) and an existing
+// one (id given). Nothing saves until Save.
+const groupEditor = document.getElementById("groupEditor");
+const geLabel = document.getElementById("geLabel");
+let geState = null; // { id | null, members, color, dash, side, place }
+const GE_DASH = [
+  { value: null, label: "Solid" },
+  { value: "dashed", label: "Dashed" },
+  { value: "dotted", label: "Dotted" },
+];
+const GE_SIDE = [{ value: "top", label: "Top" }, {
+  value: "bottom",
+  label: "Bottom",
+}];
+const GE_PLACE = [
+  { value: "border", label: "On border" },
+  { value: "inside", label: "Inside" },
+  { value: "outside", label: "Outside" },
+];
+function openGroupEditor(id, x, y, members = []) {
+  closeCtxMenu();
+  const g = id ? (diagramState.groups || []).find((o) => o.id === id) : null;
+  const [side, place] = (g?.labelPos || "top-border").split("-");
+  geState = {
+    id: g?.id ?? null,
+    members,
+    color: g?.color ?? null,
+    dash: g?.dash ?? null,
+    side,
+    place,
+  };
+  document.getElementById("geTitle").textContent = g
+    ? `Group "${g.id}" · ${g.nodes.length} member${
+      g.nodes.length === 1 ? "" : "s"
+    }`
+    : `New group · ${members.join(", ")}`;
+  geLabel.value = g?.label ?? "";
+  const fill = (elId, node) => {
+    const el = document.getElementById(elId);
+    el.replaceChildren(node);
+  };
+  fill(
+    "geColor",
+    buildColorPicker(geState.color ?? "", (c) => geState.color = c, {
+      allowDefault: true,
+      defaultTitle: "the theme's group frame color",
+    }),
+  );
+  document.getElementById("geDash").replaceChildren(
+    ...buildChipGroup(GE_DASH, geState.dash, (v) => geState.dash = v).children,
+  );
+  document.getElementById("geSide").replaceChildren(
+    ...buildChipGroup(GE_SIDE, side, (v) => geState.side = v).children,
+  );
+  document.getElementById("gePlace").replaceChildren(
+    ...buildChipGroup(GE_PLACE, place, (v) => geState.place = v).children,
+  );
+  document.getElementById("geDelete").style.display = g ? "" : "none";
+  document.getElementById("geSave").textContent = g ? "Save" : "Create";
+  placePopover(groupEditor, x, y);
+  geLabel.focus();
+}
+function closeGroupEditor() {
+  groupEditor.style.display = "none";
+  geState = null;
+}
+// A group id from its label: lowercase words joined by "-", unique among
+// node and group ids.
+function newGroupId(label) {
+  const base = label.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "group";
+  const taken = new Set([
+    ...BOXES.map((b) => b.id),
+    ...(diagramState.groups || []).map((g) => g.id),
+  ]);
+  let id = base, n = 2;
+  while (taken.has(id)) id = `${base}-${n++}`;
+  return id;
+}
+document.getElementById("geSave").onclick = async () => {
+  if (!geState) return;
+  const label = geLabel.value.trim();
+  const opts = {
+    color: geState.color,
+    dash: geState.dash,
+    labelPos: `${geState.side}-${geState.place}`,
+  };
+  const ok = geState.id
+    ? await postGroup(
+      { action: "update", id: geState.id, opts: { ...opts, label } },
+      "group saved",
+    )
+    : await postGroup(
+      {
+        action: "add",
+        id: newGroupId(label),
+        label,
+        nodes: geState.members,
+        opts,
+      },
+      "group created",
+    );
+  if (ok) closeGroupEditor();
+};
+document.getElementById("geCancel").onclick = closeGroupEditor;
+document.getElementById("geDelete").onclick = () => {
+  const id = geState?.id;
+  closeGroupEditor();
+  if (id) deleteGroup(id);
+};
+geLabel.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("geSave").click();
+});
+
+// ── Legend ───────────────────────────────────────────────────────
+// Auto lists the colors in use, Custom is your own rows, Hidden draws none.
+const legendEditor = document.getElementById("legendEditor");
+const leRows = document.getElementById("leRows");
+let leMode = "auto";
+const LE_MODES = [
+  { value: "auto", label: "Auto" },
+  { value: "custom", label: "Custom" },
+  { value: "hidden", label: "Hidden" },
+];
+const legendMode = (st) =>
+  st?.legend === false
+    ? "hidden"
+    : Array.isArray(st?.legend)
+    ? "custom"
+    : "auto";
+function legendRow(e = {}) {
+  const row = document.createElement("div");
+  row.className = "le-row";
+  const color = document.createElement("select");
+  for (const c of [...validColors(), ...Object.keys(PAL.semantic)]) {
+    color.add(new Option(c, c));
+  }
+  if (e.color && ![...color.options].some((o) => o.value === e.color)) {
+    color.add(new Option(e.color, e.color)); // a hex entry keeps its value
+  }
+  color.value = e.color || validColors()[0];
+  const label = document.createElement("input");
+  label.type = "text";
+  label.className = "text";
+  label.placeholder = "Label";
+  label.value = e.label || "";
+  const dash = document.createElement("select");
+  for (const d of ["solid", "dashed", "dotted"]) dash.add(new Option(d, d));
+  dash.value = e.dash || "solid";
+  const x = document.createElement("button");
+  x.className = "x-btn";
+  x.textContent = "×";
+  x.title = "Remove this entry";
+  x.onclick = () => row.remove();
+  row.append(color, label, dash, x);
+  return row;
+}
+function setLegendMode(mode) {
+  leMode = mode;
+  const custom = mode === "custom";
+  leRows.style.display = custom ? "" : "none";
+  document.getElementById("leAdd").style.display = custom ? "" : "none";
+  document.getElementById("leHint").textContent = mode === "auto"
+    ? "Lists each box color in use, by name."
+    : mode === "hidden"
+    ? "No legend is drawn."
+    : "Each row is a swatch and its label; dashed and dotted draw as outlines.";
+  // Starting Custom from scratch: seed a row per color in use.
+  if (custom && !leRows.children.length) {
+    for (const c of new Set(BOXES.map((b) => b.color).filter(Boolean))) {
+      leRows.append(legendRow({ color: c, label: c }));
+    }
+  }
+}
+function openLegendEditor(x, y) {
+  leRows.replaceChildren(
+    ...(Array.isArray(diagramState.legend) ? diagramState.legend : [])
+      .map(legendRow),
+  );
+  const mode = legendMode(diagramState);
+  document.getElementById("leMode").replaceChildren(
+    ...buildChipGroup(LE_MODES, mode, setLegendMode).children,
+  );
+  setLegendMode(mode);
+  placePopover(legendEditor, x, y);
+}
+const closeLegendEditor = () => legendEditor.style.display = "none";
+document.getElementById("bLegend").onclick = (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  openLegendEditor(r.right + 8, r.top - 40);
+};
+document.getElementById("leAdd").onclick = () => {
+  const row = legendRow();
+  leRows.append(row);
+  row.querySelector("input").focus();
+};
+document.getElementById("leCancel").onclick = closeLegendEditor;
+document.getElementById("leSave").onclick = async () => {
+  let entries = null;
+  if (leMode === "hidden") entries = false;
+  else if (leMode === "custom") {
+    entries = [...leRows.children].map((row) => {
+      const [color, label, dash] = row.querySelectorAll("select, input");
+      return {
+        color: color.value,
+        label: label.value.trim(),
+        ...(dash.value !== "solid" && { dash: dash.value }),
+      };
+    }).filter((e) => e.label);
+  }
+  newNonce();
+  try {
+    const r = await fetch(API + "/legend", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ entries, baseRev: lastRev, nonce: lastSentNonce }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus("legend: " + (j.error || "HTTP " + r.status));
+      return;
+    }
+    lastRev = (await r.json()).rev;
+    closeLegendEditor();
+    await mergeReload();
+    setStatus("legend: " + leMode + " (rev " + lastRev + ")");
+  } catch (e) {
+    setStatus("legend failed: " + e.message);
+  }
+};
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (groupEditor.style.display !== "none") closeGroupEditor();
+  if (legendEditor.style.display !== "none") closeLegendEditor();
+});
 
 // Atomic flip on the server (see Diagram.reverseEdge) — a remove+add pair could
 // be torn by a concurrent writer.

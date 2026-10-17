@@ -316,6 +316,17 @@ body.nav-collapsed .status-pill { left: 54px; }
 .ctx-menu .ctx-swatch:hover { border-color: #6e7681; }
 .ctx-menu .ctx-swatch.current { border-color: #c9d1d9; }
 
+/* Legend editor: one row per entry — color, label, line, remove. */
+.legend-editor { width: 340px; }
+.le-rows { display: flex; flex-direction: column; gap: 6px; }
+.le-row { display: grid; grid-template-columns: 92px 1fr 74px 24px; gap: 5px; align-items: center; }
+.le-row select { padding: 4px 22px 4px 7px; font-size: 12px; background-position: right 7px center; }
+.le-row .x-btn { width: 24px; height: 24px; padding: 0; background: none; border: none; color: var(--text-faint); font-size: 15px; }
+.le-row .x-btn:hover { color: var(--text); }
+.le-row .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.le-add { align-self: flex-start; }
+button.mini.wide { flex: 0 0 116px; }
+
 /* ---- Live-editor controls: chip groups, color picker, stepper ---- */
 /* One-of chip group (thickness, line, label-side). One .on at a time. */
 .chip-group { display: flex; gap: 4px; }
@@ -473,6 +484,10 @@ body.nav-collapsed .status-pill { left: 54px; }
         <button data-v="down" title="Wires between diagonal boxes run top to bottom">Down</button>
         <button data-v="right" title="Wires between diagonal boxes run side to side">Right</button>
       </div>
+    </div>
+    <div class="row">
+      <span class="lbl">Legend</span>
+      <button id="bLegend" class="mini wide" title="Choose what the legend lists: the colors in use, your own entries, or nothing">Auto</button>
     </div>
     <label class="row">
       <span class="lbl">Flow field</span>
@@ -636,6 +651,35 @@ body.nav-collapsed .status-pill { left: 54px; }
     <span style="flex:1"></span>
     <button id="noteCancel">Cancel</button>
     <button id="noteSave" class="ne-primary">Save</button>
+  </div>
+</div>
+
+<div id="groupEditor" class="node-editor" style="display:none">
+  <div class="ne-field"><label id="geTitle">Group</label></div>
+  <div class="ne-field"><label>Label</label><input id="geLabel" type="text" autocomplete="off" placeholder="(none)"></div>
+  <div class="ne-field"><label>Color</label><div id="geColor"></div></div>
+  <div class="ne-field"><label>Line</label><div class="chip-group" id="geDash"></div></div>
+  <div class="ne-field"><label>Label position</label>
+    <div class="chip-group" id="geSide"></div>
+    <div class="chip-group" id="gePlace"></div>
+  </div>
+  <div class="ne-actions">
+    <button id="geDelete" class="ne-danger" title="Remove the group; its boxes stay">Delete</button>
+    <span style="flex:1"></span>
+    <button id="geCancel">Cancel</button>
+    <button id="geSave" class="ne-primary">Save</button>
+  </div>
+</div>
+
+<div id="legendEditor" class="node-editor legend-editor" style="display:none">
+  <div class="ne-field"><label>Legend</label><div class="chip-group" id="leMode"></div></div>
+  <p class="ne-hint" id="leHint"></p>
+  <div id="leRows" class="le-rows"></div>
+  <button id="leAdd" class="le-add" title="Add a legend entry">+ Entry</button>
+  <div class="ne-actions">
+    <span style="flex:1"></span>
+    <button id="leCancel">Cancel</button>
+    <button id="leSave" class="ne-primary">Save</button>
   </div>
 </div>
 
