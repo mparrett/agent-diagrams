@@ -1,7 +1,9 @@
 # Sidebar redesign
 
-Status: phases 1–3 done 2026-10-17, with the tooltip and README pass. Phases 4–5
-not started. One change from the plan: the status line is a pill at the
+Status: phases 1–3 done 2026-10-17, with the tooltip and README pass. From
+phase 5, the board settings are done (title, font, row gap, uniform width,
+direction, saved through `POST /board`); undo and groups are not started, nor
+is phase 4. One change from the plan: the status line is a pill at the
 canvas's bottom left, not in the toolbar, so its changing length doesn't
 make the toolbar jump.
 

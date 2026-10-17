@@ -2465,6 +2465,103 @@ centerConnectorsBox.addEventListener("change", async () => {
   }
 });
 
+// Board settings — title, font, row gap, uniform width, direction. Each saves
+// one field through /board, then reloads: most of them move boxes or wires.
+async function postBoard(field, value, label) {
+  newNonce();
+  try {
+    const r = await fetch(API + "/board", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        field,
+        value,
+        baseRev: lastRev,
+        nonce: lastSentNonce,
+      }),
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus(label + " rejected: " + (j.error || "HTTP " + r.status));
+      return;
+    }
+    lastRev = (await r.json()).rev;
+    await mergeReload();
+    setStatus(label + " (rev " + lastRev + ")");
+  } catch (e) {
+    setStatus(label + " failed: " + e.message);
+  }
+}
+const boardTitleInput = document.getElementById("boardTitle");
+const rowGapInput = document.getElementById("rowGapInput");
+const uniformWidthBox = document.getElementById("uniformWidth");
+const segValue = (id, v) => {
+  for (const b of document.querySelectorAll(`#${id} button`)) {
+    b.classList.toggle("on", b.dataset.v === v);
+  }
+};
+function syncBoardControls(st) {
+  if (document.activeElement !== boardTitleInput) {
+    boardTitleInput.value = st?.title ?? "";
+  }
+  if (document.activeElement !== rowGapInput) {
+    rowGapInput.value = st?.rowGap ?? "";
+  }
+  uniformWidthBox.checked = !!st?.uniformWidth;
+  segValue("boardFont", st?.font === "sans" ? "sans" : "mono");
+  segValue("boardDirection", st?.direction === "right" ? "right" : "down");
+}
+boardTitleInput.addEventListener("change", () => {
+  const t = boardTitleInput.value.trim();
+  if (t === (diagramState.title ?? "")) return;
+  postBoard("title", t || null, t ? "title set" : "title cleared");
+});
+boardTitleInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") boardTitleInput.blur();
+});
+function applyRowGap(px) {
+  postBoard("rowGap", px, "row gap: " + (px ?? "default"));
+}
+rowGapInput.addEventListener("change", () => {
+  const v = rowGapInput.value.trim();
+  if (v === "") return applyRowGap(null);
+  const n = parseInt(v, 10);
+  if (Number.isFinite(n) && n >= 0 && n <= 300) applyRowGap(n);
+  else setStatus("row gap must be 0–300");
+});
+document.getElementById("rowGapReset").onclick = () => {
+  rowGapInput.value = "";
+  applyRowGap(null);
+};
+uniformWidthBox.addEventListener("change", () => {
+  const on = uniformWidthBox.checked;
+  postBoard("uniformWidth", on, "uniform width " + (on ? "on" : "off"));
+});
+for (const b of document.querySelectorAll("#boardDirection button")) {
+  b.onclick = () => {
+    const v = b.dataset.v;
+    if ((diagramState.direction ?? "down") === v) return;
+    segValue("boardDirection", v);
+    postBoard("direction", v === "down" ? null : v, "direction: " + v);
+  };
+}
+for (const b of document.querySelectorAll("#boardFont button")) {
+  b.onclick = async () => {
+    const v = b.dataset.v;
+    if ((diagramState.font === "sans" ? "sans" : "mono") === v) return;
+    segValue("boardFont", v);
+    // Load the face before the reload measures text with it.
+    const face = v === "sans" ? "DiagramSans" : "DiagramMono";
+    try {
+      await Promise.all([
+        document.fonts.load(`bold 13px ${face}`),
+        document.fonts.load(`10px ${face}`),
+      ]);
+    } catch { /* fallback metrics */ }
+    postBoard("font", v, "font: " + v);
+  };
+}
+
 // Place along flow: the server lays the board out along its field and
 // pins every node; reload to pick the pins up.
 document.getElementById("bFlowPlace").onclick = async () => {
@@ -4178,6 +4275,7 @@ async function init() {
   centerConnectorsBox.checked = diagramState.connectorAnchor === "center";
   startMarkersBox.checked = diagramState.startMarkers !== false;
   syncFlowSelect(diagramState);
+  syncBoardControls(diagramState);
 
   // Need canvas context for text measurement
   initCanvas();
@@ -4644,6 +4742,7 @@ async function mergeReload() {
   fontSizeInput.value = fresh.fontSize || "";
   centerConnectorsBox.checked = fresh.connectorAnchor === "center";
   syncFlowSelect(fresh);
+  syncBoardControls(fresh);
 
   // Keep the human's unsaved placements on top of disk's. A conflict is
   // someone else moving the same box: its override on disk changed under ours.

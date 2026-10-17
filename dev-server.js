@@ -450,6 +450,22 @@ const WRITE_OPS = {
     domainStatus: 400,
     apply: (dd, b) => dd.setFlow(b.field ?? null), // a field spec, or null
   },
+  // Board-wide settings, one per request: { field, value }. null resets.
+  "/board": {
+    domainStatus: 400,
+    validate: (b) =>
+      ["title", "direction", "rowGap", "uniformWidth", "font"].includes(b.field)
+        ? null
+        : "field must be title, direction, rowGap, uniformWidth or font",
+    apply: (dd, b) => {
+      const v = b.value ?? null;
+      if (b.field === "title") dd.setTitle(v);
+      else if (b.field === "direction") dd.setDirection(v);
+      else if (b.field === "rowGap") dd.setRowGap(v);
+      else if (b.field === "uniformWidth") dd.setUniformWidth(!!v);
+      else dd.setFont(v ?? "mono");
+    },
+  },
   "/flowplace": {
     domainStatus: 400,
     apply: (dd) => dd.flowPlace(),

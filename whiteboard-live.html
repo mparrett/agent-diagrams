@@ -130,7 +130,14 @@ input[type=number] {
   width: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line);
   border-radius: 6px; padding: 5px 7px; font: 12px var(--ui-mono); text-align: right;
 }
-input[type=number]:focus, select:focus-visible, button:focus-visible { outline: 2px solid #1f6feb99; outline-offset: 1px; }
+input.text {
+  width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 12.5px;
+}
+input.text::placeholder { color: var(--text-faint); }
+.seg.small { width: 116px; flex: none; border-radius: 6px; }
+.seg.small button { padding: 5px 0; font-size: 12px; }
+input.text:focus, input[type=number]:focus, select:focus-visible, button:focus-visible { outline: 2px solid #1f6feb99; outline-offset: 1px; }
 input.switch {
   appearance: none; -webkit-appearance: none; flex: none; cursor: pointer;
   width: 30px; height: 17px; border-radius: 9px; background: var(--line); position: relative;
@@ -432,8 +439,41 @@ body.nav-collapsed .status-pill { left: 54px; }
     </div>
   </section>
 
-  <section class="sec">
-    <div class="sec-label">Board</div>
+  <section class="sec" data-sec="board">
+    <button class="sec-label sec-toggle">Board <span class="chev"></span></button>
+    <input id="boardTitle" type="text" class="text" placeholder="Title" autocomplete="off" title="The caption drawn at the top left of the board; empty for none. Enter or leave the field to save">
+    <label class="row">
+      <span class="lbl">Theme</span>
+      <select id="themeSelect" class="compact" title="Color scheme"></select>
+    </label>
+    <div class="row">
+      <span class="lbl">Font</span>
+      <div class="seg small" id="boardFont">
+        <button data-v="mono" title="Monospace (DejaVu Sans Mono)">Mono</button>
+        <button data-v="sans" title="Sans (Instrument Sans)">Sans</button>
+      </div>
+    </div>
+    <div class="row">
+      <label class="lbl" for="fontSizeInput">Font size</label>
+      <input id="fontSizeInput" type="number" min="6" max="48" placeholder="13" title="Base font size in px; empty for the default, 13">
+      <button id="fontSizeReset" class="mini icon" title="Back to the default size">↺</button>
+    </div>
+    <div class="row">
+      <label class="lbl" for="rowGapInput">Row gap</label>
+      <input id="rowGapInput" type="number" min="0" max="300" step="15" placeholder="45" title="Space between rows in px, room for wires; empty for the default, 45">
+      <button id="rowGapReset" class="mini icon" title="Back to the default gap">↺</button>
+    </div>
+    <label class="row switch-row" title="Give every box without its own width the width of the widest one">
+      <span class="lbl">Uniform width</span>
+      <input id="uniformWidth" type="checkbox" class="switch">
+    </label>
+    <div class="row">
+      <span class="lbl">Direction</span>
+      <div class="seg small" id="boardDirection">
+        <button data-v="down" title="Wires between diagonal boxes run top to bottom">Down</button>
+        <button data-v="right" title="Wires between diagonal boxes run side to side">Right</button>
+      </div>
+    </div>
     <label class="row">
       <span class="lbl">Flow field</span>
       <select id="flowSelect" class="compact" title="A direction at every point of the board: wires follow it, and Lay out along flow places boxes along it">
@@ -450,15 +490,6 @@ body.nav-collapsed .status-pill { left: 54px; }
         <option>down&gt;right</option>
       </select>
     </label>
-    <label class="row">
-      <span class="lbl">Theme</span>
-      <select id="themeSelect" class="compact" title="Color scheme"></select>
-    </label>
-    <div class="row">
-      <label class="lbl" for="fontSizeInput">Font size</label>
-      <input id="fontSizeInput" type="number" min="6" max="48" placeholder="13" title="Base font size in px; empty for the default, 13">
-      <button id="fontSizeReset" class="mini icon" title="Back to the default size">↺</button>
-    </div>
   </section>
 
   <section class="sec" data-sec="wires">
