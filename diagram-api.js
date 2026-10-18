@@ -38,7 +38,6 @@ import {
   fillDividerIds,
   findIssues,
   freshDividerId,
-  gapFor,
   Grid,
   GROUP_LABEL_ALIGN,
   GROUP_LABEL_POS,
