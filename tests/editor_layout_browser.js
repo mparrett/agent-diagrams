@@ -45,6 +45,19 @@ const cli = (...a) =>
 const read = () => JSON.parse(Deno.readTextFileSync(S));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// The server snaps frame edges to the 15px grid, so each side can land a cell off.
+const FIT_TOL = 2 * 15;
+// Auto Layout asks before clearing pins; the modal opens synchronously in the
+// click. Fails the run if it did not ask, so the guard itself stays tested.
+async function autoLayout(page) {
+  const asked = await page.evaluate(`(() => {
+    document.getElementById("bAutoLayout").click();
+    const open = document.getElementById("confirmModal").style.display === "flex";
+    document.getElementById("cmOk").click();
+    return open;
+  })()`);
+  check("Auto Layout asks before clearing pins", asked);
+}
 // Relative pins as "group/id" strings.
 const innerPins = (s) =>
   Object.entries(s.innerLayout ?? {})
@@ -173,7 +186,7 @@ try {
     same(await editorBoxes(), await solved()),
   );
 
-  await page.evaluate(`document.getElementById("bAutoLayout").click()`);
+  await autoLayout(page);
   await wait(1500);
   s = read();
   check(
@@ -286,23 +299,33 @@ try {
   s = read();
   const c1 = await center();
   check(
-    "Shrink to content trims the frame and leaves the view alone",
+    "Fit to content trims the frame and leaves the view alone",
     s.width < big.width && await zoom() === z0 &&
       Math.abs(c1.x - c0.x) < 1 && Math.abs(c1.y - c0.y) < 1,
     `${big.width}x${big.height} -> ${s.width}x${s.height}, box ${c0.x},${c0.y} -> ${c1.x},${c1.y}`,
   );
 
-  // Zoomed out past the trimmed board, Expand all reaches every edge of the view.
+  // Zoomed out past the trimmed board, Fit to view sets the frame to the view.
   const trimmed = read();
-  await page.evaluate(`document.getElementById("bExpandAll").click()`);
+  const viewSize = JSON.parse(
+    await page.evaluate(`(() => {
+      const v = window.__wb.getView(), vp = window.__wb.viewport();
+      return JSON.stringify({ w: vp.w / v.zoom, h: vp.h / v.zoom });
+    })()`),
+  );
+  await page.evaluate(`document.getElementById("bExpandCanvas").click()`);
   await wait(1500);
   s = read();
   check(
-    "Expand all grows the frame on every side",
+    "Fit to view sets the frame to the view",
     s.width > trimmed.width && s.height > trimmed.height &&
+      Math.abs(s.width - viewSize.w) <= FIT_TOL &&
+      Math.abs(s.height - viewSize.h) <= FIT_TOL &&
       same(s.layout, trimmed.layout) &&
       same(await editorBoxes(), await solved()),
-    `${trimmed.width}x${trimmed.height} -> ${s.width}x${s.height}`,
+    `${trimmed.width}x${trimmed.height} -> ${s.width}x${s.height}, view ${
+      Math.round(viewSize.w)
+    }x${Math.round(viewSize.h)}`,
   );
 
   const z = await page.evaluate(
@@ -421,7 +444,7 @@ try {
   await page.evaluate(`window.__wb.holdSaves(false)`);
   await wait(1500);
 
-  await page.evaluate(`document.getElementById("bAutoLayout").click()`);
+  await autoLayout(page);
   await wait(1500);
   s = read();
   check(
