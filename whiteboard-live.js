@@ -932,30 +932,9 @@ cvs.addEventListener("pointerdown", (e) => {
     }
     startLongPress(e); // hold-to-open-menu armed for any mode
   }
-  if (spaceHeld && e.pointerType !== "touch") {
-    // Pan from anywhere, even over a box or in connect mode. tapKind stays null
-    // so a no-move press selects nothing.
-    didDrag = false;
-    dragDownX = e.clientX;
-    dragDownY = e.clientY;
-    dragMoved = false;
-    try {
-      cvs.setPointerCapture(e.pointerId);
-      activePointerId = e.pointerId;
-    } catch { /* pointer gone */ }
-    drag = {
-      kind: "pan",
-      sx: e.clientX,
-      sy: e.clientY,
-      px: view.panX,
-      py: view.panY,
-      tapKind: null,
-      tapEdge: null,
-    };
-    updateCursor();
-    return;
-  }
-  if (!dragMode || connectMode) return;
+  // Space pans from anywhere, even over a box or in connect mode.
+  const panOnly = spaceHeld && e.pointerType !== "touch";
+  if (!panOnly && (!dragMode || connectMode)) return;
   didDrag = false;
   dragDownX = e.clientX;
   dragDownY = e.clientY;
@@ -966,7 +945,7 @@ cvs.addEventListener("pointerdown", (e) => {
     activePointerId = e.pointerId;
   } catch { /* pointer gone */ }
   const p = canvasCoords(e);
-  const hit = hitTest(p);
+  const hit = panOnly ? { kind: "empty" } : hitTest(p);
   if (hit.kind === "note") {
     drag = {
       kind: "note",
@@ -1106,13 +1085,14 @@ cvs.addEventListener("pointerdown", (e) => {
   }
   if (hit.kind === "empty" || hit.kind === "edge") { // empty/edge space → pan the viewport
     // tapKind/tapEdge let a no-move tap reveal an edge's endpoints (touch) or clear selection on empty.
+    // A Space pan has no tapKind, so a no-move press selects nothing.
     drag = {
       kind: "pan",
       sx: e.clientX,
       sy: e.clientY,
       px: view.panX,
       py: view.panY,
-      tapKind: hit.kind,
+      tapKind: panOnly ? null : hit.kind,
       tapEdge: hit.edge || null,
     };
     updateCursor();
@@ -3280,6 +3260,7 @@ async function growFrameToView(edge) {
 // Double-click a note to edit its text, or a node to edit its text/color.
 // Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
+  if (spaceHeld) return; // a Space press pans; it never edits
   const hit = hitTest(canvasCoords(e));
   if (hit.kind === "frame") {
     growFrameToView(hit.frame);
@@ -3872,7 +3853,11 @@ document.addEventListener("keydown", (e) => {
 // Hold Space to pan: while it is down, dragging anywhere moves the view instead
 // of the thing under the pointer. Releasing it returns to the current mode.
 document.addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || isTypingTarget(e.target) || overlaysOpen()) return;
+  // Only when nothing is focused: a focused button, checkbox or field keeps Space.
+  if (
+    e.code !== "Space" || (e.target !== document.body && e.target !== cvs) ||
+    overlaysOpen()
+  ) return;
   e.preventDefault(); // no page scroll, and no activating a focused button
   if (spaceHeld) return; // key repeat
   spaceHeld = true;
@@ -3946,6 +3931,7 @@ function openContextMenuFor(clientX, clientY) {
 
 cvs.addEventListener("contextmenu", (e) => {
   e.preventDefault(); // no browser menu anywhere on the canvas
+  if (spaceHeld) return;
   if (didDrag) {
     didDrag = false;
     closeCtxMenu();
