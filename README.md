@@ -166,8 +166,9 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
   "wrapSlack": 1.5,                        // optional: extra area (x, in drawn cells) a box may take to
                                            //   avoid wrapping its title or details; 1 = always the smallest box
   "dividers": [                            // optional: dotted boundary lines across the canvas
-    { "orient": "h", "at": 240, "label": "host boundary" }
-  ],
+    { "id": "div0", "orient": "h", "at": 240, "label": "host boundary" },  // h: at is a Y
+    { "id": "div1", "orient": "v", "at": 600 }                              // v: at is an X
+  ],                                       //   id is optional; one is filled in on the next save
   "groups": [                              // optional: labeled frames around sets of nodes
     { "id": "edge", "label": "Edge tier", "nodes": ["client", "api"], "color": "blue" },
     { "id": "data", "label": "Data", "nodes": ["db", "cache"],
@@ -198,7 +199,7 @@ Because content (`nodes`/`edges`) and layout (`layout`) are disjoint keys, an ag
 
 Light annotation primitives mark regions and add commentary without changing how the board is laid out:
 
-- **Dividers** — full-width/-height dotted lines that partition the canvas into regions (`"dividers"`, or `add-divider h 240 "host boundary"`). Annotation only: wires route straight through them.
+- **Dividers** — full-width/-height dotted lines that partition the canvas into regions (`"dividers"`, or `add-divider h 240 "host boundary"`; `v` for a vertical one). Each has an id, so `update-divider` can move, rotate or restyle it in place. Annotation only: wires route straight through them.
 - **Groups** — a labeled frame around a set of nodes, for views that sort boxes into regions (`"groups"`, or `add-group surfaces "User surfaces" portal queue editor`). The frame pads the members' drawn boxes and carries its label on the top border; `--color=<name>` tints it and `--dash=dashed` breaks the line. A group that contains all of another group's nodes draws around that group's frame as well. Groups do not move boxes: a frame is wherever its members land, so give each group its own rows and columns. A non-member that ends up inside a frame is named in a warning on every render and under `status --positions`. Row and column spacing does make room for frames, so groups in neighbouring rows or columns keep at least 15px of clear space between frames and labels. Routing ignores groups. 
 
   **Inner groups** lay out their own members: `add-group agents "Consuming agents" help summary helpkb --inner --row=2 --col=3`. Each member's `row`/`col` is then its position inside the group, and the group is placed on the board as one box at the given row and column, so no other box can land inside its frame. The cost is alignment: boxes inside a group no longer line up with boxes outside it. An inner group can also list other inner groups by id, nesting them to any depth; node and group ids share one namespace, so a group id cannot also be a node id. A node can be in only one inner group. Move a group with `update-group <id> --row= --col=`, or in the editor by dragging its label or frame border; dragging a box inside a group pins it relative to that group (stored in `innerLayout`), and a top-level group's pin goes in `layout` like a box's. `free-node <id>` releases either kind of pin. `update-group --annotation` turns it back into a plain frame. `update-group <id> --add=a,b --remove=c --label=…`, `remove-group`, and `list-groups` cover edits; removing a node drops it from its groups.
@@ -281,7 +282,8 @@ diagram-cli.js [--state <path>] <command> [args...]
   retarget-edge <from> <to> [--newFrom=ID] [--newTo=ID]   Rewire an endpoint to another node (keeps style/label/costs)
                              (edge commands also accept --id=ID — list-edges prints each id — to pick
                               one of several parallel a→b edges; from/to else matches the first)
-  add-divider <h|v> <at-px> [label] / remove-divider <h|v> <at-px>
+  add-divider <h|v> <at-px> [label] / remove-divider <id> | <h|v> <at-px> / list-dividers
+  update-divider <id> [--at=] [--orient=h|v] [--label=] [--color=] [--dash=]   Move, rotate or restyle
   add-note <x> <y> [--title=] [--color=] <line> [line...] / remove-note <x> <y>
   add-group <id> <label> <node>... [--color=] [--dash=]   Labeled frame around nodes
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=|none] [--dash=|none]

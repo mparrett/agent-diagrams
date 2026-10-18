@@ -864,3 +864,37 @@ Deno.test("CLI: free-node releases a group pin and a member pin", async () =>
     const s = read();
     assertEquals([s.layout, s.innerLayout, s.pinned], [{}, undefined, []]);
   }));
+
+Deno.test("CLI: dividers are addressed by id — add, move, rotate, remove", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const read = () => JSON.parse(Deno.readTextFileSync(path)).dividers;
+    let r = await runCli(path, ["add-divider", "h", "120", "host", "boundary"]);
+    assert(r.code === 0 && r.out.includes('"div0"'), r.err || r.out);
+
+    r = await runCli(path, [
+      "update-divider",
+      "div0",
+      "--orient=v",
+      "--at=300",
+    ]);
+    assert(r.code === 0, r.err);
+    assertEquals(read(), [
+      { id: "div0", orient: "v", at: 300, label: "host boundary" },
+    ]);
+
+    r = await runCli(path, ["update-divider", "div0", "--label="]);
+    assert(r.code === 0, r.err);
+    assert(!("label" in read()[0]), "an empty --label clears it");
+
+    r = await runCli(path, ["update-divider", "div0", "--orient=x"]);
+    assert(r.code === 1 && r.err.includes('"h" or "v"'), r.err);
+
+    r = await runCli(path, ["list-dividers"]);
+    assert(r.out.includes("div0  v at 300px"), r.out);
+
+    r = await runCli(path, ["remove-divider", "div0"]);
+    assert(r.code === 0 && r.out.includes('Removed divider "div0"'), r.out);
+    assertEquals(read(), []);
+  }));

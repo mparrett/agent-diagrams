@@ -183,8 +183,12 @@ Commands:
                           [--labelSide=above|below|left|right] [--labelOffset=px] [--labelSeg=N] [--labelReset]   label placement
         Style axes (--width/--dash/--color) override the named --style preset one axis at a time.
         --color takes a named palette color (red, green, ...) or a semantic token (error, success, info, warn, neutral, accent).
-  add-divider <h|v> <at-px> [label]    Dotted boundary line across the canvas
-  remove-divider <h|v> <at-px>
+  add-divider <h|v> <at-px> [label]    Dotted boundary line across the canvas (h at a Y, v at an X)
+  update-divider <id> [--at=px] [--orient=h|v] [--label=...] [--color=...] [--dash=solid|dashed|dotted]
+                                       Move, rotate or restyle; an empty value clears label/color/dash.
+                                       Rotating keeps --at unless you pass a new one
+  remove-divider <id> | <h|v> <at-px>
+  list-dividers                        Dividers with their ids
   add-note <x> <y> [--title=...] [--color=...] [--anchor=node:side:dx:dy] <line>...  Floating text annotation
                                        (--anchor puts the note just outside that side of the box: E/W centered
                                         vertically, N/S horizontally; dx/dy shift it from there,
@@ -506,29 +510,79 @@ function run(args) {
       }
       const label = labelParts.length ? labelParts.join(" ") : undefined;
       const at = int("add-divider <at-px>", atStr);
-      const d = mutate((d) => d.addDivider(orient, at, { label }));
+      let id;
+      const d = mutate((d) => {
+        id = d.addDivider(orient, at, { label });
+      });
       renderUnlessDeferred(d);
-      console.log(`Added ${orient} divider at ${atStr}px (rev ${d.rev})`);
+      console.log(
+        `Added ${orient} divider "${id}" at ${atStr}px (rev ${d.rev})`,
+      );
       break;
     }
 
     case "remove-divider": {
-      const [, orient, atStr] = args;
-      if (!orient || !atStr) {
-        console.error("Error: remove-divider requires <h|v> <at-px>");
+      // remove-divider <id>  |  remove-divider <h|v> <at-px>
+      const [, a, atStr] = args;
+      if (!a) {
+        console.error("Error: remove-divider requires <id> or <h|v> <at-px>");
         Deno.exit(1);
       }
-      const at = int("remove-divider <at-px>", atStr);
+      const byId = atStr === undefined;
+      const at = byId ? undefined : int("remove-divider <at-px>", atStr);
       let existed;
       const d = mutate((d) => {
-        existed = d.removeDivider(orient, at);
+        existed = d.removeDivider(a, at);
       });
       renderUnlessDeferred(d);
+      const what = byId ? `"${a}"` : `${a} at ${atStr}px`;
       console.log(
         existed
-          ? `Removed ${orient} divider at ${atStr}px (rev ${d.rev})`
-          : `No ${orient} divider at ${atStr}px — nothing removed (rev ${d.rev})`,
+          ? `Removed divider ${what} (rev ${d.rev})`
+          : `No divider ${what} — nothing removed (rev ${d.rev})`,
       );
+      break;
+    }
+
+    case "update-divider": {
+      const id = args[1];
+      if (!id || id.startsWith("--")) {
+        console.error("Error: update-divider requires <id>");
+        Deno.exit(1);
+      }
+      const flags = args.slice(2);
+      rejectUnknownFlags("update-divider", flags, [
+        "--at",
+        "--orient",
+        "--label",
+        "--color",
+        "--dash",
+      ]);
+      const fields = {};
+      for (const f of flags) {
+        if (f.startsWith("--at=")) fields.at = int("--at", f.slice(5));
+        else if (f.startsWith("--orient=")) fields.orient = f.slice(9);
+        else if (f.startsWith("--label=")) fields.label = f.slice(8);
+        else if (f.startsWith("--color=")) fields.color = f.slice(8);
+        else if (f.startsWith("--dash=")) fields.dash = f.slice(7);
+      }
+      if (Object.keys(fields).length === 0) {
+        console.error("Error: update-divider needs at least one --flag=value");
+        Deno.exit(1);
+      }
+      const d = mutate((d) => d.updateDivider(id, fields));
+      renderUnlessDeferred(d);
+      console.log(`Updated divider "${id}" (rev ${d.rev})`);
+      break;
+    }
+
+    case "list-dividers": {
+      const ds = Diagram.load(STATE).listDividers();
+      console.log(`${ds.length} dividers:`);
+      for (const v of ds) {
+        const label = v.label ? ` "${v.label}"` : "";
+        console.log(`  ${v.id}  ${v.orient} at ${v.at}px${label}`);
+      }
       break;
     }
 

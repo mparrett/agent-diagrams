@@ -134,6 +134,75 @@ Deno.test("addDivider rejects dash values that would draw wrong", () =>
     assert(d.listDividers().length === 1, "the valid array form is kept");
   }));
 
+Deno.test("dividers: legacy ones get stable ids, without colliding", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [NODE_A],
+      dividers: [
+        { orient: "h", at: 60 },
+        { id: "div0", orient: "v", at: 90 },
+        { orient: "v", at: 120 },
+      ],
+    });
+    const ids = () => Diagram.load(path).listDividers().map((d) => d.id);
+    assert(
+      JSON.stringify(ids()) === '["div1","div0","div2"]',
+      `got ${JSON.stringify(ids())}`,
+    );
+    assert(
+      JSON.stringify(ids()) === JSON.stringify(ids()),
+      "the same ids on every load, so a client can address them before a save",
+    );
+  }));
+
+Deno.test("dividers: update moves and rotates in place; a bad field writes nothing", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
+    const id = d.addDivider("h", 60, { label: "zone", dash: "dashed" });
+    d.updateDivider(id, { orient: "v", at: 200 });
+    const [v] = d.listDividers();
+    assert(v.orient === "v" && v.at === 200 && v.label === "zone", "rotated");
+
+    assertThrowsWith(
+      () => d.updateDivider(id, { at: 10, dash: "wobbly" }),
+      "Invalid dash",
+      "bad dash",
+    );
+    assert(
+      d.listDividers()[0].at === 200,
+      "the valid at was not applied either",
+    );
+    assertThrowsWith(
+      () => d.updateDivider("nope", { at: 1 }),
+      "No divider",
+      "id",
+    );
+
+    d.updateDivider(id, { dash: "", label: "" });
+    assert(!("dash" in v) && !("label" in v), "empty values clear");
+
+    assert(d.removeDivider(id) === true, "removed by id");
+    assert(d.removeDivider(id) === false, "idempotent");
+    d.addDivider("h", 30);
+    assert(
+      d.removeDivider("h", 30) === true,
+      "legacy (orient, at) still works",
+    );
+  }));
+
+Deno.test("a vertical divider draws, and differently from a horizontal one", () => {
+  const at = (orient) => ({
+    nodes: [NODE_A],
+    dividers: [{ orient, at: 60, label: "zone" }],
+  });
+  const none = renderHash({ nodes: [NODE_A] });
+  assert(renderHash(at("v")) !== none, "v divider draws something");
+  assert(renderHash(at("v")) !== renderHash(at("h")), "v is not drawn as h");
+});
+
 Deno.test("parallel edges: same (from,to) coexist, addressed by id", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;
