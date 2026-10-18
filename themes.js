@@ -61,6 +61,54 @@ export const SCHEMES = {
     // Nightfox dawnfox pink; blue is shifted toward indigo.
     accents: { blue: "#3b5ea8", pink: "#d685af" },
   },
+  // Warm Burnout (warmburnout.com). Values from the Ghostty files in
+  // github.com/felipefdl/warm-burnout; that repo ships both variants.
+  warmburnout: {
+    label: "Warm Burnout",
+    bg: "#1a1510",
+    fg: "#bfbdb6",
+    black: "#23211b",
+    red: "#f06b73",
+    green: "#70bf56",
+    yellow: "#fdb04c",
+    blue: "#4fbfff",
+    magenta: "#d0a1ff",
+    cyan: "#93e2c8",
+    white: "#c7c7c7",
+    brBlack: "#686868",
+    brRed: "#f07178",
+    brGreen: "#aad94c",
+    brYellow: "#ffb454",
+    brBlue: "#59c2ff",
+    brMagenta: "#d2a6ff",
+    brCyan: "#95e6cb",
+    brWhite: "#ffffff",
+    // brMagenta is a shade of magenta, so purple and pink matched. Pink is the
+    // scheme's own "constants" syntax color, in both variants.
+    accents: { pink: "#d4a8b8" },
+  },
+  warmburnoutlight: {
+    label: "Warm Burnout Light",
+    bg: "#f5ede0",
+    fg: "#3a3630",
+    black: "#3a3630",
+    red: "#b82820",
+    green: "#2d6a14",
+    yellow: "#8a6000",
+    blue: "#2060a0",
+    magenta: "#8a3090",
+    cyan: "#146858",
+    white: "#c0b8aa",
+    brBlack: "#686868",
+    brRed: "#c83028",
+    brGreen: "#3a7a20",
+    brYellow: "#9a7008",
+    brBlue: "#2870b0",
+    brMagenta: "#9a38a0",
+    brCyan: "#208870",
+    brWhite: "#faf6f0",
+    accents: { pink: "#7e4060" },
+  },
   // Grayscale light theme — every "color" is a distinct shade of gray, so node
   // categories stay distinguishable (by border darkness) while the diagram reads
   // as monochrome / print-friendly. Edge styles still differ by dash pattern.

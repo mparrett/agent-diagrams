@@ -255,7 +255,7 @@ scheme. Each scheme in `themes.js` is just a raw palette (background, foreground
   (so it adapts to **light or dark** schemes automatically),
 - edge colors ← magenta/yellow/cyan/red.
 
-Built-in: `afterglow` (dark), `dawnfox` (light), `monolight` (grayscale light — node categories read as distinct gray shades; edge styles stay distinguishable by dash pattern). Pick one live from the editor's
+Built-in: `afterglow` (dark), `dawnfox` (light), `warmburnout` (dark) and `warmburnoutlight` (light) from [Warm Burnout](https://warmburnout.com/), `monolight` (grayscale light — node categories read as distinct gray shades; edge styles stay distinguishable by dash pattern). Pick one live from the editor's
 dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To add a scheme**, paste its
 18 hex values into `SCHEMES` in `themes.js` — nothing else changes. If two node colors come out alike (a test checks every scheme), add `accents: { <node color>: hex }` to that scheme; it replaces the node color and leaves the edge colors alone. Any
 `colors`/`edgeStyles` overrides above still win over the theme.
@@ -289,7 +289,7 @@ diagram-cli.js [--state <path>] <command> [args...]
   remove-group <id> / list-groups
   uniform-width <on|off>
   set-title [text...] / set-footer [text...]   (no argument clears)
-  set-theme <name|reset>     afterglow | dawnfox | monolight; reset = built-in palette
+  set-theme <name|reset>     afterglow | dawnfox | warmburnout | warmburnoutlight | monolight; reset = built-in palette
   set-color <name> <bg> <border> | <name> reset   define a node color (or override one)
   set-edge-preset <name> <hex> [solid|dashed|dotted] | <name> reset   define an edge style
   set-background <hex|reset> / set-wrap-slack <n|reset>
