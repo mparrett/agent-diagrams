@@ -168,6 +168,11 @@ Deno.test("dividers: a bad or duplicate id never reaches the saved file", () =>
       "numeric id",
     );
     assert(d.listDividers().length === 0, "nothing was added");
+    assertThrowsWith(
+      () => d.addDivider("h", 60, { id: "v" }),
+      "reserved",
+      "an id that reads as an orientation",
+    );
 
     writeState(path, {
       nodes: [NODE_A],

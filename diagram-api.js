@@ -443,7 +443,7 @@ export function validateState(state, path = "diagram-state.json") {
 
   const dividerIds = new Set();
   for (const [i, d] of (state.dividers || []).entries()) {
-    if (d?.id !== undefined) {
+    if (d?.id) { // a falsy id is backfilled at load, like a missing one
       if (dividerIds.has(d.id)) at(`duplicate divider id "${d.id}"`);
       dividerIds.add(d.id);
     }
@@ -1394,6 +1394,13 @@ export class Diagram {
     if (opts.id != null && (typeof opts.id !== "string" || !opts.id)) {
       throw new Error(
         `Divider id must be a non-empty string, got ${JSON.stringify(opts.id)}`,
+      );
+    }
+    // `remove-divider h 240` is the legacy CLI form, so an id of "h" or "v"
+    // could never be removed by id there.
+    if (opts.id === "h" || opts.id === "v") {
+      throw new Error(
+        `Divider id "${opts.id}" is reserved (it reads as an orientation)`,
       );
     }
     const taken = (this._state.dividers || []).some((d) => d?.id === opts.id);
