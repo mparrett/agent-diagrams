@@ -42,6 +42,7 @@ import {
   drawRoutes,
   EDGE_MARGIN,
   edgeSides,
+  fillDividerIds,
   Grid,
   groupFrames,
   groupLabelRects,
@@ -1431,27 +1432,32 @@ cvs.addEventListener("pointerup", (e) => {
     }
     return;
   }
-  // Divider drop: persist the new position. Like a label drop, nothing else
-  // moved, so the local copy is already right and no reload is needed.
+  // Divider drop: persist the new position. A change that arrived mid-drag is
+  // merged first, so the write carries the fresh rev instead of a stale one
+  // that would 409; the reload resets the divider, so its new `at` is
+  // re-applied after.
   if (drag?.kind === "divider") {
     const { id, start } = drag;
     drag = null;
     updateCursor();
     render();
-    const d = dividerById(id);
-    if (d && d.at !== start) {
-      postDivider({ action: "update", id, fields: { at: d.at } })
-        .then(() => setStatus(`divider at ${d.at}px (rev ${lastRev})`))
-        .catch((err) => {
-          d.at = start;
-          render();
-          setStatus("divider move failed: " + err.message);
-        });
-    }
-    if (pendingReload) {
-      pendingReload = false;
-      mergeReload();
-    }
+    const at = dividerById(id)?.at;
+    const reload = pendingReload;
+    pendingReload = false;
+    (async () => {
+      if (reload) await mergeReload();
+      if (at === undefined || at === start) return;
+      try {
+        await postDivider({ action: "update", id, fields: { at } });
+        const d = dividerById(id);
+        if (d) d.at = at;
+        render();
+        setStatus(`divider at ${at}px (rev ${lastRev})`);
+      } catch (err) {
+        setStatus("divider move failed: " + err.message);
+        await mergeReload(); // show what the board really holds
+      }
+    })();
     return;
   }
   // Label drop: persist the new labelPos directly (nonce-suppressed; no
@@ -1852,21 +1858,6 @@ function ensureEdgeIds(edges) {
   }
 }
 
-// Same scheme as the server (diagram-api's constructor): `div0`, `div1`…
-// skipping ids already taken, so both sides agree before a save stores them.
-function ensureDividerIds(dividers) {
-  const taken = new Set((dividers || []).map((d) => d?.id).filter(Boolean));
-  let i = 0;
-  for (const d of dividers || []) {
-    if (!d || d.id) continue;
-    let id;
-    do {
-      id = `div${i++}`;
-    } while (taken.has(id));
-    d.id = id;
-    taken.add(id);
-  }
-}
 const dividerById = (id) =>
   id ? (diagramState?.dividers || []).find((d) => d.id === id) : undefined;
 function dividerAt(p) {
@@ -2039,6 +2030,16 @@ function hitTestEdge(x, y, tol = screenTol(coarsePointer ? 12 : 6, 20)) {
   }
   return best;
 }
+
+// Delete/Backspace acts on the hovered divider, so a hover must not outlive the
+// pointer: leave the canvas for the sidebar, press Backspace, and the last
+// divider touched would go.
+cvs.addEventListener("pointerleave", () => {
+  if (hoverDividerId === null || drag) return;
+  hoverDividerId = null;
+  updateCursor();
+  render();
+});
 
 cvs.addEventListener("pointercancel", (e) => {
   cancelLongPress();
@@ -4866,7 +4867,7 @@ async function init() {
   setDiagramTitle(diagramState.title);
 
   ensureEdgeIds(diagramState.edges);
-  ensureDividerIds(diagramState.dividers);
+  fillDividerIds(diagramState.dividers);
   EDGES_DEF = diagramState.edges;
   pinnedSet = new Set(diagramState.pinned || []); // empty on legacy boards — pins accrue as you drag
   lastRev = diagramState.rev ?? 0;
@@ -5333,7 +5334,7 @@ async function mergeReload() {
   document.getElementById("themeSelect").value = tName;
   setDiagramTitle(fresh.title);
   ensureEdgeIds(fresh.edges);
-  ensureDividerIds(fresh.dividers);
+  fillDividerIds(fresh.dividers);
   const prevDisk = diagramState.layout || {};
   const prevInner = diagramState.innerLayout || {};
   diagramState = fresh;
