@@ -167,8 +167,10 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
                                            //   avoid wrapping its title or details; 1 = always the smallest box
   "dividers": [                            // optional: dotted boundary lines across the canvas
     { "id": "div0", "orient": "h", "at": 240, "label": "host boundary" },  // h: at is a Y
-    { "id": "div1", "orient": "v", "at": 600 }                              // v: at is an X
+    { "id": "div1", "orient": "v", "at": 600 },                             // v: at is an X
+    { "id": "div2", "orient": "h", "at": 0, "after": 2, "band": true }      // a band edge after row 2
   ],                                       //   id is optional; one is filled in on the next save
+  "dividerBands": true,                    // optional: every divider without its own `band` is a band edge
   "groups": [                              // optional: labeled frames around sets of nodes
     { "id": "edge", "label": "Edge tier", "nodes": ["client", "api"], "color": "blue" },
     { "id": "data", "label": "Data", "nodes": ["db", "cache"],
@@ -199,7 +201,8 @@ Because content (`nodes`/`edges`) and layout (`layout`) are disjoint keys, an ag
 
 Light annotation primitives mark regions and add commentary without changing how the board is laid out:
 
-- **Dividers** — full-width/-height dotted lines that partition the canvas into regions (`"dividers"`, or `add-divider h 240 "host boundary"`; `v` for a vertical one). Each has an id, so `update-divider` can move, rotate or restyle it in place. Annotation only: wires route straight through them.
+- **Dividers** — full-width/-height dotted lines that partition the canvas into regions (`"dividers"`, or `add-divider h 240 "host boundary"`; `v` for a vertical one). Each has an id, so `update-divider` can move, rotate or restyle it in place. Wires route straight through them.
+- **Divider bands** — opt in with `set-divider-bands on` for the board, or `add-divider --band` / `update-divider --band=on|off|default` for one divider. A band divider sits in the gap after a row (`after`; a column for `v`) instead of at a fixed pixel, layout widens that gap to hold it, and no box can sit across it. A box's band is its row, so moving a box to another band means changing its row. `update-node <id> --band=off` lets one box sit across a line, such as a parameter block shared by two layers. Turning bands off leaves each line where it was drawn.
 - **Groups** — a labeled frame around a set of nodes, for views that sort boxes into regions (`"groups"`, or `add-group surfaces "User surfaces" portal queue editor`). The frame pads the members' drawn boxes and carries its label on the top border; `--color=<name>` tints it and `--dash=dashed` breaks the line. A group that contains all of another group's nodes draws around that group's frame as well. Groups do not move boxes: a frame is wherever its members land, so give each group its own rows and columns. A non-member that ends up inside a frame is named in a warning on every render and under `status --positions`. Row and column spacing does make room for frames, so groups in neighbouring rows or columns keep at least 15px of clear space between frames and labels. Routing ignores groups. 
 
   **Inner groups** lay out their own members: `add-group agents "Consuming agents" help summary helpkb --inner --row=2 --col=3`. Each member's `row`/`col` is then its position inside the group, and the group is placed on the board as one box at the given row and column, so no other box can land inside its frame. The cost is alignment: boxes inside a group no longer line up with boxes outside it. An inner group can also list other inner groups by id, nesting them to any depth; node and group ids share one namespace, so a group id cannot also be a node id. A node can be in only one inner group. Move a group with `update-group <id> --row= --col=`, or in the editor by dragging its label or frame border; dragging a box inside a group pins it relative to that group (stored in `innerLayout`), and a top-level group's pin goes in `layout` like a box's. `free-node <id>` releases either kind of pin. `update-group --annotation` turns it back into a plain frame. `update-group <id> --add=a,b --remove=c --label=…`, `remove-group`, and `list-groups` cover edits; removing a node drops it from its groups.
@@ -284,6 +287,8 @@ diagram-cli.js [--state <path>] <command> [args...]
                               one of several parallel a→b edges; from/to else matches the first)
   add-divider <h|v> <at-px> [label] / remove-divider <id> | <h|v> <at-px> / list-dividers
   update-divider <id> [--at=] [--orient=h|v] [--label=] [--color=] [--dash=]   Move, rotate or restyle
+                 [--band=on|off|default] [--after=N]   On a band divider --at snaps to the nearest row gap
+  set-divider-bands on|off|default                     Board default for dividers without their own --band
   add-note <x> <y> [--title=] [--color=] <line> [line...] / remove-note <x> <y>
   add-group <id> <label> <node>... [--color=] [--dash=]   Labeled frame around nodes
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=|none] [--dash=|none]
@@ -384,7 +389,7 @@ d.render();                               // writes diagram.png next to the stat
 - **switch boards** via the board picker at the top of the sidebar (multi-whiteboard; see above),
 - pick a **color scheme**, **line up** or **spread** boxes, **reset** to auto layout, and live-tune the four A\* routing knobs (*Routing parameters*, under Wires in the sidebar).
 
-Dividers are editable in the editor too: drag one along its axis, right-click it to edit its label, color and line, rotate it or delete it, or add one from the empty-canvas menu. Groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
+Dividers are editable in the editor too: drag one along its axis, right-click it to edit its label, color and line, rotate it or delete it, or add one from the empty-canvas menu. A band divider snaps to the nearest row gap when dropped; turning bands on and off is CLI-only for now. Groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
 
 State changes persist to the file (all CAS-guarded): drags/passes via `POST /layout`, content edits via `POST /node` and `POST /edge`, theme via `POST /theme`, routing-slider tuning via `POST /costs`. The theme, the routing sliders, and the layout passes all persist, so a reload — and the CLI/PNG render — reproduce what you set. It needs the files served over HTTP — use the dev server below.
 
