@@ -45,6 +45,10 @@ const cli = (...a) =>
 const read = () => JSON.parse(Deno.readTextFileSync(S));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Auto Layout asks before clearing pins; the modal opens synchronously in the click.
+const autoLayout = (page) =>
+  page.evaluate(`document.getElementById("bAutoLayout").click();
+    document.getElementById("cmOk").click()`);
 // Relative pins as "group/id" strings.
 const innerPins = (s) =>
   Object.entries(s.innerLayout ?? {})
@@ -173,7 +177,7 @@ try {
     same(await editorBoxes(), await solved()),
   );
 
-  await page.evaluate(`document.getElementById("bAutoLayout").click()`);
+  await autoLayout(page);
   await wait(1500);
   s = read();
   check(
@@ -292,13 +296,13 @@ try {
     `${big.width}x${big.height} -> ${s.width}x${s.height}, box ${c0.x},${c0.y} -> ${c1.x},${c1.y}`,
   );
 
-  // Zoomed out past the trimmed board, Expand all reaches every edge of the view.
+  // Zoomed out past the trimmed board, Fit to view reaches every edge of the view.
   const trimmed = read();
-  await page.evaluate(`document.getElementById("bExpandAll").click()`);
+  await page.evaluate(`document.getElementById("bExpandCanvas").click()`);
   await wait(1500);
   s = read();
   check(
-    "Expand all grows the frame on every side",
+    "Fit to view grows the frame on every side",
     s.width > trimmed.width && s.height > trimmed.height &&
       same(s.layout, trimmed.layout) &&
       same(await editorBoxes(), await solved()),
@@ -421,7 +425,7 @@ try {
   await page.evaluate(`window.__wb.holdSaves(false)`);
   await wait(1500);
 
-  await page.evaluate(`document.getElementById("bAutoLayout").click()`);
+  await autoLayout(page);
   await wait(1500);
   s = read();
   check(
