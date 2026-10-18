@@ -193,6 +193,23 @@ Deno.test("dividers: update moves and rotates in place; a bad field writes nothi
     );
   }));
 
+Deno.test("a divider's color token takes the theme color, not the CSS name", () => {
+  const colored = (color) => ({
+    nodes: [NODE_A],
+    dividers: [{ orient: "h", at: 60, color, dash: "solid" }],
+  });
+  // A raw pass-through draws CSS "blue" (#0000ff) and leaves "info" as an
+  // invalid strokeStyle, so neither assertion holds without the resolution.
+  assert(
+    renderHash(colored("blue")) !== renderHash(colored("#0000ff")),
+    "a palette name is not drawn as the CSS color of the same name",
+  );
+  assert(
+    renderHash(colored("info")) === renderHash(colored("blue")),
+    "a semantic token draws as the palette color it aliases",
+  );
+});
+
 Deno.test("a vertical divider draws, and differently from a horizontal one", () => {
   const at = (orient) => ({
     nodes: [NODE_A],
