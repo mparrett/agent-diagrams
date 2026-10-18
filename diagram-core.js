@@ -3729,6 +3729,25 @@ function drawPerson(ctx, cx, y, iconH, color, b) {
 }
 
 /**
+ * Divider ids: `div0`, `div1`… skipping any already taken. The server stores
+ * them on the next save, but the editor reads the raw file and must name a
+ * legacy divider exactly as the server will, so both call these.
+ */
+export function freshDividerId(dividers) {
+  const taken = new Set((dividers || []).map((d) => d?.id).filter(Boolean));
+  let i = 0, id;
+  do {
+    id = `div${i++}`;
+  } while (taken.has(id));
+  return id;
+}
+export function fillDividerIds(dividers) {
+  for (const d of dividers || []) {
+    if (d && !d.id) d.id = freshDividerId(dividers);
+  }
+}
+
+/**
  * Boundary dividers — full-width/-height dotted lines that partition the
  * canvas into regions (the "boxes inside boxes" alternative). Annotation only:
  * wires route straight through them, layout ignores them.

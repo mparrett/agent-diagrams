@@ -35,7 +35,9 @@ import {
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
+  fillDividerIds,
   findIssues,
+  freshDividerId,
   Grid,
   GROUP_LABEL_ALIGN,
   GROUP_LABEL_POS,
@@ -524,9 +526,7 @@ export class Diagram {
     }
     // Dividers get the same treatment, so the editor can drag one without its
     // position being its only name (removeDivider used to match on orient+at).
-    for (const d of state.dividers || []) {
-      if (d && !d.id) d.id = this._freshDividerId();
-    }
+    fillDividerIds(state.dividers);
     // Likewise backfill stable edge ids. Legacy diagrams have no duplicate
     // (from,to) pairs (the old uniqueness guard forbade them), so each edge
     // deterministically becomes `from~to` — stable across reloads. Parallel
@@ -1352,17 +1352,6 @@ export class Diagram {
   // ─── Dividers (boundary lines) ────────────────────────────
   // Annotation-only h/v dotted lines that partition the canvas into regions.
   // One entity with an orientation: `at` is a Y for "h" and an X for "v".
-  _freshDividerId() {
-    const seen = new Set(
-      (this._state.dividers || []).map((d) => d?.id).filter(Boolean),
-    );
-    let i = 0, id;
-    do {
-      id = `div${i++}`;
-    } while (seen.has(id));
-    return id;
-  }
-
   _checkOrient(orient) {
     if (orient !== "h" && orient !== "v") {
       throw new Error(`Divider orient must be "h" or "v", got "${orient}"`);
@@ -1408,7 +1397,9 @@ export class Diagram {
       );
     }
     const taken = (this._state.dividers || []).some((d) => d?.id === opts.id);
-    const d = { id: opts.id && !taken ? opts.id : this._freshDividerId() };
+    const d = {
+      id: opts.id && !taken ? opts.id : freshDividerId(this._state.dividers),
+    };
     d.orient = orient;
     d.at = at;
     if (opts.label) d.label = opts.label;
