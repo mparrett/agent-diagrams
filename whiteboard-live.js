@@ -1992,6 +1992,11 @@ function updateHover(e) {
 // mode. (Open-hand `grab` reads as "pan the canvas", so it's avoided for
 // objects — it muddied draggable vs. clickable.)
 function updateCursor() {
+  // Space wins over every hover affordance: the next drag pans, whatever is under it.
+  if (spaceHeld && (!drag || drag.kind === "pan")) {
+    cvs.style.cursor = drag ? "grabbing" : "grab";
+    return;
+  }
   const fr = drag?.kind === "frame" ? drag.edge : (drag ? null : hoverFrame);
   const rz = drag?.kind === "boxresize" || (!drag && hoverResize); // box SE corner
   cvs.style.cursor = fr
@@ -2010,8 +2015,6 @@ function updateCursor() {
       : "ns-resize") // divider → slides along its axis
     : drag
     ? "grabbing"
-    : spaceHeld
-    ? "grab" // Space held → drag pans the canvas
     : connectMode
     ? "crosshair"
     : hoverEndpoint
