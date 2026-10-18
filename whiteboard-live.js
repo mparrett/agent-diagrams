@@ -100,6 +100,7 @@ let costs = { ...DEFAULT_COSTS };
 let showGrid = false, showHeat = false, showConn = false, showFlow = false;
 let dragMode = true, drag = null, didDrag = false;
 let connectMode = false, connectSourceId = null, connectCursor = null;
+let spaceHeld = false; // Space down → any canvas drag pans, whatever the mode
 // Hover affordances: the box/edge under the cursor (held by id / by from-to,
 // never by object ref — mergeReload rebuilds BOXES and routes).
 let hoverBoxId = null, hoverEdge = null, hoverLabel = false;
@@ -931,7 +932,9 @@ cvs.addEventListener("pointerdown", (e) => {
     }
     startLongPress(e); // hold-to-open-menu armed for any mode
   }
-  if (!dragMode || connectMode) return;
+  // Space pans from anywhere, even over a box or in connect mode.
+  const panOnly = spaceHeld && e.pointerType !== "touch";
+  if (!panOnly && (!dragMode || connectMode)) return;
   didDrag = false;
   dragDownX = e.clientX;
   dragDownY = e.clientY;
@@ -942,7 +945,7 @@ cvs.addEventListener("pointerdown", (e) => {
     activePointerId = e.pointerId;
   } catch { /* pointer gone */ }
   const p = canvasCoords(e);
-  const hit = hitTest(p);
+  const hit = panOnly ? { kind: "empty" } : hitTest(p);
   if (hit.kind === "note") {
     drag = {
       kind: "note",
@@ -1082,13 +1085,14 @@ cvs.addEventListener("pointerdown", (e) => {
   }
   if (hit.kind === "empty" || hit.kind === "edge") { // empty/edge space → pan the viewport
     // tapKind/tapEdge let a no-move tap reveal an edge's endpoints (touch) or clear selection on empty.
+    // A Space pan has no tapKind, so a no-move press selects nothing.
     drag = {
       kind: "pan",
       sx: e.clientX,
       sy: e.clientY,
       px: view.panX,
       py: view.panY,
-      tapKind: hit.kind,
+      tapKind: panOnly ? null : hit.kind,
       tapEdge: hit.edge || null,
     };
     updateCursor();
@@ -1119,7 +1123,7 @@ cvs.addEventListener("pointermove", (e) => {
     lpStart &&
     Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > LP_MOVE
   ) cancelLongPress(); // moved → it's a drag
-  if (connectMode && connectSourceId) {
+  if (connectMode && connectSourceId && drag?.kind !== "pan") {
     const p = canvasCoords(e);
     connectCursor = p;
     render();
@@ -1968,6 +1972,11 @@ function updateHover(e) {
 // mode. (Open-hand `grab` reads as "pan the canvas", so it's avoided for
 // objects — it muddied draggable vs. clickable.)
 function updateCursor() {
+  // Space wins over every hover affordance: the next drag pans, whatever is under it.
+  if (spaceHeld && (!drag || drag.kind === "pan")) {
+    cvs.style.cursor = drag ? "grabbing" : "grab";
+    return;
+  }
   const fr = drag?.kind === "frame" ? drag.edge : (drag ? null : hoverFrame);
   const rz = drag?.kind === "boxresize" || (!drag && hoverResize); // box SE corner
   cvs.style.cursor = fr
@@ -2076,6 +2085,7 @@ cvs.addEventListener("click", (e) => {
     didDrag = false;
     return;
   } // tail of a drag, not a click
+  if (spaceHeld) return; // a no-move Space press is a pan that didn't move
   if (connectMode) {
     handleConnectClick(e);
     return;
@@ -3250,6 +3260,7 @@ async function growFrameToView(edge) {
 // Double-click a note to edit its text, or a node to edit its text/color.
 // Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
+  if (spaceHeld) return; // a Space press pans; it never edits
   const hit = hitTest(canvasCoords(e));
   if (hit.kind === "frame") {
     growFrameToView(hit.frame);
@@ -3678,7 +3689,9 @@ function openNoteMenu(id, x, y) {
 
 // ── Context menu: right-click affordances for boxes and edges ──
 const ctxMenu = document.getElementById("ctxMenu");
-const ctxOpen = () => ctxMenu.style.display !== "none";
+// Shown only by an inline "flex"; before the first open the inline value is ""
+// and the stylesheet hides it, so test for "flex" rather than "not none".
+const ctxOpen = () => ctxMenu.style.display === "flex";
 function closeCtxMenu() {
   ctxMenu.style.display = "none";
   ctxMenu.innerHTML = "";
@@ -3837,6 +3850,31 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Hold Space to pan: while it is down, dragging anywhere moves the view instead
+// of the thing under the pointer. Releasing it returns to the current mode.
+document.addEventListener("keydown", (e) => {
+  // Only when nothing is focused: a focused button, checkbox or field keeps Space.
+  if (
+    e.code !== "Space" || (e.target !== document.body && e.target !== cvs) ||
+    overlaysOpen()
+  ) return;
+  e.preventDefault(); // no page scroll, and no activating a focused button
+  if (spaceHeld) return; // key repeat
+  spaceHeld = true;
+  updateCursor();
+});
+document.addEventListener("keyup", (e) => {
+  if (e.code !== "Space" || !spaceHeld) return;
+  e.preventDefault(); // a focused button activates on keyup
+  spaceHeld = false;
+  updateCursor();
+});
+// The keyup never arrives if focus leaves the window with Space down.
+window.addEventListener("blur", () => {
+  spaceHeld = false;
+  updateCursor();
+});
+
 // Click outside an open editor popover dismisses it — same as its Close button
 // (edits apply live, so nothing is discarded). The opening click is a separate,
 // earlier gesture, so this never closes an editor as it opens.
@@ -3893,6 +3931,7 @@ function openContextMenuFor(clientX, clientY) {
 
 cvs.addEventListener("contextmenu", (e) => {
   e.preventDefault(); // no browser menu anywhere on the canvas
+  if (spaceHeld) return;
   if (didDrag) {
     didDrag = false;
     closeCtxMenu();
