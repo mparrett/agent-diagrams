@@ -5096,7 +5096,7 @@ if (new URLSearchParams(location.search).has("test")) {
 const banner = document.createElement("div");
 banner.style.cssText =
   "position:fixed;top:12px;right:12px;z-index:50;display:none;" +
-  "background:#1f6feb;color:#fff;font:12px monospace;padding:8px 12px;" +
+  "background:var(--accent);color:var(--on-accent);font:12px monospace;padding:8px 12px;" +
   "border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0008";
 banner.textContent =
   "edited on disk while you moved the same box — click to take the disk version";
