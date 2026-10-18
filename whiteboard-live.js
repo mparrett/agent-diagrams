@@ -1434,8 +1434,8 @@ cvs.addEventListener("pointerup", (e) => {
   }
   // Divider drop: persist the new position. A change that arrived mid-drag is
   // merged first, so the write carries the fresh rev instead of a stale one
-  // that would 409; the reload resets the divider, so its new `at` is
-  // re-applied after.
+  // that would 409. The reload resets the divider to its saved position, so the
+  // new `at` is put back in the same task, before the browser paints.
   if (drag?.kind === "divider") {
     const { id, start } = drag;
     drag = null;
@@ -1445,13 +1445,16 @@ cvs.addEventListener("pointerup", (e) => {
     const reload = pendingReload;
     pendingReload = false;
     (async () => {
-      if (reload) await mergeReload();
-      if (at === undefined || at === start) return;
-      try {
-        await postDivider({ action: "update", id, fields: { at } });
+      if (at === undefined) return;
+      if (reload) {
+        await mergeReload();
         const d = dividerById(id);
         if (d) d.at = at;
         render();
+      }
+      if (at === start) return;
+      try {
+        await postDivider({ action: "update", id, fields: { at } });
         setStatus(`divider at ${at}px (rev ${lastRev})`);
       } catch (err) {
         setStatus("divider move failed: " + err.message);
