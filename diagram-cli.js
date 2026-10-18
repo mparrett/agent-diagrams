@@ -82,6 +82,20 @@ function int(what, raw, { min } = {}) {
   return n;
 }
 
+// --flag=on|off|default as true / false / null (null clears the field, so the
+// board default applies).
+function onOffDefault(flag, at) {
+  const v = flag.slice(at);
+  if (v === "on") return true;
+  if (v === "off") return false;
+  if (v === "default") return null;
+  console.error(`Error: ${flag.split("=")[0]} must be on, off or default`);
+  Deno.exit(1);
+}
+
+// "row" for a horizontal divider's gap, "col" for a vertical one's.
+const axisName = (d) => d.orient === "h" ? "row" : "col";
+
 // Reject unrecognized --flags so a typo (--lable=) errors instead of silently
 // applying nothing and reporting success.
 // --labelPos= --labelAlign= --labelWeight= --labelSize= into opts; a value of
@@ -177,18 +191,27 @@ Commands:
                           [--frame=box|none]   none draws no border or fill; the box still holds its place (also add-node --frame=)
                           [--span=N|0]   fill N columns from this node's col, gaps included (1 = as wide as its
                                          column's widest box); spanning boxes don't widen columns. 0 clears
+                          [--band=off|default]   off puts the box in no divider band, so it may sit across a
+                                         band line (see set-divider-bands); default puts it back in its row's band
   update-edge <from> <to> [--style=...] [--label=...] [--fromEdge=N|S|E|W] [--toEdge=...] [--fromConn=C|C-1|...] [--toConn=...]
                           [--width=thin|medium|thick] [--dash=solid|dashed|dotted] [--color=NAME|SEMANTIC] [--styleReset]   style axes
                           [--cost-step=N] [--cost-turn=N] [--cost-near=N] [--cost-overlap=N] [--cost-reset]   per-edge routing bias
                           [--labelSide=above|below|left|right] [--labelOffset=px] [--labelSeg=N] [--labelReset]   label placement
         Style axes (--width/--dash/--color) override the named --style preset one axis at a time.
         --color takes a named palette color (red, green, ...) or a semantic token (error, success, info, warn, neutral, accent).
-  add-divider <h|v> <at-px> [label]    Dotted boundary line across the canvas (h at a Y, v at an X)
+  add-divider <h|v> <at-px> [--band] [label]
+                                       Dotted boundary line across the canvas (h at a Y, v at an X).
+                                       --band makes it a band edge in the row (column) gap nearest at-px
   update-divider <id> [--at=px] [--orient=h|v] [--label=...] [--color=...] [--dash=solid|dashed|dotted]
+                    [--band=on|off|default] [--after=N]
                                        Move, rotate or restyle; an empty value clears label/color/dash.
-                                       Rotating keeps --at unless you pass a new one
+                                       Rotating keeps --at unless you pass a new one. On a band divider
+                                       --at snaps to the nearest row gap; --after=N puts it after row N
   remove-divider <id> | <h|v> <at-px>
-  list-dividers                        Dividers with their ids
+  list-dividers                        Dividers with their ids, drawn positions and bands
+  set-divider-bands on|off|default     Board default for dividers without their own --band. A band
+                                       divider sits between two rows and keeps layout from putting
+                                       boxes across it; a box's band is its row (column for v)
   add-note <x> <y> [--title=...] [--color=...] [--anchor=node:side:dx:dy] <line>...  Floating text annotation
                                        (--anchor puts the note just outside that side of the box: E/W centered
                                         vertically, N/S horizontally; dx/dy shift it from there,
@@ -503,20 +526,27 @@ function run(args) {
     }
 
     case "add-divider": {
-      const [, orient, atStr, ...labelParts] = args;
+      const [, orient, atStr, ...rest] = args;
       if (!orient || !atStr) {
-        console.error("Error: add-divider requires <h|v> <at-px> [label]");
+        console.error(
+          "Error: add-divider requires <h|v> <at-px> [--band] [label]",
+        );
         Deno.exit(1);
       }
+      const band = rest.includes("--band");
+      const labelParts = rest.filter((a) => a !== "--band");
       const label = labelParts.length ? labelParts.join(" ") : undefined;
       const at = int("add-divider <at-px>", atStr);
       let id;
       const d = mutate((d) => {
-        id = d.addDivider(orient, at, { label });
+        id = d.addDivider(orient, at, { label, ...(band && { band: true }) });
       });
       renderUnlessDeferred(d);
+      const v = d.listDividers().find((x) => x.id === id);
       console.log(
-        `Added ${orient} divider "${id}" at ${atStr}px (rev ${d.rev})`,
+        `Added ${orient} divider "${id}" ${
+          v.isBand ? `after ${axisName(v)} ${v.after}` : `at ${atStr}px`
+        } (rev ${d.rev})`,
       );
       break;
     }
@@ -563,6 +593,8 @@ function run(args) {
         "--label",
         "--color",
         "--dash",
+        "--band",
+        "--after",
       ]);
       const fields = {};
       for (const f of flags) {
@@ -571,6 +603,10 @@ function run(args) {
         else if (f.startsWith("--label=")) fields.label = f.slice(8);
         else if (f.startsWith("--color=")) fields.color = f.slice(8);
         else if (f.startsWith("--dash=")) fields.dash = f.slice(7);
+        else if (f.startsWith("--band=")) fields.band = onOffDefault(f, 7);
+        else if (f.startsWith("--after=")) {
+          fields.after = int("--after", f.slice(8));
+        }
       }
       if (Object.keys(fields).length === 0) {
         console.error("Error: update-divider needs at least one --flag=value");
@@ -587,8 +623,27 @@ function run(args) {
       console.log(`${ds.length} dividers:`);
       for (const v of ds) {
         const label = v.label ? ` "${v.label}"` : "";
-        console.log(`  ${v.id}  ${v.orient} at ${v.at}px${label}`);
+        const band = v.isBand ? `, band after ${axisName(v)} ${v.after}` : "";
+        console.log(`  ${v.id}  ${v.orient} at ${v.at}px${band}${label}`);
       }
+      break;
+    }
+
+    case "set-divider-bands": {
+      const flag = args[1];
+      if (!["on", "off", "default"].includes(flag)) {
+        console.error("Error: set-divider-bands requires on|off|default");
+        Deno.exit(1);
+      }
+      const on = flag === "on" ? true : flag === "off" ? false : null;
+      const d = mutate((d) => d.setDividerBands(on));
+      renderUnlessDeferred(d);
+      const n = d.listDividers().filter((v) => v.isBand).length;
+      console.log(
+        `divider bands: ${flag} — ${n} band divider${
+          n === 1 ? "" : "s"
+        } (rev ${d.rev})`,
+      );
       break;
     }
 
@@ -1185,6 +1240,7 @@ function run(args) {
           "--icon",
           "--frame",
           "--span",
+          "--band",
         ],
       );
       const opts = {};
@@ -1217,6 +1273,9 @@ function run(args) {
           opts.frame = arg.slice(8);
         } else if (arg.startsWith("--span=")) {
           opts.span = int("--span", arg.slice(7), { min: 0 });
+        } else if (arg.startsWith("--band=")) {
+          const v = onOffDefault(arg, 7);
+          opts.band = v === false ? false : null;
         } else if (arg === "--outlineReset") {
           opts.outlineWidth = null;
           opts.outlineDash = null;

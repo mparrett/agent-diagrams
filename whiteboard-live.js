@@ -47,6 +47,7 @@ import {
   groupFrames,
   groupLabelRects,
   innerGroups,
+  isBandDivider,
   legendEntries,
   makePalette,
   measureNote,
@@ -336,7 +337,7 @@ function render() {
   if (showFlow && grid) {
     drawFlowField(ctx, diagramState?.flow, grid.cols, grid.rows, CELL);
   }
-  drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
+  drawDividers(ctx, shownDividers(), CSS_W, CSS_H, PAL);
   drawDividerHighlight();
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
@@ -892,7 +893,8 @@ function drawCreateNubs() {
 // Accent the divider under the pointer, or the one being dragged: a 1px dotted
 // rule doesn't otherwise read as something you can grab.
 function drawDividerHighlight() {
-  const d = dividerById(drag?.kind === "divider" ? drag.id : hoverDividerId);
+  const id = drag?.kind === "divider" ? drag.id : hoverDividerId;
+  const d = shownDividers().find((x) => x.id === id);
   if (!d) return;
   ctx.save();
   ctx.strokeStyle = overlay.hi;
@@ -1092,6 +1094,10 @@ cvs.addEventListener("pointerdown", (e) => {
     return;
   }
   if (hit.kind === "divider") {
+    // Start from where the line is drawn. A band divider's stored `at` can be
+    // far from its gap, and a no-move click must not post that stale value.
+    const d = dividerById(hit.divider.id);
+    if (d) d.at = hit.divider.at;
     drag = { kind: "divider", id: hit.divider.id, start: hit.divider.at };
     hoverBoxId = null;
     hoverEdge = null;
@@ -1472,8 +1478,16 @@ cvs.addEventListener("pointerup", (e) => {
         render();
       }
       if (at === start) return;
+      const band = isBandDivider(dividerById(id), diagramState);
       try {
         await postDivider({ action: "update", id, fields: { at } });
+        if (band) {
+          // The server snapped it to the nearest row gap, and the band's air
+          // moved with it, so the layout has to come back too.
+          await mergeReload();
+          setStatus(`divider moved to a new row gap (rev ${lastRev})`);
+          return;
+        }
         setStatus(`divider at ${at}px (rev ${lastRev})`);
       } catch (err) {
         setStatus("divider move failed: " + err.message);
@@ -1882,9 +1896,17 @@ function ensureEdgeIds(edges) {
 
 const dividerById = (id) =>
   id ? (diagramState?.dividers || []).find((d) => d.id === id) : undefined;
+// Dividers where they are drawn: a band divider sits in the row gap layout
+// gave it, except the one being dragged, which follows the pointer.
+const shownDividers = () =>
+  (diagramState?.dividers || []).map((d) =>
+    drag?.kind === "divider" && drag.id === d.id
+      ? d
+      : BOXES?.dividers?.find((x) => x.id === d.id) ?? d
+  );
 function dividerAt(p) {
   const t = screenTol(coarsePointer ? 8 : 4, CELL / 2);
-  return (diagramState?.dividers || []).find((d) =>
+  return shownDividers().find((d) =>
     Math.abs((d.orient === "h" ? p.y : p.x) - d.at) <= t
   ) ?? null;
 }

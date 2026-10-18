@@ -1233,6 +1233,17 @@ export const FRAME_GAP = 15;
 // much, since skipping a row is how an author asks for extra air.
 export const ROW_GAP_PX = 45;
 
+// Air either side of a band divider: room for the line, its label above it, and
+// wires crossing it square-on rather than squeezed between two rows of boxes.
+export const BAND_GAP_PX = 60;
+
+// A divider is a band edge when its own `band`, else the board's `dividerBands`,
+// says so, and it has a gap to sit in. Its `after` names that gap: between row
+// (or column) `after` and the next one. Membership is the box's own row or
+// column, so nothing on the node has to be kept in sync with it.
+export const isBandDivider = (d, state) =>
+  (d?.band ?? state?.dividerBands) === true && Number.isInteger(d?.after);
+
 // Columns a node fills (`span`), or 0 for an ordinary auto-width box.
 const spanOf = (n) => Number.isInteger(n.span) && n.span > 0 ? n.span : 0;
 
@@ -1418,7 +1429,10 @@ export function computeLayout(ctx, state, canvasW) {
       margin = 0,
       top = 0,
       rowGap = ROW_GAP_PX,
+      bands = { rows: [], cols: [] },
     } = opts;
+    // A gap between authored rows (or columns) a and b holds a band edge.
+    const bandBetween = (afters, a, b) => afters.some((k) => a <= k && k < b);
     const overridden = new Set(
       nodes.filter((n) => layout[n.id]).map((n) => n.id),
     );
@@ -1474,13 +1488,15 @@ export function computeLayout(ctx, state, canvasW) {
         colX.set(c, colCursor);
         // The last column keeps the plain gap: colsTotal below subtracts it.
         const next = colIdxs[i + 1];
+        const skipAir = next === undefined ? 0 : (next - c - 1) * COL_GAP_PX;
         const gap = next === undefined ? COL_GAP_PX : Math.max(
           COL_GAP_PX,
           frameGap(
             drawn(colW.get(c)) - colW.get(c),
             reach.right.get(c) ?? 0,
             reach.left.get(next) ?? 0,
-          ) - (next - c - 1) * COL_GAP_PX,
+          ) - skipAir,
+          bandBetween(bands.cols, c, next) ? BAND_GAP_PX - skipAir : 0,
         );
         colCursor += colW.get(c) + gap;
         prevCol = c;
@@ -1574,6 +1590,9 @@ export function computeLayout(ctx, state, canvasW) {
           reach.below.get(r) ?? 0,
           next === undefined ? 0 : reach.above.get(next) ?? 0,
         ) - skipAir,
+        next !== undefined && bandBetween(bands.rows, r, next)
+          ? BAND_GAP_PX - skipAir
+          : 0,
       );
       rowCursor = Math.max(rowCursor, y + maxH + gap);
       prevIdx = r;
@@ -1876,6 +1895,9 @@ export function computeLayout(ctx, state, canvasW) {
     ...nodes.filter((n) => !memberOf.has(n.id)),
     ...roots.map((g) => groupItem(g.id)),
   ];
+  const bandDividers = (state.dividers || []).filter((d) =>
+    isBandDivider(d, state)
+  );
   // A root group's `layout[id]` pins its box on the board.
   let boardLayout = layout;
   for (const g of roots) {
@@ -1894,7 +1916,12 @@ export function computeLayout(ctx, state, canvasW) {
     margin: LAYOUT_MARGIN,
     top: 48,
     rowGap: boardRowGap,
+    bands: {
+      rows: bandDividers.filter((d) => d.orient === "h").map((d) => d.after),
+      cols: bandDividers.filter((d) => d.orient === "v").map((d) => d.after),
+    },
   });
+  const gaps = bandGaps(outer, placed);
 
   // Offset top down: a member sits at its group's cell, inside the insets,
   // at its local cell less the local minimum.
@@ -1931,7 +1958,58 @@ export function computeLayout(ctx, state, canvasW) {
   // Each inner group's box, in absolute cells: what it reserves for its frame
   // and label.
   gridBoxes.groupBoxes = groupBoxes;
+  gridBoxes.bandGaps = gaps;
+  gridBoxes.dividers = resolveDividers(state, gaps);
   return gridBoxes;
+}
+
+// Every gap between consecutive authored rows (h) and columns (v) on the board,
+// with the pixel line midway between the boxes either side. Pinned boxes count
+// at their pinned position, so a line never cuts through one that sits on its
+// own side. Inner-group members are held by their group's row and column.
+// A box with `band: false` belongs to no band: it may straddle a line (a
+// boundary object such as a shared parameter block) and is left out here.
+function bandGaps(items, placed) {
+  const cell = new Map(placed.map((b) => [b.id, b]));
+  items = items.filter((n) => n.band !== false);
+  const axis = (key, lo, hi) => {
+    const idxs = [...new Set(items.map((n) => n[key]))].sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i + 1 < idxs.length; i++) {
+      let end = -Infinity, start = Infinity;
+      for (const n of items) {
+        const b = cell.get(n.id);
+        if (!b) continue;
+        if (n[key] <= idxs[i]) end = Math.max(end, hi(b));
+        else start = Math.min(start, lo(b));
+      }
+      out.push({
+        from: idxs[i],
+        to: idxs[i + 1],
+        at: Math.round((end + start) / 2 * CELL),
+      });
+    }
+    return out;
+  };
+  return {
+    h: axis("row", (b) => b.row, (b) => b.row + b.h),
+    v: axis("col", (b) => b.col, (b) => b.col + b.w),
+  };
+}
+
+// The gap a band divider's `after` falls in, or undefined when it names none
+// (before the first row, or past the last).
+export const gapFor = (gaps, d) =>
+  gaps?.[d.orient]?.find((g) => g.from <= d.after && d.after < g.to);
+
+// Dividers as drawn: a band divider sits in its gap, every other one at `at`.
+// A band divider whose gap has gone (its rows were emptied) stays at `at`.
+function resolveDividers(state, gaps) {
+  return (state.dividers || []).map((d) => {
+    if (!isBandDivider(d, state)) return d;
+    const g = gapFor(gaps, d);
+    return g ? { ...d, at: g.at } : d;
+  });
 }
 
 // ================================================================
@@ -3749,10 +3827,16 @@ export function fillDividerIds(dividers) {
 
 /**
  * Boundary dividers — full-width/-height dotted lines that partition the
- * canvas into regions (the "boxes inside boxes" alternative). Annotation only:
- * wires route straight through them, layout ignores them.
+ * canvas into regions (the "boxes inside boxes" alternative). Wires route
+ * straight through them. A plain divider is annotation only; a band divider
+ * (see isBandDivider) sits in the gap after row or column `after`, and layout
+ * widens that gap to hold it. Pass computeLayout's `dividers`, which carry the
+ * resolved `at`.
  *
- *   dividers: [{ id?, orient: "h"|"v", at: <px>, label?, color?, dash? }]
+ *   dividers: [{ id?, orient: "h"|"v", at: <px>, after?: <row|col>,
+ *                band?: bool, label?, color?, dash? }]
+ *
+ * A node with `band: false` is in no band and may sit across a band line.
  *
  * A horizontal divider runs across the canvas at y = at (label at the left
  * edge, above the line); a vertical one runs down at x = at (label at the

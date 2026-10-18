@@ -901,3 +901,37 @@ Deno.test("CLI: dividers are addressed by id — add, move, rotate, remove", asy
     assert(r.code === 0 && r.out.includes('Removed divider "div0"'), r.out);
     assertEquals(read(), []);
   }));
+
+Deno.test("CLI: divider bands — board default, per-divider override, node opt-out", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const state = () => JSON.parse(Deno.readTextFileSync(path));
+    let r = await runCli(path, ["add-divider", "h", "100", "tiers"]);
+    assert(r.code === 0, r.err);
+
+    r = await runCli(path, ["set-divider-bands", "on"]);
+    assert(r.code === 0 && r.out.includes("1 band divider"), r.err || r.out);
+    assert(state().dividerBands === true && state().dividers[0].after === 0);
+    r = await runCli(path, ["list-dividers"]);
+    assert(r.out.includes("band after row 0"), r.out);
+
+    r = await runCli(path, ["update-divider", "div0", "--band=off"]);
+    assert(r.code === 0 && state().dividers[0].band === false, r.err);
+    r = await runCli(path, ["update-divider", "div0", "--band=default"]);
+    assert(r.code === 0 && !("band" in state().dividers[0]), r.err);
+    r = await runCli(path, ["update-divider", "div0", "--band=maybe"]);
+    assert(r.code === 1 && r.err.includes("on, off or default"), r.err);
+
+    r = await runCli(path, ["update-node", "c", "--band=off"]);
+    assert(r.code === 0 && state().nodes[2].band === false, r.err);
+    r = await runCli(path, ["update-node", "c", "--band=default"]);
+    assert(r.code === 0 && !("band" in state().nodes[2]), r.err);
+
+    r = await runCli(path, ["add-divider", "v", "50", "--band", "split"]);
+    assert(r.code === 0 && r.out.includes("after col 0"), r.err || r.out);
+    assertEquals(state().dividers[1].label, "split");
+
+    r = await runCli(path, ["set-divider-bands", "maybe"]);
+    assert(r.code === 1, "a bad setting errors");
+  }));
