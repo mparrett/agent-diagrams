@@ -50,6 +50,7 @@ import {
   legendEntries,
   makePalette,
   measureNote,
+  mixHex,
   nodeBoxSize,
   resolveNotePositions,
   routeEdges,
@@ -67,6 +68,7 @@ function rebuildPalette(state) {
     ? state.theme
     : DEFAULT_SCHEME;
   PAL = makePalette(deriveTheme(SCHEMES[tn]), state);
+  applyUiTheme(tn);
   return tn;
 }
 const validColors = () => Object.keys(PAL.colors);
@@ -171,7 +173,9 @@ const FRAME_HANDLE_DRAW = 9; // visible handle size (screen px) — stays subtle
 const FRAME_HANDLE_HIT = coarsePointer ? 22 : 9; // grab tolerance (screen px) — generous for fingers, invisible
 const FRAME_HANDLE_CAP = coarsePointer ? 28 : 18; // board-px ceiling — stays < the 40px content margin so it can't grab a box
 const MAX_BOARD = 20000; // sane upper bound on a deliberate board resize
+// The desk around the board and the board's outline; "Apply to UI" recolors them.
 const DESK = "#010409", BOARD_FRAME = "#30363d";
+let deskColor = DESK, boardFrameColor = BOARD_FRAME;
 
 // Size the backing store to the *stage* (not the board) — the board can now be
 // larger or smaller than the viewport and is reached by pan/zoom.
@@ -308,7 +312,7 @@ function render() {
   if (!diagramState || !ctx) return; // nothing to draw until the board loads
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, cvs.width, cvs.height);
-  ctx.fillStyle = DESK; // the "desk" outside the board
+  ctx.fillStyle = deskColor; // the "desk" outside the board
   ctx.fillRect(0, 0, cvs.width, cvs.height);
 
   applyView();
@@ -444,7 +448,7 @@ function drawAlignGuides() {
 function drawBoardFrame() {
   applyView();
   ctx.lineWidth = 1 / view.zoom;
-  ctx.strokeStyle = BOARD_FRAME;
+  ctx.strokeStyle = boardFrameColor;
   ctx.strokeRect(0, 0, CSS_W, CSS_H);
   // Resize handles: 4 edge midpoints + 4 corners. Drawn at a constant screen
   // size; the active/hovered one lights up. E/S/SE resize in place; any handle
@@ -452,7 +456,7 @@ function drawBoardFrame() {
   const s = FRAME_HANDLE_DRAW / view.zoom, h = s / 2;
   const active = drag?.kind === "frame" ? drag.edge : hoverFrame;
   const sq = (cx, cy, key) => {
-    ctx.fillStyle = active === key ? "#58a6ff" : BOARD_FRAME;
+    ctx.fillStyle = active === key ? "#58a6ff" : boardFrameColor;
     ctx.fillRect(cx - h, cy - h, s, s);
   };
   sq(CSS_W, CSS_H / 2, "e");
@@ -2478,6 +2482,84 @@ document.getElementById("bViewer").onclick = () => {
     "noopener",
   );
 };
+
+// "Apply to UI": color the editor chrome from the board's scheme too. The board's
+// theme is shared state; how this browser shows the editor around it is not, so
+// the switch lives in localStorage and never reaches the server.
+const UI_THEME_KEY = "wb.uiTheme";
+let uiThemeOn = false;
+try {
+  uiThemeOn = localStorage.getItem(UI_THEME_KEY) === "1";
+} catch { /* storage blocked: default off */ }
+const brightness = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255;
+};
+// Each token is a blend of the scheme's fg into its bg, so the chrome keeps the
+// stylesheet's ladder (panel < bg < raised < line < faint < dim < text) in light
+// and dark schemes alike.
+function uiTokens(s) {
+  const dark = brightness(s.bg) < 0.5;
+  const fg = (t) => mixHex(s.bg, s.fg, t);
+  const accent = s.blue;
+  return {
+    "--bg": s.bg,
+    "--panel": dark ? mixHex(s.bg, "#000000", 0.25) : fg(0.04),
+    "--raised": fg(0.07),
+    "--raised-hover": fg(0.11),
+    "--line-soft": fg(0.1),
+    "--line": fg(0.18),
+    "--line-strong": fg(0.28),
+    "--text": s.fg,
+    "--text-strong": mixHex(
+      s.fg,
+      dark ? "#ffffff" : "#000000",
+      dark ? 0.5 : 0.4,
+    ),
+    "--text-dim": fg(0.75),
+    "--text-faint": fg(0.58),
+    "--accent": accent,
+    "--accent-text": dark ? (s.brBlue || accent) : accent,
+    // A light accent (most dark schemes' blue) needs dark text on it.
+    "--on-accent": brightness(accent) > 0.55 ? (dark ? s.bg : s.fg) : "#ffffff",
+    "--warn": s.yellow,
+    "--danger": s.red,
+    "--danger-text": dark ? (s.brRed || s.red) : s.red,
+  };
+}
+const UI_TOKEN_NAMES = Object.keys(uiTokens(SCHEMES[DEFAULT_SCHEME]));
+function applyUiTheme(themeName) {
+  const st = document.documentElement.style;
+  const s = SCHEMES[themeName];
+  if (!uiThemeOn || !s) {
+    for (const k of UI_TOKEN_NAMES) st.removeProperty(k);
+    st.colorScheme = "";
+    deskColor = DESK;
+    boardFrameColor = BOARD_FRAME;
+    return;
+  }
+  const tokens = uiTokens(s);
+  for (const [k, v] of Object.entries(tokens)) st.setProperty(k, v);
+  // Desk: darker than the board on a dark scheme, a shade into fg on a light one.
+  deskColor = brightness(s.bg) < 0.5
+    ? mixHex(s.bg, "#000000", 0.55)
+    : mixHex(s.bg, s.fg, 0.12);
+  boardFrameColor = tokens["--line"];
+  // Native controls (scrollbars, select popups) follow the scheme's lightness.
+  st.colorScheme = brightness(s.bg) < 0.5 ? "dark" : "light";
+}
+const uiThemeBox = document.getElementById("uiTheme");
+uiThemeBox.checked = uiThemeOn;
+uiThemeBox.addEventListener("change", () => {
+  uiThemeOn = uiThemeBox.checked;
+  try {
+    localStorage.setItem(UI_THEME_KEY, uiThemeOn ? "1" : "0");
+  } catch { /* not remembered; still applies this session */ }
+  applyUiTheme(
+    diagramState?.theme in SCHEMES ? diagramState.theme : DEFAULT_SCHEME,
+  );
+  if (diagramState) render(); // the desk and frame are canvas-drawn
+});
 
 // Theme picker — populate from SCHEMES, apply live + persist on change.
 const themeSelect = document.getElementById("themeSelect");
