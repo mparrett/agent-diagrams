@@ -63,11 +63,13 @@ import { drawFlowField } from "./flow-field.js";
 // Active palette — built per-diagram, passed to every draw call (no module
 // state in the engine, so theme changes can't leak between diagrams).
 let PAL = makePalette();
+let activeScheme = DEFAULT_SCHEME; // the scheme rebuildPalette resolved, for "Apply to UI"
 function rebuildPalette(state) {
-  const tn = (state.theme && SCHEMES[state.theme])
+  const tn = (state.theme && Object.hasOwn(SCHEMES, state.theme))
     ? state.theme
     : DEFAULT_SCHEME;
   PAL = makePalette(deriveTheme(SCHEMES[tn]), state);
+  activeScheme = tn;
   applyUiTheme(tn);
   return tn;
 }
@@ -176,6 +178,15 @@ const MAX_BOARD = 20000; // sane upper bound on a deliberate board resize
 // The desk around the board and the board's outline; "Apply to UI" recolors them.
 const DESK = "#010409", BOARD_FRAME = "#30363d";
 let deskColor = DESK, boardFrameColor = BOARD_FRAME;
+// Selection, handle and pin colors drawn over the board; "Apply to UI" swaps them
+// for the scheme's accent so they stay visible on a light board.
+const OVERLAY = {
+  hi: "#58a6ff",
+  fill: "#1f6feb",
+  on: "#fff",
+  muted: "#8b949e",
+};
+let overlay = OVERLAY;
 
 // Size the backing store to the *stage* (not the board) — the board can now be
 // larger or smaller than the viewport and is reached by pan/zoom.
@@ -456,7 +467,7 @@ function drawBoardFrame() {
   const s = FRAME_HANDLE_DRAW / view.zoom, h = s / 2;
   const active = drag?.kind === "frame" ? drag.edge : hoverFrame;
   const sq = (cx, cy, key) => {
-    ctx.fillStyle = active === key ? "#58a6ff" : boardFrameColor;
+    ctx.fillStyle = active === key ? overlay.hi : boardFrameColor;
     ctx.fillRect(cx - h, cy - h, s, s);
   };
   sq(CSS_W, CSS_H / 2, "e");
@@ -472,7 +483,7 @@ function drawBoardFrame() {
   if (drag?.kind === "frame" && drag.ghost) {
     const g = drag.ghost;
     ctx.save();
-    ctx.strokeStyle = "#58a6ff";
+    ctx.strokeStyle = overlay.hi;
     ctx.lineWidth = 1 / view.zoom;
     ctx.setLineDash([6 / view.zoom, 4 / view.zoom]);
     ctx.strokeRect(g.left, g.top, g.right - g.left, g.bottom - g.top);
@@ -559,14 +570,14 @@ function drawPinOverlay() {
   for (const b of BOXES) {
     if (!pinnedSet.has(b.id)) continue;
     const { px, py } = pinMarkerPos(b);
-    ctx.fillStyle = "#1f6feb";
+    ctx.fillStyle = overlay.fill;
     ctx.beginPath();
     ctx.arc(px, py, 3.5, 0, Math.PI * 2);
     ctx.fill(); // pin head
     ctx.beginPath();
     ctx.moveTo(px, py + 2);
     ctx.lineTo(px, py + 7); // pin stem
-    ctx.strokeStyle = "#1f6feb";
+    ctx.strokeStyle = overlay.fill;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
@@ -610,8 +621,8 @@ function drawHoverOverlay() {
     ctx.roundRect(x - 3, y - 3, w + 6, h + 6, ringRadius(b));
     ctx.stroke();
     // SE resize handle — emphasized when the cursor is on it.
-    ctx.fillStyle = "#1f6feb";
-    ctx.strokeStyle = "#fff";
+    ctx.fillStyle = overlay.fill;
+    ctx.strokeStyle = overlay.on;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(x + w, y + h, hoverResize ? 5 : 4, 0, Math.PI * 2);
@@ -714,8 +725,8 @@ function drawEndpointOverlay() {
     const eps = edgeEndpoints(shownEdge);
     if (eps) {
       ctx.save();
-      ctx.fillStyle = "#1f6feb";
-      ctx.strokeStyle = "#fff";
+      ctx.fillStyle = overlay.fill;
+      ctx.strokeStyle = overlay.on;
       ctx.lineWidth = 1.5;
       for (const role of ["src", "tgt"]) {
         const h = eps[role];
@@ -734,7 +745,7 @@ function drawEndpointOverlay() {
     // slot (nub), gray when it'll land provisionally (empty space, or a box's auto
     // slot). The rubber-band stays drawn until release — it must not vanish when you
     // hover a target, even while the endpoint drag is live-routing an orthogonal path.
-    const accent = drag.overSlot ? "#1f6feb" : "#8b949e"; // blue = nub landing, gray = provisional
+    const accent = drag.overSlot ? overlay.fill : overlay.muted; // blue = nub landing, gray = provisional
     ctx.save();
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
@@ -883,7 +894,7 @@ function drawDividerHighlight() {
   const d = dividerById(drag?.kind === "divider" ? drag.id : hoverDividerId);
   if (!d) return;
   ctx.save();
-  ctx.strokeStyle = "#58a6ff";
+  ctx.strokeStyle = overlay.hi;
   ctx.lineWidth = 2;
   ctx.beginPath();
   if (d.orient === "h") {
@@ -904,7 +915,7 @@ function drawConnectOverlay() {
   if (!b) return;
   const x = b.col * CELL, y = b.row * CELL, w = b.w * CELL, h = b.h * CELL;
   ctx.save();
-  ctx.strokeStyle = "#58a6ff";
+  ctx.strokeStyle = overlay.hi;
   ctx.lineWidth = 2;
   ctx.setLineDash([4, 3]);
   ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
@@ -2530,12 +2541,13 @@ function uiTokens(s) {
 const UI_TOKEN_NAMES = Object.keys(uiTokens(SCHEMES[DEFAULT_SCHEME]));
 function applyUiTheme(themeName) {
   const st = document.documentElement.style;
-  const s = SCHEMES[themeName];
+  const s = Object.hasOwn(SCHEMES, themeName) ? SCHEMES[themeName] : null;
   if (!uiThemeOn || !s) {
     for (const k of UI_TOKEN_NAMES) st.removeProperty(k);
     st.colorScheme = "";
     deskColor = DESK;
     boardFrameColor = BOARD_FRAME;
+    overlay = OVERLAY;
     return;
   }
   const tokens = uiTokens(s);
@@ -2545,6 +2557,12 @@ function applyUiTheme(themeName) {
     ? mixHex(s.bg, "#000000", 0.55)
     : mixHex(s.bg, s.fg, 0.12);
   boardFrameColor = tokens["--line"];
+  overlay = {
+    hi: tokens["--accent-text"],
+    fill: tokens["--accent"],
+    on: tokens["--on-accent"],
+    muted: tokens["--text-dim"],
+  };
   // Native controls (scrollbars, select popups) follow the scheme's lightness.
   st.colorScheme = brightness(s.bg) < 0.5 ? "dark" : "light";
 }
@@ -2555,9 +2573,7 @@ uiThemeBox.addEventListener("change", () => {
   try {
     localStorage.setItem(UI_THEME_KEY, uiThemeOn ? "1" : "0");
   } catch { /* not remembered; still applies this session */ }
-  applyUiTheme(
-    diagramState?.theme in SCHEMES ? diagramState.theme : DEFAULT_SCHEME,
-  );
+  applyUiTheme(activeScheme);
   if (diagramState) render(); // the desk and frame are canvas-drawn
 });
 
