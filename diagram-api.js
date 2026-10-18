@@ -35,7 +35,9 @@ import {
   drawNotes,
   drawRoutes,
   EDGE_WIDTHS,
+  fillDividerIds,
   findIssues,
+  freshDividerId,
   Grid,
   GROUP_LABEL_ALIGN,
   GROUP_LABEL_POS,
@@ -439,11 +441,18 @@ export function validateState(state, path = "diagram-state.json") {
     }
   }
 
+  const dividerIds = new Set();
   for (const [i, d] of (state.dividers || []).entries()) {
+    if (d?.id) { // a falsy id is backfilled at load, like a missing one
+      if (dividerIds.has(d.id)) at(`duplicate divider id "${d.id}"`);
+      dividerIds.add(d.id);
+    }
     if (!d || (d.orient !== "h" && d.orient !== "v")) {
       at(`dividers[${i}].orient must be "h" or "v"`);
     } else if (!Number.isFinite(d.at)) {
       at(`dividers[${i}].at must be a number (pixels)`);
+    } else if (d.id !== undefined && typeof d.id !== "string") {
+      at(`dividers[${i}].id must be a string`);
     }
   }
 
@@ -515,6 +524,9 @@ export class Diagram {
         seen.add(id);
       }
     }
+    // Dividers get the same treatment, so the editor can drag one without its
+    // position being its only name (removeDivider used to match on orient+at).
+    fillDividerIds(state.dividers);
     // Likewise backfill stable edge ids. Legacy diagrams have no duplicate
     // (from,to) pairs (the old uniqueness guard forbade them), so each edge
     // deterministically becomes `from~to` — stable across reloads. Parallel
@@ -1339,46 +1351,103 @@ export class Diagram {
 
   // ─── Dividers (boundary lines) ────────────────────────────
   // Annotation-only h/v dotted lines that partition the canvas into regions.
-  addDivider(orient, at, opts = {}) {
+  // One entity with an orientation: `at` is a Y for "h" and an X for "v".
+  _checkOrient(orient) {
     if (orient !== "h" && orient !== "v") {
       throw new Error(`Divider orient must be "h" or "v", got "${orient}"`);
     }
+  }
+
+  _checkAt(at) {
     if (!Number.isFinite(at)) {
       throw new Error(
         `Divider position must be a number (pixels), got "${at}"`,
       );
     }
-    const d = { orient, at };
+  }
+
+  // Validate at the boundary so a typo fails here rather than rendering as
+  // something unintended. Unlike addEdge/styleNode, which take tokens only,
+  // a divider also accepts an explicit [on, off] pair — it is the one dash
+  // that is a visual choice about a rule rather than a semantic style, so a
+  // caller wanting a specific pattern has nowhere else to say it. Elements
+  // are checked too: ["a","b"] would persist and draw a NaN dash.
+  _checkDividerDash(dash) {
+    if (Array.isArray(dash)) {
+      if (!dash.every((n) => Number.isFinite(n))) {
+        throw new Error(
+          `Invalid dash ${
+            JSON.stringify(dash)
+          }. Array form must be finite numbers, e.g. [2, 3]`,
+        );
+      }
+    } else {
+      this._validateEnum(dash, DASH_TOKENS, "dash");
+    }
+  }
+
+  addDivider(orient, at, opts = {}) {
+    this._checkOrient(orient);
+    this._checkAt(at);
+    // validateState rejects a non-string id on load, so storing one here would
+    // leave the board unloadable.
+    if (opts.id != null && (typeof opts.id !== "string" || !opts.id)) {
+      throw new Error(
+        `Divider id must be a non-empty string, got ${JSON.stringify(opts.id)}`,
+      );
+    }
+    // `remove-divider h 240` is the legacy CLI form, so an id of "h" or "v"
+    // could never be removed by id there.
+    if (opts.id === "h" || opts.id === "v") {
+      throw new Error(
+        `Divider id "${opts.id}" is reserved (it reads as an orientation)`,
+      );
+    }
+    const taken = (this._state.dividers || []).some((d) => d?.id === opts.id);
+    const d = {
+      id: opts.id && !taken ? opts.id : freshDividerId(this._state.dividers),
+    };
+    d.orient = orient;
+    d.at = at;
     if (opts.label) d.label = opts.label;
     if (opts.color) d.color = opts.color;
-    // Validate at the boundary so a typo fails here rather than rendering as
-    // something unintended. Unlike addEdge/styleNode, which take tokens only,
-    // a divider also accepts an explicit [on, off] pair — it is the one dash
-    // that is a visual choice about a rule rather than a semantic style, so a
-    // caller wanting a specific pattern has nowhere else to say it. Elements
-    // are checked too: ["a","b"] would persist and draw a NaN dash.
     if (opts.dash) {
-      if (Array.isArray(opts.dash)) {
-        if (!opts.dash.every((n) => Number.isFinite(n))) {
-          throw new Error(
-            `Invalid dash ${
-              JSON.stringify(opts.dash)
-            }. Array form must be finite numbers, e.g. [2, 3]`,
-          );
-        }
-      } else {
-        this._validateEnum(opts.dash, DASH_TOKENS, "dash");
-      }
+      this._checkDividerDash(opts.dash);
       d.dash = opts.dash;
     }
     this._state.dividers = [...(this._state.dividers || []), d];
+    return d.id;
+  }
+
+  // Edit a divider in place. Rotating is `orient` plus a new `at` on the other
+  // axis; a bare orient flip keeps `at`, which the caller rarely wants, so the
+  // editor always sends both. Empty label/color/dash clears.
+  updateDivider(id, fields = {}) {
+    const d = (this._state.dividers || []).find((x) => x?.id === id);
+    if (!d) throw new Error(`No divider "${id}"`);
+    // Check everything before writing anything, so a bad field leaves the
+    // divider as it was rather than half-edited.
+    if (fields.orient !== undefined) this._checkOrient(fields.orient);
+    if (fields.at !== undefined) this._checkAt(fields.at);
+    if (fields.dash) this._checkDividerDash(fields.dash);
+    if (fields.orient !== undefined) d.orient = fields.orient;
+    if (fields.at !== undefined) d.at = fields.at;
+    for (const k of ["label", "color", "dash"]) {
+      if (fields[k] === undefined) continue;
+      if (fields[k]) d[k] = fields[k];
+      else delete d[k];
+    }
+    return true;
   }
 
   // Idempotent (retry-safe): false if no divider matched, true if removed.
-  // Matches by orient+position (the natural key — labels are optional).
-  removeDivider(orient, at) {
+  // Takes an id, or the legacy (orient, at) pair for scripts written before
+  // dividers had ids.
+  removeDivider(idOrOrient, at) {
     const ds = this._state.dividers || [];
-    const idx = ds.findIndex((d) => d.orient === orient && d.at === at);
+    const idx = at === undefined
+      ? ds.findIndex((d) => d?.id === idOrOrient)
+      : ds.findIndex((d) => d.orient === idOrOrient && d.at === at);
     if (idx === -1) return false;
     ds.splice(idx, 1);
     return true;

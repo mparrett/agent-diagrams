@@ -373,6 +373,22 @@ const WRITE_OPS = {
       } else throw new Error(`unknown action "${b.action}"`);
     },
   },
+  "/divider": {
+    domainStatus: 400,
+    apply: (dd, b) => {
+      if (b.action === "add") {
+        const v = b.divider || {};
+        return dd.addDivider(v.orient, v.at, {
+          id: v.id,
+          label: v.label,
+          color: v.color,
+          dash: v.dash,
+        }); // → new divider id
+      } else if (b.action === "update") dd.updateDivider(b.id, b.fields || {});
+      else if (b.action === "remove") dd.removeDivider(b.id);
+      else throw new Error(`unknown action "${b.action}"`);
+    },
+  },
   "/node": {
     domainStatus: 400,
     apply: (dd, b) => {

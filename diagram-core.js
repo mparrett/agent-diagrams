@@ -3729,11 +3729,30 @@ function drawPerson(ctx, cx, y, iconH, color, b) {
 }
 
 /**
+ * Divider ids: `div0`, `div1`… skipping any already taken. The server stores
+ * them on the next save, but the editor reads the raw file and must name a
+ * legacy divider exactly as the server will, so both call these.
+ */
+export function freshDividerId(dividers) {
+  const taken = new Set((dividers || []).map((d) => d?.id).filter(Boolean));
+  let i = 0, id;
+  do {
+    id = `div${i++}`;
+  } while (taken.has(id));
+  return id;
+}
+export function fillDividerIds(dividers) {
+  for (const d of dividers || []) {
+    if (d && !d.id) d.id = freshDividerId(dividers);
+  }
+}
+
+/**
  * Boundary dividers — full-width/-height dotted lines that partition the
  * canvas into regions (the "boxes inside boxes" alternative). Annotation only:
  * wires route straight through them, layout ignores them.
  *
- *   dividers: [{ orient: "h"|"v", at: <px>, label?, color?, dash? }]
+ *   dividers: [{ id?, orient: "h"|"v", at: <px>, label?, color?, dash? }]
  *
  * A horizontal divider runs across the canvas at y = at (label at the left
  * edge, above the line); a vertical one runs down at x = at (label at the
@@ -3744,7 +3763,13 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     if (
       !d || (d.orient !== "h" && d.orient !== "v") || !Number.isFinite(d.at)
     ) continue;
-    const color = d.color || pal.textDim;
+    // A palette name or semantic token takes the theme's border color, as a
+    // group frame does; anything else is a literal CSS color.
+    const color = !d.color
+      ? pal.textDim
+      : isColorToken(pal, d.color)
+      ? resolveColorToken(pal, d.color).border
+      : d.color;
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
