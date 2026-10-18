@@ -86,6 +86,7 @@ let NOTES = []; // resolved note hit-targets: {id, x, y, rect:{x,y,w,h}} (notes 
 let noteLayoutLocal = {}; // per-note absolute {x,y} overrides (GUI drags); parallels the box layout snapshot
 let noteDirty = false; // a note moved → persist the noteLayout snapshot
 let hoverNoteId = null;
+let hoverDividerId = null;
 let EDGES_DEF = [];
 let grid = null;
 let connMap = new Map();
@@ -319,6 +320,7 @@ function render() {
     drawFlowField(ctx, diagramState?.flow, grid.cols, grid.rows, CELL);
   }
   drawDividers(ctx, diagramState?.dividers, CSS_W, CSS_H, PAL);
+  drawDividerHighlight();
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const groupLabels = drawGroups(ctx, frames, PAL);
   groupHandles = innerGroupHandles(frames, groupLabels);
@@ -870,6 +872,26 @@ function drawCreateNubs() {
   ctx.restore();
 }
 
+// Accent the divider under the pointer, or the one being dragged: a 1px dotted
+// rule doesn't otherwise read as something you can grab.
+function drawDividerHighlight() {
+  const d = dividerById(drag?.kind === "divider" ? drag.id : hoverDividerId);
+  if (!d) return;
+  ctx.save();
+  ctx.strokeStyle = "#58a6ff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (d.orient === "h") {
+    ctx.moveTo(0, d.at);
+    ctx.lineTo(CSS_W, d.at);
+  } else {
+    ctx.moveTo(d.at, 0);
+    ctx.lineTo(d.at, CSS_H);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 // Connect-mode chrome: ring the chosen source node + rubber-band to the cursor.
 function drawConnectOverlay() {
   if (!connectMode || !connectSourceId) return;
@@ -1050,6 +1072,13 @@ cvs.addEventListener("pointerdown", (e) => {
     updateCursor();
     return;
   }
+  if (hit.kind === "divider") {
+    drag = { kind: "divider", id: hit.divider.id, start: hit.divider.at };
+    hoverBoxId = null;
+    hoverEdge = null;
+    updateCursor();
+    return;
+  }
   if (hit.kind === "empty" || hit.kind === "edge") { // empty/edge space → pan the viewport
     // tapKind/tapEdge let a no-move tap reveal an edge's endpoints (touch) or clear selection on empty.
     drag = {
@@ -1186,6 +1215,19 @@ cvs.addEventListener("pointermove", (e) => {
     noteLayoutLocal[drag.id] = { x: Math.round(nx), y: Math.round(ny) }; // a drag pins the note (override wins)
     noteDirty = true;
     render();
+    return;
+  }
+  if (drag?.kind === "divider") {
+    didDrag = true;
+    const d = dividerById(drag.id);
+    if (d) {
+      const p = canvasCoords(e), h = d.orient === "h";
+      d.at = Math.max(
+        0,
+        Math.min(h ? CSS_H : CSS_W, Math.round((h ? p.y : p.x) / CELL) * CELL),
+      );
+      render();
+    }
     return;
   }
   if (drag?.kind === "label") {
@@ -1383,6 +1425,29 @@ cvs.addEventListener("pointerup", (e) => {
         })
         .catch((err) => setStatus("resize save failed: " + err.message));
     } else render();
+    if (pendingReload) {
+      pendingReload = false;
+      mergeReload();
+    }
+    return;
+  }
+  // Divider drop: persist the new position. Like a label drop, nothing else
+  // moved, so the local copy is already right and no reload is needed.
+  if (drag?.kind === "divider") {
+    const { id, start } = drag;
+    drag = null;
+    updateCursor();
+    render();
+    const d = dividerById(id);
+    if (d && d.at !== start) {
+      postDivider({ action: "update", id, fields: { at: d.at } })
+        .then(() => setStatus(`divider at ${d.at}px (rev ${lastRev})`))
+        .catch((err) => {
+          d.at = start;
+          render();
+          setStatus("divider move failed: " + err.message);
+        });
+    }
     if (pendingReload) {
       pendingReload = false;
       mergeReload();
@@ -1787,6 +1852,30 @@ function ensureEdgeIds(edges) {
   }
 }
 
+// Same scheme as the server (diagram-api's constructor): `div0`, `div1`…
+// skipping ids already taken, so both sides agree before a save stores them.
+function ensureDividerIds(dividers) {
+  const taken = new Set((dividers || []).map((d) => d?.id).filter(Boolean));
+  let i = 0;
+  for (const d of dividers || []) {
+    if (!d || d.id) continue;
+    let id;
+    do {
+      id = `div${i++}`;
+    } while (taken.has(id));
+    d.id = id;
+    taken.add(id);
+  }
+}
+const dividerById = (id) =>
+  id ? (diagramState?.dividers || []).find((d) => d.id === id) : undefined;
+function dividerAt(p) {
+  const t = screenTol(coarsePointer ? 8 : 4, CELL / 2);
+  return (diagramState?.dividers || []).find((d) =>
+    Math.abs((d.orient === "h" ? p.y : p.x) - d.at) <= t
+  ) ?? null;
+}
+
 function hitTest(p, { includeNub = !connectMode } = {}) {
   const note = noteAt(p);
   if (note) return { kind: "note", p, note };
@@ -1820,6 +1909,10 @@ function hitTest(p, { includeNub = !connectMode } = {}) {
   const edge = hitTestEdge(p.x, p.y);
   if (edge) return { kind: "edge", p, edge };
 
+  // Dividers draw beneath everything, so everything else wins the click.
+  const divider = connectMode ? null : dividerAt(p);
+  if (divider) return { kind: "divider", p, divider };
+
   return { kind: "empty", p };
 }
 
@@ -1847,7 +1940,9 @@ function updateHover(e) {
   const fr = hit.kind === "frame" ? hit.frame : null;
   const rz = hit.kind === "boxresize" ? hit.box.id : null;
   const grp = hit.kind === "group" ? hit.group : null;
+  const div = hit.kind === "divider" ? hit.divider.id : null;
   if (
+    div !== hoverDividerId ||
     noteId !== hoverNoteId || boxIdOf(b) !== hoverBoxId ||
     !sameEdge(edge, hoverEdge) || !!labelEdge !== hoverLabel ||
     overPin !== hoverPin || epKey(ep) !== epKey(hoverEndpoint) ||
@@ -1855,6 +1950,7 @@ function updateHover(e) {
     rz !== (hoverResize?.box.id ?? null) || grp !== hoverGroup
   ) {
     hoverGroup = grp;
+    hoverDividerId = div;
     hoverNoteId = noteId;
     hoverBoxId = boxIdOf(b);
     hoverEdge = edge;
@@ -1890,6 +1986,10 @@ function updateCursor() {
       : "ns-resize") // board-frame resize
     : rz
     ? "nwse-resize" // box resize corner
+    : (drag ? drag.kind === "divider" : hoverDividerId)
+    ? (dividerById(drag?.id ?? hoverDividerId)?.orient === "v"
+      ? "ew-resize"
+      : "ns-resize") // divider → slides along its axis
     : drag
     ? "grabbing"
     : connectMode
@@ -1954,6 +2054,10 @@ cvs.addEventListener("pointercancel", (e) => {
     updateCursor();
     return;
   } // interrupted gesture — drop any transient drag
+  if (drag?.kind === "divider") {
+    const d = dividerById(drag.id);
+    if (d) d.at = drag.start; // the drag moved it locally; nothing was saved
+  }
   drag = null;
   updateCursor();
   render();
@@ -3699,10 +3803,16 @@ const overlaysOpen = () =>
   nodeEditor.style.display !== "none" || edgeEditor.style.display !== "none" ||
   noteEditor.style.display !== "none" || ctxOpen() || confirmOpen() ||
   groupEditor.style.display !== "none" ||
-  legendEditor.style.display !== "none";
+  legendEditor.style.display !== "none" ||
+  dividerEditor.style.display !== "none";
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Backspace" && e.key !== "Delete") return;
   if (isTypingTarget(e.target) || overlaysOpen()) return; // let fields/overlays own the key
+  if (hoverBoxId === null && hoverDividerId) {
+    e.preventDefault();
+    deleteDivider(hoverDividerId);
+    return;
+  }
   if (hoverBoxId === null) return; // act only on a hovered node
   e.preventDefault(); // Backspace would navigate back
   const id = hoverBoxId;
@@ -3761,13 +3871,19 @@ function openContextMenuFor(clientX, clientY) {
   }
   const grp = groupFrameAt(p); // an annotation group's label or border
   if (grp) return openGroupMenu(grp, clientX, clientY);
-  // Empty canvas → offer to drop a note at the point.
+  if (hit.kind === "divider") {
+    return openDividerMenu(hit.divider.id, p, clientX, clientY);
+  }
+  // Empty canvas → offer to drop a note or a divider at the point.
   openCtxMenu(clientX, clientY, [
     {
       label: "Add note here",
       action: () =>
         addNoteAt(Math.round(p.x), Math.round(p.y), clientX, clientY),
     },
+    null,
+    { label: "Add horizontal divider", action: () => addDividerAt("h", p) },
+    { label: "Add vertical divider", action: () => addDividerAt("v", p) },
   ]);
 }
 
@@ -4000,6 +4116,140 @@ function openGroupMenu(id, x, y) {
     },
   ]);
 }
+
+// ── Dividers ─────────────────────────────────────────────────────
+// Drag a divider along its axis; right-click it to edit, rotate or delete.
+// Writes go through /divider by id, so a drag never loses track of which
+// divider it moved.
+const dividerEditor = document.getElementById("dividerEditor");
+const deLabel = document.getElementById("deLabel");
+let deState = null; // { id, color, dash }
+// Unset draws the renderer's own fine dots, which no token matches exactly.
+const DE_DASH = [
+  { value: null, label: "Default", title: "fine dots" },
+  { value: "solid", label: "Solid" },
+  { value: "dashed", label: "Dashed" },
+  { value: "dotted", label: "Dotted" },
+];
+
+async function postDivider(payload) {
+  payload.baseRev = lastRev;
+  payload.nonce = newNonce();
+  const r = await fetch(API + "/divider", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  lastRev = j.rev;
+  return j.result;
+}
+
+const snapToCell = (v) => Math.round(v / CELL) * CELL;
+
+async function addDividerAt(orient, p) {
+  const at = snapToCell(orient === "h" ? p.y : p.x);
+  try {
+    await postDivider({ action: "add", divider: { orient, at } });
+    await mergeReload();
+    setStatus(
+      `divider added at ${at}px — drag to move, right-click to label (rev ${lastRev})`,
+    );
+  } catch (e) {
+    setStatus("add divider failed: " + e.message);
+  }
+}
+
+// Rotating pivots on the point that was right-clicked: the new line passes
+// through it, so it lands where the user is looking, not at the old `at`.
+async function rotateDivider(id, p) {
+  const d = dividerById(id);
+  if (!d) return;
+  const orient = d.orient === "h" ? "v" : "h";
+  const at = snapToCell(orient === "h" ? p.y : p.x);
+  try {
+    await postDivider({ action: "update", id, fields: { orient, at } });
+    await mergeReload();
+    setStatus(`divider rotated (rev ${lastRev})`);
+  } catch (e) {
+    setStatus("rotate failed: " + e.message);
+  }
+}
+
+async function deleteDivider(id) {
+  try {
+    await postDivider({ action: "remove", id });
+    if (hoverDividerId === id) hoverDividerId = null;
+    await mergeReload();
+    setStatus(`divider removed (rev ${lastRev})`);
+  } catch (e) {
+    setStatus("divider delete failed: " + e.message);
+  }
+}
+
+function openDividerMenu(id, p, x, y) {
+  const d = dividerById(id);
+  if (!d) return;
+  openCtxMenu(x, y, [
+    { label: "Edit divider…", action: () => openDividerEditor(id, x, y) },
+    {
+      label: d.orient === "h" ? "Make vertical" : "Make horizontal",
+      action: () => rotateDivider(id, p),
+    },
+    null,
+    { label: "Delete divider", danger: true, action: () => deleteDivider(id) },
+  ]);
+}
+
+function openDividerEditor(id, x, y) {
+  closeCtxMenu();
+  const d = dividerById(id);
+  if (!d) return;
+  // An array dash (JSON-only) shows no chip lit and is kept unless one is picked.
+  deState = { id, color: d.color ?? null, dash: d.dash ?? null };
+  document.getElementById("deTitle").textContent = `${
+    d.orient === "h" ? "Horizontal" : "Vertical"
+  } divider at ${d.at}px`;
+  deLabel.value = d.label ?? "";
+  document.getElementById("deColor").replaceChildren(
+    buildColorPicker(deState.color ?? "", (c) => deState.color = c, {
+      allowDefault: true,
+      defaultTitle: "the theme's dim text color",
+    }),
+  );
+  document.getElementById("deDash").replaceChildren(
+    ...buildChipGroup(DE_DASH, deState.dash, (v) => deState.dash = v).children,
+  );
+  placePopover(dividerEditor, x, y);
+  deLabel.focus();
+}
+function closeDividerEditor() {
+  dividerEditor.style.display = "none";
+  deState = null;
+}
+document.getElementById("deSave").onclick = async () => {
+  if (!deState) return;
+  const { id, color, dash } = deState;
+  try {
+    await postDivider({
+      action: "update",
+      id,
+      fields: { label: deLabel.value.trim(), color, dash },
+    });
+    closeDividerEditor();
+    await mergeReload();
+    setStatus(`divider saved (rev ${lastRev})`);
+  } catch (e) {
+    setStatus("divider save failed: " + e.message);
+  }
+};
+document.getElementById("deCancel").onclick = closeDividerEditor;
+document.getElementById("deDelete").onclick = () => {
+  const id = deState?.id;
+  closeDividerEditor();
+  if (id) deleteDivider(id);
+};
 
 // ── Groups ───────────────────────────────────────────────────────
 // Every group frame, inner or annotation, smallest first: right-clicking its
@@ -4324,6 +4574,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (groupEditor.style.display !== "none") closeGroupEditor();
   if (legendEditor.style.display !== "none") closeLegendEditor();
+  if (dividerEditor.style.display !== "none") closeDividerEditor();
 });
 
 // Atomic flip on the server (see Diagram.reverseEdge) — a remove+add pair could
@@ -4615,6 +4866,7 @@ async function init() {
   setDiagramTitle(diagramState.title);
 
   ensureEdgeIds(diagramState.edges);
+  ensureDividerIds(diagramState.dividers);
   EDGES_DEF = diagramState.edges;
   pinnedSet = new Set(diagramState.pinned || []); // empty on legacy boards — pins accrue as you drag
   lastRev = diagramState.rev ?? 0;
@@ -4703,6 +4955,7 @@ if (new URLSearchParams(location.search).has("test")) {
     openEdgeEditor,
     openNodeEditor,
     state: () => diagramState,
+    toClient, // board px → client px, e.g. a point on a divider
     // Client-space center of an edge's label chip, for drag tests.
     labelCenter: (from, to) => {
       const lr = labelRects.find((l) =>
@@ -5080,6 +5333,7 @@ async function mergeReload() {
   document.getElementById("themeSelect").value = tName;
   setDiagramTitle(fresh.title);
   ensureEdgeIds(fresh.edges);
+  ensureDividerIds(fresh.dividers);
   const prevDisk = diagramState.layout || {};
   const prevInner = diagramState.innerLayout || {};
   diagramState = fresh;

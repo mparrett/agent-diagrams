@@ -384,7 +384,7 @@ d.render();                               // writes diagram.png next to the stat
 - **switch boards** via the board picker at the top of the sidebar (multi-whiteboard; see above),
 - pick a **color scheme**, **line up** or **spread** boxes, **reset** to auto layout, and live-tune the four A\* routing knobs (*Routing parameters*, under Wires in the sidebar).
 
-Dividers and groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
+Dividers are editable in the editor too: drag one along its axis, right-click it to edit its label, color and line, rotate it or delete it, or add one from the empty-canvas menu. Groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.
 
 State changes persist to the file (all CAS-guarded): drags/passes via `POST /layout`, content edits via `POST /node` and `POST /edge`, theme via `POST /theme`, routing-slider tuning via `POST /costs`. The theme, the routing sliders, and the layout passes all persist, so a reload — and the CLI/PNG render — reproduce what you set. It needs the files served over HTTP — use the dev server below.
 
