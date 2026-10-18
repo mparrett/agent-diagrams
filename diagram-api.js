@@ -38,6 +38,7 @@ import {
   fillDividerIds,
   findIssues,
   freshDividerId,
+  gapFor,
   Grid,
   GROUP_LABEL_ALIGN,
   GROUP_LABEL_POS,
@@ -45,6 +46,7 @@ import {
   groupFrames,
   groupLabelRects,
   innerGroups,
+  isBandDivider,
   isColorToken,
   legendEntries,
   makePalette,
@@ -441,6 +443,12 @@ export function validateState(state, path = "diagram-state.json") {
     }
   }
 
+  for (const [i, n] of (state.nodes || []).entries()) {
+    if (n && n.band !== undefined && n.band !== false) {
+      at(`nodes[${i}].band can only be false (in no band)`);
+    }
+  }
+
   const dividerIds = new Set();
   for (const [i, d] of (state.dividers || []).entries()) {
     if (d?.id) { // a falsy id is backfilled at load, like a missing one
@@ -453,7 +461,16 @@ export function validateState(state, path = "diagram-state.json") {
       at(`dividers[${i}].at must be a number (pixels)`);
     } else if (d.id !== undefined && typeof d.id !== "string") {
       at(`dividers[${i}].id must be a string`);
+    } else if (d.band !== undefined && typeof d.band !== "boolean") {
+      at(`dividers[${i}].band must be true or false`);
+    } else if (d.after !== undefined && !Number.isInteger(d.after)) {
+      at(`dividers[${i}].after must be an integer (row or column)`);
     }
+  }
+  if (
+    state.dividerBands !== undefined && typeof state.dividerBands !== "boolean"
+  ) {
+    at(`dividerBands must be true or false`);
   }
 
   for (const [i, nt] of (state.notes || []).entries()) {
@@ -753,6 +770,13 @@ export class Diagram {
   updateNode(id, opts) {
     const node = this.nodes.find((n) => n.id === id);
     if (!node) throw new Error(`Node "${id}" not found`);
+    // `band: false` takes a box out of every band (it may straddle a line);
+    // true or null puts it back in its row's band.
+    if (opts.band != null && typeof opts.band !== "boolean") {
+      throw new Error(`band must be true, false or null, got "${opts.band}"`);
+    }
+    if (opts.band === false) node.band = false;
+    else if (opts.band !== undefined) delete node.band;
     if (opts.color !== undefined) {
       this._validateColor(opts.color);
       node.color = opts.color;
@@ -1386,9 +1410,46 @@ export class Diagram {
     }
   }
 
+  _checkBandFields(f) {
+    if (f.band != null && typeof f.band !== "boolean") {
+      throw new Error(`Divider band must be true or false, got "${f.band}"`);
+    }
+    if (f.after != null && !Number.isInteger(f.after)) {
+      throw new Error(
+        `Divider after must be an integer (row or column), got "${f.after}"`,
+      );
+    }
+  }
+
+  // Band gaps and where each divider is drawn now, from a full layout pass.
+  _dividerLayout() {
+    const scratch = createCanvas(10, 10);
+    ensureFonts();
+    const gb = this._computeGridBoxes(scratch.getContext("2d"));
+    return {
+      gaps: gb.bandGaps,
+      drawnAt: new Map(gb.dividers.map((d) => [d.id, d.at])),
+    };
+  }
+
+  // The gap whose line is nearest `at`, as an `after` value. A board needs two
+  // rows (or columns) before it has a gap at all.
+  _nearestGap(gaps, orient, at) {
+    let best;
+    for (const g of gaps[orient]) {
+      if (!best || Math.abs(g.at - at) < Math.abs(best.at - at)) best = g;
+    }
+    return best?.from;
+  }
+
+  _wantsBand(d) {
+    return (d.band ?? this._state.dividerBands) === true;
+  }
+
   addDivider(orient, at, opts = {}) {
     this._checkOrient(orient);
     this._checkAt(at);
+    this._checkBandFields(opts);
     // validateState rejects a non-string id on load, so storing one here would
     // leave the board unloadable.
     if (opts.id != null && (typeof opts.id !== "string" || !opts.id)) {
@@ -1415,6 +1476,21 @@ export class Diagram {
       this._checkDividerDash(opts.dash);
       d.dash = opts.dash;
     }
+    if (opts.band != null) d.band = opts.band;
+    if (opts.after != null) d.after = opts.after;
+    // A band divider takes the row gap nearest `at`. Worked out before the
+    // divider joins the board, which a non-band divider would not change anyway.
+    if (this._wantsBand(d) && d.after === undefined) {
+      const after = this._nearestGap(this._dividerLayout().gaps, orient, at);
+      if (after === undefined && d.band === true) {
+        throw new Error(
+          `A band divider needs a gap: the board has no two ${
+            orient === "h" ? "rows" : "columns"
+          } to put it between`,
+        );
+      }
+      if (after !== undefined) d.after = after;
+    }
     this._state.dividers = [...(this._state.dividers || []), d];
     return d.id;
   }
@@ -1422,6 +1498,10 @@ export class Diagram {
   // Edit a divider in place. Rotating is `orient` plus a new `at` on the other
   // axis; a bare orient flip keeps `at`, which the caller rarely wants, so the
   // editor always sends both. Empty label/color/dash clears.
+  //
+  // On a band divider `at` means "near here": it moves to the nearest row gap,
+  // so a drag or `--at` snaps between rows. `band: null` falls back to the
+  // board's dividerBands. A divider leaving band mode stays where it was drawn.
   updateDivider(id, fields = {}) {
     const d = (this._state.dividers || []).find((x) => x?.id === id);
     if (!d) throw new Error(`No divider "${id}"`);
@@ -1430,8 +1510,43 @@ export class Diagram {
     if (fields.orient !== undefined) this._checkOrient(fields.orient);
     if (fields.at !== undefined) this._checkAt(fields.at);
     if (fields.dash) this._checkDividerDash(fields.dash);
-    if (fields.orient !== undefined) d.orient = fields.orient;
-    if (fields.at !== undefined) d.at = fields.at;
+    this._checkBandFields(fields);
+    const next = { ...d };
+    if (fields.orient !== undefined) next.orient = fields.orient;
+    if (fields.at !== undefined) next.at = fields.at;
+    if (fields.band === null) delete next.band;
+    else if (fields.band !== undefined) next.band = fields.band;
+    if (fields.after === null) delete next.after;
+    else if (fields.after !== undefined) next.after = fields.after;
+    const bandish = ["band", "after", "at", "orient"].some((k) =>
+      fields[k] !== undefined
+    );
+    if (bandish) {
+      const lay = this._dividerLayout();
+      if (this._wantsBand(next)) {
+        const moved = fields.at !== undefined || fields.orient !== undefined;
+        if (
+          fields.after === undefined &&
+          (moved || !Number.isInteger(next.after))
+        ) {
+          const after = this._nearestGap(lay.gaps, next.orient, next.at);
+          if (after === undefined) {
+            throw new Error(
+              `A band divider needs a gap: the board has no two ${
+                next.orient === "h" ? "rows" : "columns"
+              } to put it between`,
+            );
+          }
+          next.after = after;
+        }
+      } else if (isBandDivider(d, this._state) && fields.at === undefined) {
+        next.at = lay.drawnAt.get(id) ?? d.at;
+      }
+    }
+    for (const k of ["orient", "at", "band", "after"]) {
+      if (next[k] === undefined) delete d[k];
+      else d[k] = next[k];
+    }
     for (const k of ["label", "color", "dash"]) {
       if (fields[k] === undefined) continue;
       if (fields[k]) d[k] = fields[k];
@@ -1453,8 +1568,39 @@ export class Diagram {
     return true;
   }
 
+  // Board default for dividers without their own `band`. Turning it on puts
+  // each such divider in its nearest row gap; turning it off leaves each one
+  // where it was drawn. One call, one write, so it undoes in one step. null
+  // clears it.
+  setDividerBands(on) {
+    if (on !== null && typeof on !== "boolean") {
+      throw new Error(`dividerBands must be true, false or null, got "${on}"`);
+    }
+    const ds = this._state.dividers || [];
+    const lay = this._dividerLayout();
+    const was = new Map(ds.map((d) => [d, isBandDivider(d, this._state)]));
+    if (on === null) delete this._state.dividerBands;
+    else this._state.dividerBands = on;
+    for (const d of ds) {
+      if (this._wantsBand(d)) {
+        if (Number.isInteger(d.after)) continue;
+        const after = this._nearestGap(lay.gaps, d.orient, d.at);
+        if (after !== undefined) d.after = after;
+      } else if (was.get(d)) {
+        d.at = lay.drawnAt.get(d.id) ?? d.at;
+      }
+    }
+  }
+
+  // Each divider with `at` where it is drawn (a band divider's gap), and
+  // whether it is acting as a band.
   listDividers() {
-    return [...(this._state.dividers || [])];
+    const { drawnAt } = this._dividerLayout();
+    return (this._state.dividers || []).map((d) => ({
+      ...d,
+      at: drawnAt.get(d.id) ?? d.at,
+      isBand: isBandDivider(d, this._state),
+    }));
   }
 
   // ─── Groups (labeled frames around sets of nodes) ──────────
@@ -2450,7 +2596,7 @@ export class Diagram {
     }
 
     // Boundary dividers and group frames — annotation layer beneath wires and boxes
-    drawDividers(ctx, this._state.dividers, W, H, pal);
+    drawDividers(ctx, gridBoxes.dividers, W, H, pal);
     const frames = groupFrames(this._state.groups, gridBoxes, pal, this._state);
     const groupLabels = drawGroups(ctx, frames, pal);
 

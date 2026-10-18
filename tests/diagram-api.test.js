@@ -214,7 +214,8 @@ Deno.test("dividers: update moves and rotates in place; a bad field writes nothi
     );
 
     d.updateDivider(id, { dash: "", label: "" });
-    assert(!("dash" in v) && !("label" in v), "empty values clear");
+    const [cleared] = d.listDividers();
+    assert(!("dash" in cleared) && !("label" in cleared), "empty values clear");
 
     assert(d.removeDivider(id) === true, "removed by id");
     assert(d.removeDivider(id) === false, "idempotent");
@@ -1672,4 +1673,185 @@ Deno.test("status reports the innermost group and each group's parent", () =>
       c.x >= p.x && c.y >= p.y && c.x + c.w <= p.x + p.w &&
       c.y + c.h <= p.y + p.h;
     assert(inside(low, mid) && inside(mid, top), "rects nest");
+  }));
+
+// Three rows of two boxes, for band tests. Row 1 is skipped so a gap spans it.
+const BAND_NODES = [
+  { id: "a", label: "A", row: 0, col: 0 },
+  { id: "b", label: "B", row: 0, col: 1 },
+  { id: "c", label: "C", row: 2, col: 0 },
+  { id: "d", label: "D", row: 2, col: 1 },
+  { id: "e", label: "E", row: 3, col: 0 },
+];
+// Bottom of the lowest box at or above `row`, and top of the highest box below.
+function rowEdges(d, row) {
+  const s = d.solvePositions().positions;
+  const rowOf = Object.fromEntries(d.nodes.map((n) => [n.id, n.row]));
+  let end = -Infinity, start = Infinity;
+  for (const [id, p] of Object.entries(s)) {
+    if (rowOf[id] <= row) end = Math.max(end, p.y + p.h);
+    else start = Math.min(start, p.y);
+  }
+  return { end, start };
+}
+
+Deno.test("divider bands: off by default, a divider is only a line", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: BAND_NODES });
+    const before = Diagram.load(path).solvePositions().positions;
+    writeState(path, {
+      nodes: BAND_NODES,
+      dividers: [{ orient: "h", at: 100, after: 0 }],
+    });
+    const d = Diagram.load(path);
+    assert(
+      JSON.stringify(d.solvePositions().positions) === JSON.stringify(before),
+      "a divider with no band setting moves no box",
+    );
+    const [v] = d.listDividers();
+    assert(v.at === 100 && !v.isBand, `drawn at its own at: ${v.at}`);
+  }));
+
+Deno.test("divider bands: turning them on puts each line in its nearest row gap", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: BAND_NODES });
+    const plain = Diagram.load(path);
+    const g = rowEdges(plain, 0);
+    writeState(path, {
+      nodes: BAND_NODES,
+      // 90px is nearer the row 0 | row 2 gap than the row 2 | row 3 one.
+      dividers: [{ id: "x", orient: "h", at: g.end + 5 }],
+    });
+    const d = Diagram.load(path);
+    d.setDividerBands(true);
+    const [v] = d.listDividers();
+    assert(v.isBand && v.after === 0, `after row 0, got ${v.after}`);
+    const e = rowEdges(d, 0);
+    assert(
+      e.end <= v.at && v.at <= e.start,
+      `line ${v.at} sits between ${e.end} and ${e.start}`,
+    );
+    assert(e.start - e.end >= 60, `room for the line: ${e.start - e.end}px`);
+
+    // A band divider's at means "near here": it moves to the nearest gap. That
+    // gap is the plain row gap, so it widens to hold the band.
+    const low = rowEdges(d, 2);
+    d.updateDivider("x", { at: low.end + 1 });
+    assert(d.listDividers()[0].after === 2, "snapped to the row 2 | 3 gap");
+    const wide = rowEdges(d, 2);
+    assert(
+      wide.start - wide.end >= 60 &&
+        wide.start - wide.end > low.start - low.end,
+      `the band gap widened: ${low.start - low.end} -> ${
+        wide.start - wide.end
+      }`,
+    );
+
+    // Off again: the line stays where it was drawn.
+    const drawn = d.listDividers()[0].at;
+    d.setDividerBands(false);
+    const [off] = d.listDividers();
+    assert(
+      !off.isBand && off.at === drawn,
+      `frozen at ${drawn}, got ${off.at}`,
+    );
+  }));
+
+Deno.test("divider bands: a divider's own band wins over the board's", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: BAND_NODES,
+      dividerBands: true,
+      dividers: [
+        { id: "on", orient: "h", at: 0, after: 0 },
+        { id: "off", orient: "h", at: 10, after: 2, band: false },
+      ],
+    });
+    const d = Diagram.load(path);
+    const by = (id) => d.listDividers().find((v) => v.id === id);
+    assert(by("on").isBand && !by("off").isBand, "per-divider override");
+    d.updateDivider("off", { band: null });
+    assert(by("off").isBand, "band: null falls back to the board default");
+    d.updateDivider("on", { band: false });
+    assert(!by("on").isBand, "band: false opts one divider out");
+  }));
+
+Deno.test("divider bands: a box with band: false may cross the line", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    // A tall pinned box in row 0 reaches down past row 2's top.
+    const nodes = BAND_NODES.map((n) =>
+      n.id === "b" ? { ...n, details: Array(12).fill("line") } : n
+    );
+    writeState(path, {
+      nodes,
+      layout: { b: { x: 600, y: 60 } },
+      pinned: ["b"],
+      dividers: [{ id: "x", orient: "h", at: 0, after: 0, band: true }],
+    });
+    const d = Diagram.load(path);
+    const crossed = d.listDividers()[0].at;
+    d.updateNode("b", { band: false });
+    const at = d.listDividers()[0].at;
+    const a = d.solvePositions().positions.a;
+    assert(at < crossed, `the line no longer splits b: ${crossed} -> ${at}`);
+    assert(at >= a.y + a.h, "it still clears the rest of row 0");
+    assertThrowsWith(
+      () => d.updateNode("b", { band: "no" }),
+      "band must be",
+      "bad node band",
+    );
+  }));
+
+Deno.test("divider bands: a vertical band sits between columns", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: BAND_NODES });
+    const d = Diagram.load(path);
+    const id = d.addDivider("v", 0, { band: true });
+    const [v] = d.listDividers();
+    assert(v.isBand && v.after === 0, `after col 0, got ${v.after}`);
+    const s = d.solvePositions().positions;
+    assert(
+      s.a.x + s.a.w <= v.at && v.at <= s.b.x,
+      `${v.at} between col 0 (ends ${s.a.x + s.a.w}) and col 1 (${s.b.x})`,
+    );
+    assert(id === v.id, "add returns its id");
+  }));
+
+Deno.test("divider bands: bad band fields never reach the saved file", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [BAND_NODES[0]] });
+    const d = Diagram.load(path);
+    assertThrowsWith(
+      () => d.addDivider("h", 60, { band: true }),
+      "needs a gap",
+      "one row has no gap",
+    );
+    assert(d.listDividers().length === 0, "nothing was added");
+    assertThrowsWith(
+      () => d.addDivider("h", 60, { after: 1.5 }),
+      "integer",
+      "fractional after",
+    );
+    assertThrowsWith(
+      () => d.setDividerBands("yes"),
+      "dividerBands",
+      "non-boolean board setting",
+    );
+    for (
+      const [bad, msg] of [
+        [{ dividerBands: 1 }, "dividerBands"],
+        [{ dividers: [{ orient: "h", at: 0, band: "on" }] }, "band must be"],
+        [{ dividers: [{ orient: "h", at: 0, after: "1" }] }, "after must be"],
+        [{ nodes: [{ ...BAND_NODES[0], band: true }] }, "band can only be"],
+      ]
+    ) {
+      writeState(path, { nodes: [BAND_NODES[0]], ...bad });
+      assertThrowsWith(() => Diagram.load(path), msg, JSON.stringify(bad));
+    }
   }));
