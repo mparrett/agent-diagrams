@@ -529,6 +529,12 @@ function run(args) {
         Deno.exit(1);
       }
       const byId = atStr === undefined;
+      // `remove-divider h` with the position left off used to be an error;
+      // read as an id it would match nothing and exit 0.
+      if (byId && (a === "h" || a === "v")) {
+        console.error("Error: remove-divider requires <id> or <h|v> <at-px>");
+        Deno.exit(1);
+      }
       const at = byId ? undefined : int("remove-divider <at-px>", atStr);
       let existed;
       const d = mutate((d) => {

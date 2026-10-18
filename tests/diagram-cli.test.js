@@ -894,6 +894,9 @@ Deno.test("CLI: dividers are addressed by id — add, move, rotate, remove", asy
     r = await runCli(path, ["list-dividers"]);
     assert(r.out.includes("div0  v at 300px"), r.out);
 
+    r = await runCli(path, ["remove-divider", "v"]);
+    assert(r.code === 1, "a legacy call missing its position still errors");
+
     r = await runCli(path, ["remove-divider", "div0"]);
     assert(r.code === 0 && r.out.includes('Removed divider "div0"'), r.out);
     assertEquals(read(), []);

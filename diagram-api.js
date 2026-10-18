@@ -439,7 +439,12 @@ export function validateState(state, path = "diagram-state.json") {
     }
   }
 
+  const dividerIds = new Set();
   for (const [i, d] of (state.dividers || []).entries()) {
+    if (d?.id !== undefined) {
+      if (dividerIds.has(d.id)) at(`duplicate divider id "${d.id}"`);
+      dividerIds.add(d.id);
+    }
     if (!d || (d.orient !== "h" && d.orient !== "v")) {
       at(`dividers[${i}].orient must be "h" or "v"`);
     } else if (!Number.isFinite(d.at)) {
@@ -519,20 +524,8 @@ export class Diagram {
     }
     // Dividers get the same treatment, so the editor can drag one without its
     // position being its only name (removeDivider used to match on orient+at).
-    {
-      const seen = new Set(
-        (state.dividers || []).map((d) => d?.id).filter(Boolean),
-      );
-      let i = 0;
-      for (const d of state.dividers || []) {
-        if (!d || d.id) continue;
-        let id;
-        do {
-          id = `div${i++}`;
-        } while (seen.has(id));
-        d.id = id;
-        seen.add(id);
-      }
+    for (const d of state.dividers || []) {
+      if (d && !d.id) d.id = this._freshDividerId();
     }
     // Likewise backfill stable edge ids. Legacy diagrams have no duplicate
     // (from,to) pairs (the old uniqueness guard forbade them), so each edge
@@ -1407,6 +1400,13 @@ export class Diagram {
   addDivider(orient, at, opts = {}) {
     this._checkOrient(orient);
     this._checkAt(at);
+    // validateState rejects a non-string id on load, so storing one here would
+    // leave the board unloadable.
+    if (opts.id != null && (typeof opts.id !== "string" || !opts.id)) {
+      throw new Error(
+        `Divider id must be a non-empty string, got ${JSON.stringify(opts.id)}`,
+      );
+    }
     const taken = (this._state.dividers || []).some((d) => d?.id === opts.id);
     const d = { id: opts.id && !taken ? opts.id : this._freshDividerId() };
     d.orient = orient;

@@ -156,6 +156,33 @@ Deno.test("dividers: legacy ones get stable ids, without colliding", () =>
     );
   }));
 
+Deno.test("dividers: a bad or duplicate id never reaches the saved file", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A] });
+    const d = Diagram.load(path);
+    // A numeric id would save, then fail validation on every later load.
+    assertThrowsWith(
+      () => d.addDivider("h", 60, { id: 5 }),
+      "non-empty string",
+      "numeric id",
+    );
+    assert(d.listDividers().length === 0, "nothing was added");
+
+    writeState(path, {
+      nodes: [NODE_A],
+      dividers: [
+        { id: "div0", orient: "h", at: 60 },
+        { id: "div0", orient: "v", at: 90 },
+      ],
+    });
+    assertThrowsWith(
+      () => Diagram.load(path),
+      'duplicate divider id "div0"',
+      "duplicate ids, the second unreachable by id",
+    );
+  }));
+
 Deno.test("dividers: update moves and rotates in place; a bad field writes nothing", () =>
   withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;
