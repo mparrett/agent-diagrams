@@ -1094,6 +1094,10 @@ cvs.addEventListener("pointerdown", (e) => {
     return;
   }
   if (hit.kind === "divider") {
+    // Start from where the line is drawn. A band divider's stored `at` can be
+    // far from its gap, and a no-move click must not post that stale value.
+    const d = dividerById(hit.divider.id);
+    if (d) d.at = hit.divider.at;
     drag = { kind: "divider", id: hit.divider.id, start: hit.divider.at };
     hoverBoxId = null;
     hoverEdge = null;

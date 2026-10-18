@@ -1539,8 +1539,14 @@ export class Diagram {
           }
           next.after = after;
         }
-      } else if (isBandDivider(d, this._state) && fields.at === undefined) {
-        next.at = lay.drawnAt.get(id) ?? d.at;
+      } else {
+        if (isBandDivider(d, this._state) && fields.at === undefined) {
+          next.at = lay.drawnAt.get(id) ?? d.at;
+        }
+        // A moved line has left its old gap; keeping `after` would send it
+        // back there the next time bands are turned on.
+        const moved = fields.at !== undefined || fields.orient !== undefined;
+        if (moved && fields.after === undefined) delete next.after;
       }
     }
     for (const k of ["orient", "at", "band", "after"]) {
@@ -1560,17 +1566,23 @@ export class Diagram {
   // dividers had ids.
   removeDivider(idOrOrient, at) {
     const ds = this._state.dividers || [];
+    // By position, a band divider also answers to where it is drawn, which is
+    // what list-dividers prints.
+    const drawnAt = at === undefined ? null : this._dividerLayout().drawnAt;
     const idx = at === undefined
       ? ds.findIndex((d) => d?.id === idOrOrient)
-      : ds.findIndex((d) => d.orient === idOrOrient && d.at === at);
+      : ds.findIndex((d) =>
+        d.orient === idOrOrient && (d.at === at || drawnAt.get(d.id) === at)
+      );
     if (idx === -1) return false;
     ds.splice(idx, 1);
     return true;
   }
 
   // Board default for dividers without their own `band`. Turning it on puts
-  // each such divider in its nearest row gap; turning it off leaves each one
-  // where it was drawn. One call, one write, so it undoes in one step. null
+  // each such divider in its row gap: the one it last had, else the one
+  // nearest its line (moving a divider clears its gap). Turning it off leaves
+  // each one where it was drawn. One call, one write, so it undoes in one step. null
   // clears it.
   setDividerBands(on) {
     if (on !== null && typeof on !== "boolean") {

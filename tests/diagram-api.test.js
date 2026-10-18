@@ -1855,3 +1855,34 @@ Deno.test("divider bands: bad band fields never reach the saved file", () =>
       assertThrowsWith(() => Diagram.load(path), msg, JSON.stringify(bad));
     }
   }));
+
+Deno.test("divider bands: a moved line forgets its gap; removal by drawn position", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: BAND_NODES,
+      dividers: [{ id: "x", orient: "h", at: 0, after: 0, band: true }],
+    });
+    const d = Diagram.load(path);
+    d.setDividerBands(false);
+    d.updateDivider("x", { band: null });
+    const low = rowEdges(d, 2);
+    d.updateDivider("x", { at: low.end + 1 }); // moved while not a band
+    d.setDividerBands(true);
+    assert(
+      d.listDividers()[0].after === 2,
+      `back on in the gap nearest its new line, got ${
+        d.listDividers()[0].after
+      }`,
+    );
+
+    const [v] = d.listDividers();
+    d.updateDivider("x", { after: 0 }); // stored at now far from the drawn line
+    const drawn = d.listDividers()[0].at;
+    assert(drawn !== d._state.dividers[0].at, "stored and drawn differ");
+    assert(
+      d.removeDivider("h", drawn),
+      "removed by the position it is drawn at",
+    );
+    assert(d.listDividers().length === 0 && v.id === "x", "gone");
+  }));
