@@ -62,6 +62,7 @@ import {
 export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 import { fieldFn, flowPlace, flowSpine } from "./flow-field.js";
+import { untangle } from "./untangle.js";
 
 /**
  * Resolve the state-file path: explicit arg > DIAGRAM_STATE env > zero-config default.
@@ -1602,6 +1603,59 @@ export class Diagram {
         d.at = lay.drawnAt.get(d.id) ?? d.at;
       }
     }
+  }
+
+  // Rearrange unpinned boxes to cut wire crossings, inside the board's bands
+  // (see untangle.js). `unpin` releases every top-level pin first, so the
+  // whole board is in play. One call, one write: rows, columns and band
+  // anchors change together. Hand-placed wire labels on wires whose ends moved
+  // are dropped, and so are `rowY` overrides once rows are renumbered; both
+  // describe the old layout. Returns the scores before and after and the ids
+  // that moved.
+  untangle({ budget, seed, unpin = false } = {}) {
+    if (unpin) {
+      for (const k of Object.keys(this.layout)) delete this.layout[k];
+      this._state.pinned = [];
+    }
+    const snapshot = structuredClone({
+      ...this._state,
+      nodes: this.nodes,
+      edges: this.edges,
+      layout: this.layout,
+      rowY: this.rowY,
+    });
+    const render = (s) => {
+      const res = new Diagram(structuredClone(s)).renderToCanvas();
+      const { labels } = bandObstacles(
+        res.ctx,
+        res.gridBoxes.dividers,
+        s,
+        res.pal,
+      );
+      return { res, dividerLabelRects: labels };
+    };
+    const r = untangle(snapshot, render, { budget, seed });
+    if (!r.moved.length) return r;
+    const placed = new Map(r.state.nodes.map((n) => [n.id, n]));
+    const moved = new Set(r.moved);
+    let renumbered = false;
+    for (const n of this.nodes) {
+      const p = placed.get(n.id);
+      if (p.row !== n.row) renumbered = true;
+      n.row = p.row;
+      n.col = p.col;
+    }
+    const after = new Map(r.state.dividers.map((d) => [d.id, d.after]));
+    for (const d of this._state.dividers || []) {
+      if (Number.isInteger(after.get(d.id))) d.after = after.get(d.id);
+    }
+    if (renumbered) {
+      for (const k of Object.keys(this.rowY)) delete this.rowY[k];
+    }
+    for (const e of this.edges) {
+      if (moved.has(e.from) || moved.has(e.to)) delete e.labelPos;
+    }
+    return r;
   }
 
   // Each divider with `at` where it is drawn (a band divider's gap), and
