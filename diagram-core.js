@@ -1986,7 +1986,10 @@ function bandGaps(items, placed) {
       out.push({
         from: idxs[i],
         to: idxs[i + 1],
-        at: Math.round((end + start) / 2 * CELL),
+        // Through the middle of one cell, not along a cell boundary: on a
+        // boundary the line claims the cells either side, and a narrow gap
+        // has no lane left for a wire to jog in beside it.
+        at: (Math.floor((end + start) / 2) + 0.5) * CELL,
       });
     }
     return out;
@@ -2032,9 +2035,23 @@ export const FRAME_COST = 25;
 // Share of FRAME_COST paid one cell either side of a border.
 const FRAME_NEAR = 0.4;
 
+// Per-cell cost of a band divider's line (`costs.band`). Same reasoning as a
+// frame border: every wire between bands has to cross it, so crossing stays
+// cheap, but a wire jogging sideways in the gap pays on every cell it runs
+// along the line, and takes the next cell over instead.
+export const BAND_COST = 25;
+
 // `avoid`: px rects (group labels) wires should route round. `frames`: px
-// rects of group frames, whose borders wires should cross briefly.
-export function buildGrid(grid, boxes, costs, avoid = [], frames = []) {
+// rects of group frames, whose borders wires should cross briefly. `lines`:
+// band dividers ({orient, at}), likewise.
+export function buildGrid(
+  grid,
+  boxes,
+  costs,
+  avoid = [],
+  frames = [],
+  lines = [],
+) {
   grid.reset();
   const connMap = new Map();
 
@@ -2095,6 +2112,28 @@ export function buildGrid(grid, boxes, costs, avoid = [], frames = []) {
     ring(0, frameCost);
     ring(1, frameCost * FRAME_NEAR);
     ring(-1, frameCost * FRAME_NEAR);
+  }
+
+  // 4b. Band lines: the cells the line runs through pay in full, their
+  // neighbours a share. A line on a cell boundary touches the cells both sides.
+  const bandCost = costs.band ?? BAND_COST;
+  for (const l of lines) {
+    const n = l.orient === "h" ? grid.rows : grid.cols;
+    for (let i = 0; i < n; i++) {
+      const off = Math.abs(i * CELL + CELL / 2 - l.at);
+      const cost = off <= CELL / 2
+        ? bandCost
+        : off <= CELL * 1.5
+        ? bandCost * FRAME_NEAR
+        : 0;
+      if (!cost) continue;
+      const m = l.orient === "h" ? grid.cols : grid.rows;
+      for (let j = 0; j < m; j++) {
+        const [gx, gy] = l.orient === "h" ? [j, i] : [i, j];
+        if (grid.get(gx, gy) === T_BLOCKED) continue;
+        grid.addCost(gx, gy, cost);
+      }
+    }
   }
 
   // 5. Place connection points
@@ -3842,6 +3881,40 @@ export function fillDividerIds(dividers) {
  * edge, above the line); a vertical one runs down at x = at (label at the
  * top, beside the line). Color defaults to the palette's dim text.
  */
+// The px rect a divider's label chip covers, as drawDividers draws it; null
+// for an unlabelled divider. Routing and wire labels keep clear of band labels.
+export function dividerLabelRect(ctx, d, pal = DEFAULT_PALETTE) {
+  if (!d?.label || !Number.isFinite(d.at)) return null;
+  ctx.save();
+  ctx.font = `bold ${(pal.sizes || DEFAULT_SIZES).divider}px ${pal.font}`;
+  const tw = ctx.measureText(d.label).width;
+  ctx.restore();
+  const lx = d.orient === "h" ? 8 : d.at + 8;
+  const ly = d.orient === "h" ? d.at - 6 : 14;
+  return { x: lx - 3, y: ly - 9, w: tw + 6, h: 13 };
+}
+
+// What routing needs from the band dividers: their lines, and their label
+// chips to route round. `dividers` are computeLayout's (positions resolved).
+export function bandObstacles(ctx, dividers, state, pal = DEFAULT_PALETTE) {
+  const bands = (dividers || []).filter((d) =>
+    isBandDivider(d, state) && Number.isFinite(d.at)
+  );
+  const labels = bands.map((d) => dividerLabelRect(ctx, d, pal))
+    .filter(Boolean);
+  // A wire label sitting on a band line reads as the line's own label, so
+  // label placement also keeps a strip along each line clear.
+  const strip = (d) =>
+    d.orient === "h"
+      ? { x: 0, y: d.at - 3, w: 1e6, h: 6 }
+      : { x: d.at - 3, y: 0, w: 6, h: 1e6 };
+  return {
+    lines: bands.map((d) => ({ orient: d.orient, at: d.at })),
+    labels,
+    labelAvoid: [...labels, ...bands.map(strip)],
+  };
+}
+
 export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
   for (const d of dividers || []) {
     if (

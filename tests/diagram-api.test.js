@@ -1886,3 +1886,39 @@ Deno.test("divider bands: a moved line forgets its gap; removal by drawn positio
     );
     assert(d.listDividers().length === 0 && v.id === "x", "gone");
   }));
+
+Deno.test("divider bands: wires cross a band line but do not run along it", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    // Offset columns force each wire to jog sideways in the band gap.
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", row: 0, col: 0 },
+        { id: "b", label: "B", row: 0, col: 1 },
+        { id: "c", label: "C", row: 1, col: 2 },
+        { id: "d", label: "D", row: 1, col: 3 },
+      ],
+      edges: [{ from: "a", to: "c" }, { from: "b", to: "d" }],
+      dividers: [{
+        id: "x",
+        orient: "h",
+        at: 0,
+        after: 0,
+        band: true,
+        label: "tiers",
+      }],
+    });
+    const d = Diagram.load(path);
+    const { routes, gridBoxes } = d.renderToCanvas();
+    const at = gridBoxes.dividers[0].at;
+    let along = 0;
+    for (const r of routes) {
+      assert(r.path, `${r.edge?.from ?? "?"} routed`);
+      for (let i = 0; i + 1 < r.path.length; i++) {
+        const p = r.path[i], q = r.path[i + 1];
+        const cy = p.y * 15 + 7.5;
+        if (p.y === q.y && Math.abs(cy - at) < 7.5) along++;
+      }
+    }
+    assert(along === 0, `${along} wire steps run along the line at ${at}`);
+  }));
