@@ -1235,7 +1235,9 @@ export const ROW_GAP_PX = 45;
 
 // Air either side of a band divider: room for the line, its label above it, and
 // wires crossing it square-on rather than squeezed between two rows of boxes.
-export const BAND_GAP_PX = 60;
+// An odd number of cells, so the line runs through the middle of one cell and
+// leaves a free lane either side for a wire to jog in (see bandGaps).
+export const BAND_GAP_PX = 75;
 
 // A divider is a band edge when its own `band`, else the board's `dividerBands`,
 // says so, and it has a gap to sit in. Its `after` names that gap: between row
@@ -1986,10 +1988,10 @@ function bandGaps(items, placed) {
       out.push({
         from: idxs[i],
         to: idxs[i + 1],
-        // Through the middle of one cell, not along a cell boundary: on a
-        // boundary the line claims the cells either side, and a narrow gap
-        // has no lane left for a wire to jog in beside it.
-        at: (Math.floor((end + start) / 2) + 0.5) * CELL,
+        // Exactly midway. In an odd-width gap (the default BAND_GAP_PX) that
+        // is a cell centre; in an even or zero-width one, a cell boundary.
+        // Never rounded towards either side, which could put it in a box.
+        at: (end + start) / 2 * CELL,
       });
     }
     return out;
@@ -3864,23 +3866,6 @@ export function fillDividerIds(dividers) {
   }
 }
 
-/**
- * Boundary dividers — full-width/-height dotted lines that partition the
- * canvas into regions (the "boxes inside boxes" alternative). Wires route
- * straight through them. A plain divider is annotation only; a band divider
- * (see isBandDivider) sits in the gap after row or column `after`, and layout
- * widens that gap to hold it. Pass computeLayout's `dividers`, which carry the
- * resolved `at`.
- *
- *   dividers: [{ id?, orient: "h"|"v", at: <px>, after?: <row|col>,
- *                band?: bool, label?, color?, dash? }]
- *
- * A node with `band: false` is in no band and may sit across a band line.
- *
- * A horizontal divider runs across the canvas at y = at (label at the left
- * edge, above the line); a vertical one runs down at x = at (label at the
- * top, beside the line). Color defaults to the palette's dim text.
- */
 // The px rect a divider's label chip covers, as drawDividers draws it; null
 // for an unlabelled divider. Routing and wire labels keep clear of band labels.
 export function dividerLabelRect(ctx, d, pal = DEFAULT_PALETTE) {
@@ -3889,10 +3874,20 @@ export function dividerLabelRect(ctx, d, pal = DEFAULT_PALETTE) {
   ctx.font = `bold ${(pal.sizes || DEFAULT_SIZES).divider}px ${pal.font}`;
   const tw = ctx.measureText(d.label).width;
   ctx.restore();
+  // Text starts 8px in from the canvas edge (h) or the line (v), on a
+  // baseline 6px above the line (h) or 14px from the top (v).
   const lx = d.orient === "h" ? 8 : d.at + 8;
   const ly = d.orient === "h" ? d.at - 6 : 14;
-  return { x: lx - 3, y: ly - 9, w: tw + 6, h: 13 };
+  return {
+    x: lx - LABEL_PAD_X,
+    y: ly - LABEL_BASELINE,
+    w: tw + 2 * LABEL_PAD_X,
+    h: 13,
+  };
 }
+// Chip padding: text sits LABEL_PAD_X in from the chip's left, its baseline
+// LABEL_BASELINE below the chip's top.
+const LABEL_PAD_X = 3, LABEL_BASELINE = 9;
 
 // What routing needs from the band dividers: their lines, and their label
 // chips to route round. `dividers` are computeLayout's (positions resolved).
@@ -3915,6 +3910,24 @@ export function bandObstacles(ctx, dividers, state, pal = DEFAULT_PALETTE) {
   };
 }
 
+/**
+ * Boundary dividers — full-width/-height dotted lines that partition the
+ * canvas into regions (the "boxes inside boxes" alternative). A plain divider
+ * is annotation only and wires route straight through it; a band divider
+ * (see isBandDivider) sits in the gap after row or column `after`, and layout
+ * widens that gap to hold it, and wires cross it square-on rather than run
+ * along it (bandObstacles). Pass computeLayout's `dividers`, which carry the
+ * resolved `at`.
+ *
+ *   dividers: [{ id?, orient: "h"|"v", at: <px>, after?: <row|col>,
+ *                band?: bool, label?, color?, dash? }]
+ *
+ * A node with `band: false` is in no band and may sit across a band line.
+ *
+ * A horizontal divider runs across the canvas at y = at (label at the left
+ * edge, above the line); a vertical one runs down at x = at (label at the
+ * top, beside the line). Color defaults to the palette's dim text.
+ */
 export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
   for (const d of dividers || []) {
     if (
@@ -3941,16 +3954,14 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    if (d.label) {
+    const chip = dividerLabelRect(ctx, d, pal);
+    if (chip) {
       ctx.font = `bold ${(pal.sizes || DEFAULT_SIZES).divider}px ${pal.font}`;
       ctx.textAlign = "left";
-      const tw = ctx.measureText(d.label).width;
-      const lx = d.orient === "h" ? 8 : d.at + 8;
-      const ly = d.orient === "h" ? d.at - 6 : 14;
       ctx.fillStyle = pal.background;
-      ctx.fillRect(lx - 3, ly - 9, tw + 6, 13);
+      ctx.fillRect(chip.x, chip.y, chip.w, chip.h);
       ctx.fillStyle = color;
-      ctx.fillText(d.label, lx, ly);
+      ctx.fillText(d.label, chip.x + LABEL_PAD_X, chip.y + LABEL_BASELINE);
     }
     ctx.restore();
   }

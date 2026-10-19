@@ -1734,6 +1734,10 @@ Deno.test("divider bands: turning them on puts each line in its nearest row gap"
       `line ${v.at} sits between ${e.end} and ${e.start}`,
     );
     assert(e.start - e.end >= 60, `room for the line: ${e.start - e.end}px`);
+    assert(
+      v.at - e.end === e.start - v.at,
+      `centred: ${v.at - e.end} above, ${e.start - v.at} below`,
+    );
 
     // A band divider's at means "near here": it moves to the nearest gap. That
     // gap is the plain row gap, so it widens to hold the band.
@@ -1921,4 +1925,23 @@ Deno.test("divider bands: wires cross a band line but do not run along it", () =
       }
     }
     assert(along === 0, `${along} wire steps run along the line at ${at}`);
+  }));
+
+Deno.test("divider bands: with no gap between two boxes the line sits on their edge", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", row: 0, col: 0 },
+        { id: "b", label: "B", row: 1, col: 0 },
+      ],
+      layout: { a: { x: 60, y: 60 }, b: { x: 60, y: 135 } },
+      pinned: ["a", "b"],
+      dividers: [{ id: "x", orient: "h", at: 0, after: 0, band: true }],
+    });
+    const d = Diagram.load(path);
+    const p = d.solvePositions().positions;
+    assert(p.a.y + p.a.h === p.b.y, `boxes touch: ${p.a.y + p.a.h} ${p.b.y}`);
+    const [v] = d.listDividers();
+    assert(v.at === p.b.y, `on the shared edge ${p.b.y}, got ${v.at}`);
   }));
