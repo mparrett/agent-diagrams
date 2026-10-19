@@ -62,7 +62,7 @@ import {
 export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 import { fieldFn, flowPlace, flowSpine } from "./flow-field.js";
-import { untangle } from "./untangle.js";
+import { scoreRender, untangle } from "./untangle.js";
 
 /**
  * Resolve the state-file path: explicit arg > DIAGRAM_STATE env > zero-config default.
@@ -1635,6 +1635,20 @@ export class Diagram {
     };
     const r = untangle(snapshot, render, { budget, seed });
     if (!r.moved.length) return r;
+    // Released pins score against the auto layout, but the board on screen is
+    // the pinned one; a result that only beats the auto layout is no gain.
+    if (unpin) {
+      const { res, dividerLabelRects } = render({
+        ...snapshot,
+        layout: structuredClone(this.layout),
+        pinned: [...(this._state.pinned || [])],
+      });
+      const current = scoreRender(res, dividerLabelRects);
+      if (r.after.cost >= current.cost) {
+        return { ...r, before: current, after: current, moved: [] };
+      }
+      r.before = current;
+    }
     if (unpin) {
       for (const k of Object.keys(this.layout)) delete this.layout[k];
       this._state.pinned = [];

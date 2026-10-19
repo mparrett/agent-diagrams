@@ -108,6 +108,24 @@ Deno.test("untangle hands back a board it cannot improve unchanged", () => {
   assertEquals(at(d), { a: [0, 0], b: [2, 0] });
 });
 
+Deno.test("untangle --unpin keeps a hand layout it only matches", () => {
+  // Pin every box where the untangled layout puts it, under the crossed rows
+  // and columns: the auto layout is crossed, the board on screen is not.
+  const solved = load(structuredClone(CROSSED));
+  solved.untangle({ budget: 200 });
+  solved.persistGridBoxes(solved.renderToCanvas().gridBoxes);
+  const layout = structuredClone(solved.layout);
+  const d = load({
+    ...structuredClone(CROSSED),
+    layout,
+    pinned: Object.keys(layout),
+  });
+  const r = d.untangle({ budget: 200, unpin: true });
+  assertEquals(r.moved, []);
+  assert(r.before.crossings === 0, `scored as pinned: ${r.before.crossings}`);
+  assertEquals(d.layout, layout, "pins kept");
+});
+
 Deno.test("untangle is deterministic", () => {
   const one = load(structuredClone(CROSSED));
   const two = load(structuredClone(CROSSED));
