@@ -1734,10 +1734,13 @@ Deno.test("divider bands: turning them on puts each line in its nearest row gap"
       `line ${v.at} sits between ${e.end} and ${e.start}`,
     );
     assert(e.start - e.end >= 60, `room for the line: ${e.start - e.end}px`);
+    // Centred to within a cell: an even-width gap (this one is six cells,
+    // since row 1 is skipped) puts the line in the cell above the middle.
     assert(
-      v.at - e.end === e.start - v.at,
+      Math.abs(v.at - e.end - (e.start - v.at)) <= 15,
       `centred: ${v.at - e.end} above, ${e.start - v.at} below`,
     );
+    assert(Number.isInteger(v.at), `whole pixels: ${v.at}`);
 
     // A band divider's at means "near here": it moves to the nearest gap. That
     // gap is the plain row gap, so it widens to hold the band.
@@ -1944,4 +1947,48 @@ Deno.test("divider bands: with no gap between two boxes the line sits on their e
     assert(p.a.y + p.a.h === p.b.y, `boxes touch: ${p.a.y + p.a.h} ${p.b.y}`);
     const [v] = d.listDividers();
     assert(v.at === p.b.y, `on the shared edge ${p.b.y}, got ${v.at}`);
+  }));
+
+Deno.test("divider bands: an even-width gap still leaves wires a lane off the line", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    // Pinned so the gap is exactly four cells (60px) between the rows.
+    writeState(path, {
+      nodes: [
+        { id: "a", label: "A", row: 0, col: 0 },
+        { id: "b", label: "B", row: 0, col: 1 },
+        { id: "c", label: "C", row: 1, col: 2 },
+        { id: "d", label: "D", row: 1, col: 3 },
+      ],
+      layout: {
+        a: { x: 60, y: 60 },
+        b: { x: 300, y: 60 },
+        c: { x: 540, y: 195 },
+        d: { x: 780, y: 195 },
+      },
+      pinned: ["a", "b", "c", "d"],
+      edges: [{ from: "a", to: "c" }, { from: "b", to: "d" }],
+      dividers: [{ id: "x", orient: "h", at: 0, after: 0, band: true }],
+    });
+    const d = Diagram.load(path);
+    const p = d.solvePositions().positions;
+    assert(
+      p.c.y - (p.a.y + p.a.h) === 60,
+      `4-cell gap: ${p.a.y + p.a.h}..${p.c.y}`,
+    );
+    const { routes, gridBoxes } = d.renderToCanvas();
+    const at = gridBoxes.dividers[0].at;
+    const lineCell = Math.floor(at / 15);
+    assert(
+      at % 15 !== 0,
+      `the line is inside a cell, not on a boundary: ${at}`,
+    );
+    let along = 0;
+    for (const r of routes) {
+      for (let i = 0; i + 1 < (r.path?.length ?? 0); i++) {
+        const a = r.path[i], b = r.path[i + 1];
+        if (a.y === b.y && a.y === lineCell) along++;
+      }
+    }
+    assert(along === 0, `${along} steps along the line at ${at}`);
   }));

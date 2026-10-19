@@ -359,7 +359,9 @@ function render() {
     boxes: BOXES,
     avoid: [
       ...groupLabels,
-      ...bandObstacles(ctx, BOXES.dividers, diagramState, PAL).labelAvoid,
+      // From the lines as shown, so a dragged band line keeps labels off it
+      // where it is now, not where it was.
+      ...bandObstacles(ctx, shownDividers(), diagramState, PAL).labelAvoid,
     ],
     frames: frames.map((f) => f.rect),
     frameFills: frames,

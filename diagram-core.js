@@ -1988,10 +1988,7 @@ function bandGaps(items, placed) {
       out.push({
         from: idxs[i],
         to: idxs[i + 1],
-        // Exactly midway. In an odd-width gap (the default BAND_GAP_PX) that
-        // is a cell centre; in an even or zero-width one, a cell boundary.
-        // Never rounded towards either side, which could put it in a box.
-        at: (end + start) / 2 * CELL,
+        at: bandLineAt(end, start),
       });
     }
     return out;
@@ -2000,6 +1997,20 @@ function bandGaps(items, placed) {
     h: axis("row", (b) => b.row, (b) => b.row + b.h),
     v: axis("col", (b) => b.col, (b) => b.col + b.w),
   };
+}
+
+// Where a band line goes in the gap between cell rows (or columns) `end`
+// and `start`. Midway in an odd-width gap, which is a cell centre, leaving a
+// free lane either side for a wire to jog in. An even-width gap's midpoint is
+// a cell boundary with no lane free beside it, so from four cells up the line
+// takes the cell just before the middle instead (7.5px off centre). A gap of
+// two cells or fewer has no lane to spare either way and keeps the boundary,
+// which can never be inside a box. Whole pixels, so a drawn position can be
+// typed back (remove-divider h <at>).
+function bandLineAt(end, start) {
+  const n = start - end;
+  const mid = n % 2 === 0 && n >= 4 ? end + n / 2 - 0.5 : (end + start) / 2;
+  return Math.round(mid * CELL);
 }
 
 // The gap a band divider's `after` falls in, or undefined when it names none

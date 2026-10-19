@@ -932,6 +932,13 @@ Deno.test("CLI: divider bands — board default, per-divider override, node opt-
     assert(r.code === 0 && r.out.includes("after col 0"), r.err || r.out);
     assertEquals(state().dividers[1].label, "split");
 
+    // The drawn position list-dividers prints can be typed back.
+    r = await runCli(path, ["list-dividers"]);
+    const drawn = r.out.match(/div1 {2}v at (\S+)px/)?.[1];
+    assert(drawn && Number.isInteger(Number(drawn)), r.out);
+    r = await runCli(path, ["remove-divider", "v", drawn]);
+    assert(r.code === 0 && r.out.includes("Removed"), r.err || r.out);
+
     r = await runCli(path, ["set-divider-bands", "maybe"]);
     assert(r.code === 1, "a bad setting errors");
   }));
