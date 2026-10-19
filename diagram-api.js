@@ -1613,15 +1613,14 @@ export class Diagram {
   // describe the old layout. Returns the scores before and after and the ids
   // that moved.
   untangle({ budget, seed, unpin = false } = {}) {
-    if (unpin) {
-      for (const k of Object.keys(this.layout)) delete this.layout[k];
-      this._state.pinned = [];
-    }
+    // The search sees the board with pins released; the board itself only
+    // changes if the search finds something better.
     const snapshot = structuredClone({
       ...this._state,
       nodes: this.nodes,
       edges: this.edges,
-      layout: this.layout,
+      layout: unpin ? {} : this.layout,
+      pinned: unpin ? [] : this._state.pinned,
       rowY: this.rowY,
     });
     const render = (s) => {
@@ -1636,25 +1635,26 @@ export class Diagram {
     };
     const r = untangle(snapshot, render, { budget, seed });
     if (!r.moved.length) return r;
-    const placed = new Map(r.state.nodes.map((n) => [n.id, n]));
-    const moved = new Set(r.moved);
-    let renumbered = false;
-    for (const n of this.nodes) {
-      const p = placed.get(n.id);
-      if (p.row !== n.row) renumbered = true;
-      n.row = p.row;
-      n.col = p.col;
+    if (unpin) {
+      for (const k of Object.keys(this.layout)) delete this.layout[k];
+      this._state.pinned = [];
     }
-    const after = new Map(r.state.dividers.map((d) => [d.id, d.after]));
+    const placed = new Map(r.state.nodes.map((n) => [n.id, n]));
+    for (const n of this.nodes) {
+      n.row = placed.get(n.id).row;
+      n.col = placed.get(n.id).col;
+    }
+    const after = new Map((r.state.dividers || []).map((d) => [d.id, d.after]));
     for (const d of this._state.dividers || []) {
       if (Number.isInteger(after.get(d.id))) d.after = after.get(d.id);
     }
-    if (renumbered) {
+    // build() already dropped what belongs to the old layout; mirror it.
+    if (r.state.rowY !== snapshot.rowY && !Object.keys(r.state.rowY).length) {
       for (const k of Object.keys(this.rowY)) delete this.rowY[k];
     }
-    for (const e of this.edges) {
-      if (moved.has(e.from) || moved.has(e.to)) delete e.labelPos;
-    }
+    r.state.edges.forEach((e, i) => {
+      if (!("labelPos" in e)) delete this.edges[i].labelPos;
+    });
     return r;
   }
 

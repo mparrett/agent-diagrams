@@ -17,6 +17,7 @@ import { dirname, fromFileUrl, join, resolve } from "@std/path";
 import {
   captureArtifacts,
   Diagram,
+  LockBusy,
   resolveStatePath,
   RevConflict,
 } from "./diagram-api.js";
@@ -1222,29 +1223,30 @@ function run(args) {
           opts.seed = int("--seed", f.slice(7));
         }
       }
+      const d = Diagram.load(STATE);
+      const r = d.untangle(opts);
+      const fmt = (s) =>
+        `${s.crossings} crossings, ${s.labels} label issues, ${s.length} cells of wire`;
+      if (!r.moved.length) {
+        console.log(`nothing better found (${fmt(r.before)}); board unchanged`);
+        break;
+      }
       // One attempt: a retry would repeat the whole search against a board
       // someone else has just changed, so say so and let them rerun it.
-      let r, d;
       try {
-        d = Diagram.withRetry(STATE, (d) => {
-          r = d.untangle(opts);
-        }, { tries: 1 });
+        d.save(STATE);
       } catch (e) {
-        if (!(e instanceof RevConflict)) throw e;
+        if (!(e instanceof RevConflict || e instanceof LockBusy)) throw e;
         console.error(
           "Error: the board changed while untangling; nothing was saved. Run it again.",
         );
         Deno.exit(1);
       }
       renderUnlessDeferred(d);
-      const fmt = (s) =>
-        `${s.crossings} crossings, ${s.labels} label issues, ${s.length} cells of wire`;
       console.log(
-        r.moved.length
-          ? `untangled: ${fmt(r.before)} → ${
-            fmt(r.after)
-          }; moved ${r.moved.length} boxes (rev ${d.rev})`
-          : `nothing better found (${fmt(r.before)}); board unchanged`,
+        `untangled: ${fmt(r.before)} → ${
+          fmt(r.after)
+        }; moved ${r.moved.length} boxes (rev ${d.rev})`,
       );
       break;
     }

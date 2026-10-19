@@ -125,3 +125,52 @@ Deno.test("untangle drops hand-placed labels on wires whose ends moved", () => {
   assert(r.moved.length > 0, "something moved");
   assert(!("labelPos" in d.edges[0]), "stale label position dropped");
 });
+
+// The sub-row fixture from above, with two bands whose dividers are stored
+// bottom-first.
+const SPLITTABLE = {
+  nodes: [
+    node("a", 0, 0),
+    node("b", 0, 1),
+    node("c", 0, 2),
+    node("x", 1, 0),
+    node("y", 1, 1),
+    node("z", 1, 2),
+    node("p", 2, 0),
+    node("q", 2, 1),
+  ],
+  edges: [
+    { from: "a", to: "b" },
+    { from: "b", to: "c" },
+    { from: "a", to: "c" },
+    { from: "a", to: "z" },
+    { from: "c", to: "x" },
+    { from: "b", to: "y" },
+    { from: "x", to: "q" },
+    { from: "z", to: "p" },
+  ],
+  dividerBands: true,
+  dividers: [
+    { id: "low", orient: "h", at: 0, after: 1, label: "low" },
+    { id: "high", orient: "h", at: 0, after: 0, label: "high" },
+  ],
+};
+
+Deno.test("untangle keeps each band divider in its own place, whatever the stored order", () => {
+  const d = load(structuredClone(SPLITTABLE));
+  const r = d.untangle({ budget: 400 });
+  assert(r.moved.length > 0, "something moved");
+  const by = Object.fromEntries(d._state.dividers.map((v) => [v.id, v.after]));
+  assert(by.high < by.low, `high above low: ${JSON.stringify(by)}`);
+  const top = d.nodes.filter((n) => n.row <= by.high).map((n) => n.id).sort();
+  assertEquals(top, ["a", "b", "c"], "the top band holds what it held");
+});
+
+Deno.test("untangle never puts two boxes in one cell", () => {
+  for (const seed of [1, 2, 3]) {
+    const d = load(structuredClone(SPLITTABLE));
+    d.untangle({ budget: 300, seed });
+    const cells = d.nodes.map((n) => `${n.row},${n.col}`);
+    assertEquals(new Set(cells).size, cells.length, `seed ${seed}: ${cells}`);
+  }
+});

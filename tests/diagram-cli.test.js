@@ -970,6 +970,17 @@ Deno.test("CLI: untangle saves a better board and reports the scores", async () 
     const rev = JSON.parse(Deno.readTextFileSync(path)).rev;
     assert(rev === 1, `one write, got rev ${rev}`);
 
+    // Nothing left to gain: --unpin must not quietly drop pins and save.
+    const pinnedState = JSON.parse(Deno.readTextFileSync(path));
+    pinnedState.layout = { a: { x: 60, y: 60 } };
+    pinnedState.pinned = ["a"];
+    Deno.writeTextFileSync(path, JSON.stringify(pinnedState));
+    r = await runCli(path, ["untangle", "--unpin", "--budget=50"]);
+    const kept = JSON.parse(Deno.readTextFileSync(path));
+    assert(r.code === 0 && r.out.includes("board unchanged"), r.err || r.out);
+    assert(kept.rev === pinnedState.rev, "no write");
+    assert(kept.pinned.includes("a") && kept.layout.a, "pins kept");
+
     r = await runCli(path, ["untangle", "--budget=0"]);
     assert(r.code === 1 && r.err.includes("--budget"), r.err);
     r = await runCli(path, ["untangle", "--bugdet=5"]);

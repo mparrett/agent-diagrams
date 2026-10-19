@@ -147,24 +147,27 @@ export function untangle(state, render, opts = {}) {
   const hAfters = hBands.map((d) => d.after);
   const rowBand = (row) => hAfters.filter((k) => k < row).length;
   const colBand = (col) => vAfters.filter((k) => k < col).length;
-  const subRows = hBands.length > 0;
+  const inner = innerGroups(state.groups, state.nodes);
+  // Sub-rows renumber the board's rows. Inner groups sit on those rows too,
+  // by their own authored row, so with any present only columns change.
+  const subRows = hBands.length > 0 && inner.length === 0;
 
   const pinned = new Set([
     ...(Array.isArray(state.pinned) ? state.pinned : []),
     ...Object.keys(state.layout || {}),
   ]);
-  const grouped = new Set(
-    innerGroups(state.groups, state.nodes).flatMap((g) => g.members),
-  );
+  // Members of an inner group sit at rows and columns local to their group,
+  // so they are not on this grid at all.
+  const grouped = new Set(inner.flatMap((g) => g.members));
   // Each node's place: band (fixed), sub (row order inside the band), col.
-  const nodes = state.nodes.map((n) => ({
+  const nodes = state.nodes.filter((n) => !grouped.has(n.id)).map((n) => ({
     id: n.id,
     band: rowBand(n.row),
     sub: n.row,
+    row: n.row,
     col: n.col,
     colBand: colBand(n.col),
-    free: !pinned.has(n.id) && !grouped.has(n.id),
-    orig: n,
+    free: !pinned.has(n.id),
   }));
   const free = nodes.filter((n) => n.free);
   if (!free.length) {
@@ -172,25 +175,57 @@ export function untangle(state, render, opts = {}) {
     return { state, before: s, after: s, evals, moved: [] };
   }
 
-  // Compact (band, sub) into consecutive integer rows (a skipped row index
-  // adds air) and re-anchor each band divider after its band's last row.
+  // The candidate as a state. With sub-rows, (band, sub) is compacted into
+  // consecutive integer rows and each band divider re-anchored after the last
+  // row of the band above it; without, every box keeps its own row number, so
+  // a skipped row keeps its air. A box that moved loses its wire labels' hand
+  // placement, and renumbered rows lose their rowY overrides: both belong to
+  // the old layout, and scoring the candidate without them is scoring what
+  // will be saved.
   function build() {
-    const keys = [...new Set(nodes.map((n) => `${n.band}:${n.sub}`))]
-      .map((k) => k.split(":").map(Number))
-      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    const rowOf = new Map(keys.map(([b, s], i) => [`${b}:${s}`, i]));
-    const last = new Map();
-    for (const [b, s] of keys) last.set(b, rowOf.get(`${b}:${s}`));
     const byId = new Map(nodes.map((n) => [n.id, n]));
+    let rowOf = null, dividers = state.dividers;
+    if (subRows) {
+      const keys = [...new Set(nodes.map((n) => `${n.band}:${n.sub}`))]
+        .map((k) => k.split(":").map(Number))
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      rowOf = new Map(keys.map(([b, s], i) => [`${b}:${s}`, i]));
+      // Last row at or above each band; an empty band takes the one above's.
+      const lastUpTo = (b) => {
+        let r = -1;
+        for (const [kb, ks] of keys) {
+          if (kb <= b) r = Math.max(r, rowOf.get(`${kb}:${ks}`));
+        }
+        return r;
+      };
+      // A divider bounds the band below as many band edges as sit above it.
+      dividers = (state.dividers || []).map((d) =>
+        hBands.includes(d)
+          ? { ...d, after: lastUpTo(hAfters.filter((k) => k < d.after).length) }
+          : d
+      );
+    }
+    const moved = new Set();
     const out = state.nodes.map((n) => {
       const p = byId.get(n.id);
-      return { ...n, row: rowOf.get(`${p.band}:${p.sub}`), col: p.col };
+      if (!p) return n; // an inner-group member, placed by its group
+      const row = rowOf ? rowOf.get(`${p.band}:${p.sub}`) : p.row;
+      if (row !== n.row || p.col !== n.col) moved.add(n.id);
+      return { ...n, row, col: p.col };
     });
-    const bandIdx = new Map(hBands.map((d, i) => [d, i]));
-    const dividers = (state.dividers || []).map((d) =>
-      bandIdx.has(d) ? { ...d, after: last.get(bandIdx.get(d)) ?? d.after } : d
-    );
-    return { ...state, nodes: out, dividers };
+    const edges = (state.edges || []).map((e) => {
+      if (!e.labelPos || !(moved.has(e.from) || moved.has(e.to))) return e;
+      const { labelPos: _, ...rest } = e;
+      return rest;
+    });
+    const renumbered = out.some((n, i) => n.row !== state.nodes[i].row);
+    return {
+      ...state,
+      nodes: out,
+      edges,
+      dividers,
+      ...(renumbered && { rowY: {} }),
+    };
   }
 
   const snap = () => nodes.map((n) => [n.sub, n.col]);
@@ -263,13 +298,16 @@ export function untangle(state, render, opts = {}) {
   }
   restore(best.s);
 
-  // Stage 2: iterated local search.
+  // Stage 2: iterated local search. Moves are listed up front but applied one
+  // at a time after others have been accepted, so each re-checks that it
+  // still makes sense (same row, free cell) when it runs.
   function moves() {
     const out = [];
     for (const n of free) {
       for (const m of inRow(n)) {
         if (m.free && m.id > n.id && m.colBand === n.colBand) {
           out.push(() => {
+            if (rowKey(m) !== rowKey(n)) return false;
             [n.col, m.col] = [m.col, n.col];
           });
         }
@@ -327,8 +365,10 @@ export function untangle(state, render, opts = {}) {
   best = descend(best);
   while (evals < budget) {
     restore(best.s);
-    const ms = moves();
-    for (let k = 0; k < 3; k++) ms[Math.floor(rand() * ms.length)]();
+    for (let k = 0; k < 3; k++) {
+      const ms = moves();
+      ms[Math.floor(rand() * ms.length)]();
+    }
     tidy();
     const cur = descend({ ...score(build()), s: snap() });
     if (cur.cost < best.cost) best = cur;
