@@ -83,7 +83,7 @@ The sidebar runs top to bottom in the order you work on a board:
 
 - **Tool:** **Select** to move boxes (drag), edit them (double-click), or open their menu (right-click); **Connect** to draw a wire by clicking one box, then another. Moves auto-save and re-render.
 - **Add:** **+ Node** adds a box and opens its editor. Notes, pins, and wire options are on the right-click menus; **Delete** removes the hovered box.
-- **Layout:** **Auto layout** clears every pin and lays the board out again from rows and columns (it asks first); **Re-flow unpinned** does the same for unpinned boxes only; **Lay out along flow** places boxes along the board's flow field. **Spread − / +** pulls boxes together or pushes them apart, and **Line up rows / columns** snaps nearly-aligned boxes into line. Layout changes persist, so a reload won't bring old drags back.
+- **Layout:** **Auto layout** clears every pin and lays the board out again from rows and columns (it asks first); **Re-flow unpinned** does the same for unpinned boxes only; **Lay out along flow** places boxes along the board's flow field. **Untangle unpinned / all** runs `untangle` (below) on the server and reloads; **All** releases every pin first (it asks). **Spread − / +** pulls boxes together or pushes them apart, and **Line up rows / columns** snaps nearly-aligned boxes into line. Layout changes persist, so a reload won't bring old drags back.
 - **Board:** the title, theme, font (mono or sans), font size, row gap, uniform width, direction (down or right), legend, and flow field, each saved to the file as you change it. **Legend** opens an editor: *Auto* lists the box colors in use, *Custom* takes your own rows (color, label, solid/dashed/dotted), *Hidden* draws none.
 - **Groups:** right-click a box → **Group ▸** to start a group with it, or add it to or remove it from one. Right-click a group's label or border → **Edit group…** for its label, color, line, and label position, or **Delete group**, which keeps the boxes. Inner-group layout (`--inner`) is still set from the CLI.
 - **Wires:** **Center connectors** and **Start markers**, plus the four A\* **Routing parameters** (collapsed). All persist, so the CLI and PNG render reproduce what you tuned.
@@ -404,7 +404,7 @@ State changes persist to the file (all CAS-guarded): drags/passes via `POST /lay
 - serves the repo over HTTP,
 - watches `diagram-state.json` and **re-renders `diagram.png` in-process** when it changes,
 - pushes a `reload` event to connected pages over `/events` (Server-Sent Events),
-- exposes the GUI's write endpoints — `POST /layout` (drags), `/node`, `/edge`, `/theme`, `/costs` — plus `POST /capture`, all CAS-guarded (also available board-scoped under `/d/<name>/…`; SSE reload events carry the board name),
+- exposes the GUI's write endpoints — `POST /layout` (drags), `/node`, `/edge`, `/theme`, `/costs` — plus `POST /capture` and `POST /untangle` (runs in a worker, one at a time per board), all CAS-guarded (also available board-scoped under `/d/<name>/…`; SSE reload events carry the board name),
 - accepts `--state=<path>` (or `DIAGRAM_STATE`) to drive a diagram **outside the repo**: static assets still come from the repo, but each board's state/PNG are served from — and watched in — that board's directory.
 
 > The dev server binds to **`127.0.0.1`** by default (the write endpoints are unauthenticated). For LAN access on a trusted network use `just serve-lan` / `just host=0.0.0.0 serve` (or `--host=0.0.0.0` directly) — anyone on the network can then edit the diagram.
