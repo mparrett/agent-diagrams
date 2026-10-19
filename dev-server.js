@@ -600,6 +600,55 @@ async function handler(req) {
     }
   }
 
+  // Untangle: { baseRev, unpin?, budget?, nonce? }. Runs in a worker, one per
+  // board at a time; the watcher's reload carries the result to every client.
+  if (req.method === "POST" && tail === "/untangle") {
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResp(400, { error: "invalid JSON" });
+    }
+    if (typeof body.baseRev !== "number") {
+      return jsonResp(400, { error: "baseRev (number) required" });
+    }
+    if (
+      body.budget !== undefined &&
+      !(Number.isInteger(body.budget) && body.budget > 0)
+    ) {
+      return jsonResp(400, { error: "budget must be a positive integer" });
+    }
+    if (board.untangling) {
+      return jsonResp(409, { error: "already untangling this board" });
+    }
+    board.untangling = true;
+    const worker = new Worker(
+      new URL("./untangle-worker.js", import.meta.url),
+      { type: "module" },
+    );
+    try {
+      const out = await new Promise((resolve) => {
+        worker.onmessage = (e) => resolve(e.data);
+        worker.onerror = (e) => {
+          e.preventDefault();
+          resolve({ status: 500, error: String(e.message ?? e) });
+        };
+        worker.postMessage({
+          statePath: board.statePath,
+          baseRev: body.baseRev,
+          unpin: !!body.unpin,
+          budget: body.budget,
+        });
+      });
+      if (out.moved) board.pendingNonce = body.nonce ?? null;
+      const { status, ...rest } = out;
+      return jsonResp(status, rest);
+    } finally {
+      worker.terminate();
+      board.untangling = false;
+    }
+  }
+
   if (url.pathname === "/events") {
     let ref;
     const stream = new ReadableStream({

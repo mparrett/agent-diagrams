@@ -2851,6 +2851,66 @@ document.getElementById("bFlowPlace").onclick = async () => {
   }
 };
 
+// Untangle: the server searches for a layout with fewer crossings and saves
+// it; reload to pick it up. It works from disk, so unsaved moves go first.
+const untangleButtons = [
+  document.getElementById("bUntangle"),
+  document.getElementById("bUntangleAll"),
+];
+async function runUntangle(unpin) {
+  if (
+    persistInFlight || pendingLayout.size || pendingFree.size ||
+    pendingInner.size || pinsDirty || noteDirty || dimsDirty
+  ) {
+    setStatus("still saving your last change; untangle again in a moment");
+    schedulePersist();
+    return;
+  }
+  if (unpin) {
+    const n = pinnedSet.size;
+    if (
+      n && !await askConfirm(
+        `Release ${n} pin${n === 1 ? "" : "s"} and untangle the whole board?`,
+        "Release pins",
+      )
+    ) return;
+  }
+  const status = document.getElementById("status");
+  for (const b of untangleButtons) b.disabled = true;
+  status.textContent = "untangling…";
+  newNonce();
+  try {
+    const r = await fetch(API + "/untangle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseRev: lastRev, unpin, nonce: lastSentNonce }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 409) await mergeReload();
+      setStatus("untangle: " + (j.error || "HTTP " + r.status));
+      return;
+    }
+    const fmt = (s) => `${s.crossings} crossings, ${s.labels} label issues`;
+    if (!j.moved) {
+      setStatus(`untangle: nothing better found (${fmt(j.before)})`);
+      return;
+    }
+    lastRev = j.rev;
+    await mergeReload();
+    setStatus(
+      `untangled: ${fmt(j.before)} → ${fmt(j.after)}; moved ${j.moved} boxes`,
+    );
+  } catch (e) {
+    setStatus("untangle failed: " + e.message);
+  } finally {
+    for (const b of untangleButtons) b.disabled = false;
+    if (status.textContent === "untangling…") status.textContent = "";
+  }
+}
+untangleButtons[0].onclick = () => runUntangle(false);
+untangleButtons[1].onclick = () => runUntangle(true);
+
 // Flow field — steers wire sides and routing; picking one shows it.
 const flowSelect = document.getElementById("flowSelect");
 const syncFlowSelect = (st) => {
