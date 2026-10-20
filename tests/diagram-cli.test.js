@@ -942,3 +942,47 @@ Deno.test("CLI: divider bands — board default, per-divider override, node opt-
     r = await runCli(path, ["set-divider-bands", "maybe"]);
     assert(r.code === 1, "a bad setting errors");
   }));
+
+Deno.test("CLI: untangle saves a better board and reports the scores", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const n = (id, row, col) => ({ id, label: id, color: "blue", row, col });
+    writeState(path, {
+      nodes: [
+        n("a", 0, 0),
+        n("b", 0, 1),
+        n("c", 0, 2),
+        n("d", 1, 0),
+        n("e", 1, 1),
+        n("f", 1, 2),
+      ],
+      edges: [{ from: "a", to: "f" }, { from: "c", to: "d" }, {
+        from: "b",
+        to: "e",
+      }],
+    });
+    let r = await runCli(path, ["untangle", "--budget=200"]);
+    assert(
+      r.code === 0 && r.out.includes("untangled: 2 crossings"),
+      r.err || r.out,
+    );
+    assert(r.out.includes("→ 0 crossings"), r.out);
+    const rev = JSON.parse(Deno.readTextFileSync(path)).rev;
+    assert(rev === 1, `one write, got rev ${rev}`);
+
+    // Nothing left to gain: --unpin must not quietly drop pins and save.
+    const pinnedState = JSON.parse(Deno.readTextFileSync(path));
+    pinnedState.layout = { a: { x: 60, y: 60 } };
+    pinnedState.pinned = ["a"];
+    Deno.writeTextFileSync(path, JSON.stringify(pinnedState));
+    r = await runCli(path, ["untangle", "--unpin", "--budget=50"]);
+    const kept = JSON.parse(Deno.readTextFileSync(path));
+    assert(r.code === 0 && r.out.includes("board unchanged"), r.err || r.out);
+    assert(kept.rev === pinnedState.rev, "no write");
+    assert(kept.pinned.includes("a") && kept.layout.a, "pins kept");
+
+    r = await runCli(path, ["untangle", "--budget=0"]);
+    assert(r.code === 1 && r.err.includes("--budget"), r.err);
+    r = await runCli(path, ["untangle", "--bugdet=5"]);
+    assert(r.code === 1 && r.err.includes("unknown flag"), r.err);
+  }));

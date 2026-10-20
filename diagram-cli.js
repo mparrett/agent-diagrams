@@ -14,7 +14,13 @@
  */
 
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
-import { captureArtifacts, Diagram, resolveStatePath } from "./diagram-api.js";
+import {
+  captureArtifacts,
+  Diagram,
+  LockBusy,
+  resolveStatePath,
+  RevConflict,
+} from "./diagram-api.js";
 import { DEFAULT_COLORS, DEFAULT_EDGE_STYLES } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 
@@ -268,6 +274,11 @@ Commands:
   set-wrap-slack <n|reset>   Extra box area (x smallest) a box may take to keep text unwrapped (default 1.5)
   set-flow <field|none>      Flow field steering wires: right, left, down, up, swirl, snake,
                              snake2, snake4, or two joined with > (right>down)
+  untangle [--unpin] [--budget=N] [--seed=N]
+                                       Rearrange unpinned boxes to cut wire crossings and label clashes,
+                                       scored on the routed wires. Boxes keep their divider band (or their
+                                       row, without bands); pinned boxes stay put, --unpin releases them
+                                       first. --budget caps candidate layouts tried (default 1500)
   flow-place [--gap=px] [--frame=WxH]
                              Pin the longest edge chain along the flow field's streamline and
                              the other nodes beside their neighbours; the field spans the frame
@@ -1198,6 +1209,45 @@ function run(args) {
       });
       renderUnlessDeferred(d);
       console.log(`flow-placed ${order.join(" → ")} (rev ${d.rev})`);
+      break;
+    }
+
+    case "untangle": {
+      const flags = args.slice(1);
+      rejectUnknownFlags("untangle", flags, ["--unpin", "--budget", "--seed"]);
+      const opts = { unpin: flags.includes("--unpin") };
+      for (const f of flags) {
+        if (f.startsWith("--budget=")) {
+          opts.budget = int("--budget", f.slice(9), { min: 1 });
+        } else if (f.startsWith("--seed=")) {
+          opts.seed = int("--seed", f.slice(7));
+        }
+      }
+      const d = Diagram.load(STATE);
+      const r = d.untangle(opts);
+      const fmt = (s) =>
+        `${s.crossings} crossings, ${s.labels} label issues, ${s.length} cells of wire`;
+      if (!r.moved.length) {
+        console.log(`nothing better found (${fmt(r.before)}); board unchanged`);
+        break;
+      }
+      // One attempt: a retry would repeat the whole search against a board
+      // someone else has just changed, so say so and let them rerun it.
+      try {
+        d.save(STATE);
+      } catch (e) {
+        if (!(e instanceof RevConflict || e instanceof LockBusy)) throw e;
+        console.error(
+          "Error: the board changed while untangling; nothing was saved. Run it again.",
+        );
+        Deno.exit(1);
+      }
+      renderUnlessDeferred(d);
+      console.log(
+        `untangled: ${fmt(r.before)} → ${
+          fmt(r.after)
+        }; moved ${r.moved.length} boxes (rev ${d.rev})`,
+      );
       break;
     }
 

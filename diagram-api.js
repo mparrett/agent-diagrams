@@ -62,6 +62,7 @@ import {
 export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 import { fieldFn, flowPlace, flowSpine } from "./flow-field.js";
+import { scoreRender, untangle } from "./untangle.js";
 
 /**
  * Resolve the state-file path: explicit arg > DIAGRAM_STATE env > zero-config default.
@@ -1604,6 +1605,75 @@ export class Diagram {
     }
   }
 
+  // Rearrange unpinned boxes to cut wire crossings, inside the board's bands
+  // (see untangle.js). `unpin` releases every top-level pin first, so the
+  // whole board is in play. One call, one write: rows, columns and band
+  // anchors change together. Hand-placed wire labels on wires whose ends moved
+  // are dropped, and so are `rowY` overrides once rows are renumbered; both
+  // describe the old layout. Returns the scores before and after and the ids
+  // that moved.
+  untangle({ budget, seed, unpin = false } = {}) {
+    // The search sees the board with pins released; the board itself only
+    // changes if the search finds something better.
+    const snapshot = structuredClone({
+      ...this._state,
+      nodes: this.nodes,
+      edges: this.edges,
+      layout: unpin ? {} : this.layout,
+      pinned: unpin ? [] : this._state.pinned,
+      rowY: this.rowY,
+    });
+    const render = (s) => {
+      const res = new Diagram(structuredClone(s)).renderToCanvas({
+        pixels: false,
+      });
+      const { labels } = bandObstacles(
+        res.ctx,
+        res.gridBoxes.dividers,
+        s,
+        res.pal,
+      );
+      return { res, dividerLabelRects: labels };
+    };
+    const r = untangle(snapshot, render, { budget, seed });
+    if (!r.moved.length) return r;
+    // Released pins score against the auto layout, but the board on screen is
+    // the pinned one; a result that only beats the auto layout is no gain.
+    if (unpin) {
+      const { res, dividerLabelRects } = render({
+        ...snapshot,
+        layout: structuredClone(this.layout),
+        pinned: [...(this._state.pinned || [])],
+      });
+      const current = scoreRender(res, dividerLabelRects);
+      if (r.after.cost >= current.cost) {
+        return { ...r, before: current, after: current, moved: [] };
+      }
+      r.before = current;
+    }
+    if (unpin) {
+      for (const k of Object.keys(this.layout)) delete this.layout[k];
+      this._state.pinned = [];
+    }
+    const placed = new Map(r.state.nodes.map((n) => [n.id, n]));
+    for (const n of this.nodes) {
+      n.row = placed.get(n.id).row;
+      n.col = placed.get(n.id).col;
+    }
+    const after = new Map((r.state.dividers || []).map((d) => [d.id, d.after]));
+    for (const d of this._state.dividers || []) {
+      if (Number.isInteger(after.get(d.id))) d.after = after.get(d.id);
+    }
+    // build() already dropped what belongs to the old layout; mirror it.
+    if (r.state.rowY !== snapshot.rowY && !Object.keys(r.state.rowY).length) {
+      for (const k of Object.keys(this.rowY)) delete this.rowY[k];
+    }
+    r.state.edges.forEach((e, i) => {
+      if (!("labelPos" in e)) delete this.edges[i].labelPos;
+    });
+    return r;
+  }
+
   // Each divider with `at` where it is drawn (a band divider's gap), and
   // whether it is acting as a band.
   listDividers() {
@@ -2557,7 +2627,10 @@ export class Diagram {
   // shadows: true re-enables the box drop shadow, i.e. reproduces the shadowBlur
   // displacement fault. Exists solely for the canary test — production callers
   // must leave it off. See docs/project_notes/upstream-defects.md.
-  renderToCanvas({ shadows = false } = {}) {
+  // `pixels: false` draws on a 1×1 canvas: the same geometry (routes, label
+  // rects, issues) for a fraction of the time and memory, for callers that
+  // score a layout instead of showing it.
+  renderToCanvas({ shadows = false, pixels = true } = {}) {
     const pal = this.palette = paletteFromState(this._state); // pick up any state mutations
     const { DPR } = this._dims;
 
@@ -2578,8 +2651,13 @@ export class Diagram {
     let scale = DPR;
     const longestPx = Math.max(W, H) * scale;
     if (longestPx > maxDim) scale *= maxDim / longestPx;
+    if (!pixels) scale = 1 / Math.max(W, H);
 
-    const canvas = createCanvas(Math.round(W * scale), Math.round(H * scale));
+    // A zero-sized canvas crashes the process, so a long thin board's 1×1
+    // stand-in can't be rounded from its aspect ratio.
+    const canvas = pixels
+      ? createCanvas(Math.round(W * scale), Math.round(H * scale))
+      : createCanvas(1, 1);
     const ctx = canvas.getContext("2d");
     ctx.scale(scale, scale);
 
