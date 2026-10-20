@@ -220,3 +220,14 @@ Deno.test("untangle scores the board as given, not a compacted copy", () => {
   const cells = asIs.reduce((n, rt) => n + (rt.path?.length ?? 0), 0);
   assertEquals(r.before.length, cells, "wire length as drawn");
 });
+
+Deno.test("scoring renders a long thin board without crashing", () => {
+  const d = load({
+    width: 1500,
+    height: 300,
+    nodes: [node("a", 0, 0), node("b", 0, 6)],
+    edges: [{ from: "a", to: "b" }],
+  });
+  const res = d.renderToCanvas({ pixels: false });
+  assert(res.routes.every((r) => r.path), "routed");
+});

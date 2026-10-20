@@ -1624,7 +1624,9 @@ export class Diagram {
       rowY: this.rowY,
     });
     const render = (s) => {
-      const res = new Diagram(structuredClone(s)).renderToCanvas();
+      const res = new Diagram(structuredClone(s)).renderToCanvas({
+        pixels: false,
+      });
       const { labels } = bandObstacles(
         res.ctx,
         res.gridBoxes.dividers,
@@ -2625,7 +2627,10 @@ export class Diagram {
   // shadows: true re-enables the box drop shadow, i.e. reproduces the shadowBlur
   // displacement fault. Exists solely for the canary test — production callers
   // must leave it off. See docs/project_notes/upstream-defects.md.
-  renderToCanvas({ shadows = false } = {}) {
+  // `pixels: false` draws on a 1×1 canvas: the same geometry (routes, label
+  // rects, issues) for a fraction of the time and memory, for callers that
+  // score a layout instead of showing it.
+  renderToCanvas({ shadows = false, pixels = true } = {}) {
     const pal = this.palette = paletteFromState(this._state); // pick up any state mutations
     const { DPR } = this._dims;
 
@@ -2646,8 +2651,13 @@ export class Diagram {
     let scale = DPR;
     const longestPx = Math.max(W, H) * scale;
     if (longestPx > maxDim) scale *= maxDim / longestPx;
+    if (!pixels) scale = 1 / Math.max(W, H);
 
-    const canvas = createCanvas(Math.round(W * scale), Math.round(H * scale));
+    // A zero-sized canvas crashes the process, so a long thin board's 1×1
+    // stand-in can't be rounded from its aspect ratio.
+    const canvas = pixels
+      ? createCanvas(Math.round(W * scale), Math.round(H * scale))
+      : createCanvas(1, 1);
     const ctx = canvas.getContext("2d");
     ctx.scale(scale, scale);
 
