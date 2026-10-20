@@ -192,3 +192,31 @@ Deno.test("untangle never puts two boxes in one cell", () => {
     assertEquals(new Set(cells).size, cells.length, `seed ${seed}: ${cells}`);
   }
 });
+
+Deno.test("untangle never stacks a box whose column band is full", () => {
+  // B wants column 2, across the band line, and A has already taken column 1.
+  const d = load({
+    nodes: [node("a", 0, 0), node("b", 0, 1), node("x", 1, 1), node("y", 1, 2)],
+    edges: [{ from: "a", to: "x" }, { from: "b", to: "y" }],
+    dividers: [{ id: "v", orient: "v", at: 0, band: true, after: 1 }],
+    pinned: ["x", "y"],
+  });
+  d.untangle({ budget: 60 });
+  const cells = d.nodes.map((n) => `${n.row}/${n.col}`);
+  assertEquals(new Set(cells).size, cells.length, `cells ${cells}`);
+});
+
+Deno.test("untangle scores the board as given, not a compacted copy", () => {
+  // Row 1 is air; with bands on, a candidate closes it up. "before" must
+  // still describe the board on disk.
+  const state = {
+    nodes: [node("a", 0, 0), node("b", 2, 0)],
+    edges: [{ from: "a", to: "b" }],
+    dividerBands: true,
+    dividers: [{ id: "t", orient: "h", at: 0, after: 0 }],
+  };
+  const r = load(structuredClone(state)).untangle({ budget: 20 });
+  const asIs = load(structuredClone(state)).renderToCanvas().routes;
+  const cells = asIs.reduce((n, rt) => n + (rt.path?.length ?? 0), 0);
+  assertEquals(r.before.length, cells, "wire length as drawn");
+});

@@ -133,10 +133,20 @@ export function untangle(state, render, opts = {}) {
   const budget = opts.budget ?? 1500;
   const rand = seeded(opts.seed ?? 0x9e3779b9);
   let evals = 0;
-  const score = (s) => {
+  const scoreAsIs = (s) => {
     evals++;
     const { res, dividerLabelRects } = render(s);
     return scoreRender(res, dividerLabelRects);
+  };
+  // A candidate. Two boxes in one cell never render as what was meant, and
+  // the score has no term for it, so no such candidate may win.
+  const score = (s) => {
+    const cells = new Set(nodes.map((n) => `${rowKey(n)}/${n.col}`));
+    if (cells.size < nodes.length) {
+      evals++;
+      return { cost: Infinity };
+    }
+    return scoreAsIs(s);
   };
 
   const hBands = (state.dividers || [])
@@ -171,7 +181,7 @@ export function untangle(state, render, opts = {}) {
   }));
   const free = nodes.filter((n) => n.free);
   if (!free.length) {
-    const s = score(state);
+    const s = scoreAsIs(state);
     return { state, before: s, after: s, evals, moved: [] };
   }
 
@@ -243,8 +253,10 @@ export function untangle(state, render, opts = {}) {
     }
   };
 
-  const before = score(build());
-  let best = { ...before, s: snap() };
+  // The board as given is the bar to beat; build() alone may already differ
+  // from it (rows compacted, rowY dropped).
+  const before = scoreAsIs(state);
+  let best = { ...score(build()), s: snap() };
 
   // Stage 1: barycenter sweeps over the free boxes' columns.
   const nbrs = new Map(nodes.map((n) => [n.id, []]));
@@ -279,18 +291,25 @@ export function untangle(state, render, opts = {}) {
       const fixed = new Set(
         nodes.filter((n) => !n.free && rowKey(n) === rk).map((n) => n.col),
       );
+      const taken = new Set(fixed);
+      // The first free column of band `b` at or right of `c`, or null.
+      const firstFree = (c, b) => {
+        for (; colBand(c) <= b; c++) {
+          if (colBand(c) === b && !taken.has(c)) return c;
+        }
+        return null;
+      };
       let prev = -Infinity;
       for (const n of row) {
-        let c = Math.max(Math.round(want.get(n.id)), prev + 1, 0);
-        while (fixed.has(c) || colBand(c) !== n.colBand) {
-          c++;
-          if (colBand(c) > n.colBand) {
-            c = n.col; // no room in its column band: leave it
-            break;
-          }
-        }
+        // Rightwards from where it wants to be; failing that (its column band
+        // is full to the right), the first free column anywhere in the band.
+        const c = firstFree(
+          Math.max(Math.round(want.get(n.id)), prev + 1, 0),
+          n.colBand,
+        ) ?? firstFree(0, n.colBand) ?? n.col;
         n.col = c;
-        prev = c;
+        taken.add(c);
+        prev = Math.max(prev, c);
       }
     }
     const s = score(build());
