@@ -440,6 +440,11 @@ button.mini.wide { flex: 0 0 116px; }
     <button id="bAutoLayoutKeep" title="Lay out the unpinned boxes again; pinned boxes stay where they are">Re-flow unpinned</button>
     <button id="bFlowPlace" title="Lay the board out along its flow field: the longest chain of wires follows the field and the other boxes sit beside their neighbours. Pins every box">Lay out along flow</button>
     <div class="row">
+      <span class="lbl">Untangle</span>
+      <button id="bUntangle" class="mini" title="Rearrange the unpinned boxes to cut wire crossings and label clashes; boxes stay in their bands. Takes a few seconds; press again to stop and keep the best so far">Unpinned</button>
+      <button id="bUntangleAll" class="mini warn" title="Release every pin, then rearrange the whole board to cut wire crossings and label clashes; boxes stay in their bands; press again to stop and keep the best so far">All</button>
+    </div>
+    <div class="row">
       <span class="lbl">Spread</span>
       <button id="bContract" class="mini" title="Pull the boxes closer together; press again to go further">−</button>
       <button id="bExpand" class="mini" title="Push the boxes further apart; press again to go further">+</button>

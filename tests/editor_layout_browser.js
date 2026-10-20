@@ -464,6 +464,66 @@ try {
     await dots() === false,
   );
   check("Start markers on clears it", await dots() === undefined);
+
+  // Untangle: a→f and c→d cross b→e as routed. The search runs on the server;
+  // a second request while it runs is turned away.
+  const node = (id, row, col) => ({ id, label: id, color: "blue", row, col });
+  Deno.writeTextFileSync(
+    S,
+    JSON.stringify({
+      ...read(),
+      nodes: [
+        node("a", 0, 0),
+        node("b", 0, 1),
+        node("c", 0, 2),
+        node("d", 1, 0),
+        node("e", 1, 1),
+        node("f", 1, 2),
+      ],
+      edges: [{ from: "a", to: "f" }, { from: "c", to: "d" }, {
+        from: "b",
+        to: "e",
+      }],
+      groups: [],
+      layout: {},
+      innerLayout: {},
+      pinned: [],
+      rev: read().rev + 1,
+    }),
+  );
+  const rev0 = read().rev;
+  for (let i = 0; i < 50; i++) {
+    if (await page.evaluate(`window.__wb.state().rev`) === rev0) break;
+    await wait(100);
+  }
+  // The editor declines while a save is in flight (a reload can start one),
+  // so press until the button turns into Stop.
+  const busy = await page.evaluate(`(async () => {
+    const b = document.getElementById("bUntangle");
+    for (let i = 0; i < 50 && b.textContent !== "Stop"; i++) {
+      b.click();
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const r = await fetch("/untangle", {
+      method: "POST",
+      body: JSON.stringify({ baseRev: ${rev0} }),
+    });
+    return r.status;
+  })()`);
+  check("a second untangle while one runs is refused", busy === 409, busy);
+  let status = "";
+  for (let i = 0; i < 300 && !status.startsWith("untangle"); i++) {
+    await wait(200);
+    status = await page.evaluate(
+      `document.getElementById("status").textContent`,
+    );
+  }
+  check(
+    "Untangle removes the crossings in one write",
+    status.includes("→ 0 crossings") && read().rev === rev0 + 1,
+    `${status}; rev ${read().rev}`,
+  );
+  await parity("editor matches renderer after Untangle");
 } finally {
   await browser.close();
   server.kill();

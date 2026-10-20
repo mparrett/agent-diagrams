@@ -127,16 +127,22 @@ function seeded(seed) {
  * the untangled state and the scores either side.
  *
  * opts.budget caps candidate renders (each is one full layout and route);
- * opts.seed varies the search.
+ * opts.seed varies the search. opts.onEval(evals, budget, top) hears about
+ * each candidate, with `top` the best score yet; opts.stop() returning true
+ * ends the search early with the best layout found so far.
  */
 export function untangle(state, render, opts = {}) {
   const budget = opts.budget ?? 1500;
   const rand = seeded(opts.seed ?? 0x9e3779b9);
-  let evals = 0;
+  let evals = 0, top = null;
+  const done = () => evals >= budget || !!opts.stop?.();
   const scoreAsIs = (s) => {
     evals++;
     const { res, dividerLabelRects } = render(s);
-    return scoreRender(res, dividerLabelRects);
+    const r = scoreRender(res, dividerLabelRects);
+    if (!top || r.cost < top.cost) top = r;
+    opts.onEval?.(evals, budget, top);
+    return r;
   };
   // A candidate. Two boxes in one cell never render as what was meant, and
   // the score has no term for it, so no such candidate may win.
@@ -272,7 +278,7 @@ export function untangle(state, render, opts = {}) {
         [u, v] = b.split(":").map(Number);
       return x - u || y - v;
     });
-  for (let i = 0; i < 6 && evals < budget; i++) {
+  for (let i = 0; i < 6 && !done(); i++) {
     const order = i % 2 ? rowOrder().reverse() : rowOrder();
     for (const rk of order) {
       const row = free.filter((n) => rowKey(n) === rk);
@@ -363,10 +369,10 @@ export function untangle(state, render, opts = {}) {
   }
   function descend(cur) {
     let improved = true;
-    while (improved && evals < budget) {
+    while (improved && !done()) {
       improved = false;
       for (const mv of moves()) {
-        if (evals >= budget) break;
+        if (done()) break;
         const undo = snap();
         if (mv() === false) continue;
         const s = score(build());
@@ -382,7 +388,7 @@ export function untangle(state, render, opts = {}) {
     return cur;
   }
   best = descend(best);
-  while (evals < budget) {
+  while (!done()) {
     restore(best.s);
     for (let k = 0; k < 3; k++) {
       const ms = moves();

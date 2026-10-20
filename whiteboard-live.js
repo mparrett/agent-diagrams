@@ -2851,6 +2851,93 @@ document.getElementById("bFlowPlace").onclick = async () => {
   }
 };
 
+// Untangle: the server searches for a layout with fewer crossings and saves
+// it; reload to pick it up. It works from disk, so unsaved moves go first.
+const untangleButtons = [
+  document.getElementById("bUntangle"),
+  document.getElementById("bUntangleAll"),
+];
+let untangleRunning = false;
+// Progress from the server's "untangle" events, while this editor runs one.
+function showUntangleProgress(p) {
+  if (!untangleRunning) return;
+  const el = document.getElementById("status");
+  if (el.textContent.startsWith("stopping")) return;
+  el.textContent = `untangling… ${p.evals}/${p.budget} tried; best so far ` +
+    `${p.crossings} crossings, ${p.labels} label issues`;
+}
+async function stopUntangle() {
+  document.getElementById("status").textContent =
+    "stopping… keeping the best layout so far";
+  try {
+    await fetch(API + "/untangle-stop", { method: "POST" });
+  } catch { /* the run's own response reports the outcome */ }
+}
+async function runUntangle(unpin) {
+  if (untangleRunning) return stopUntangle();
+  if (
+    persistInFlight || pendingLayout.size || pendingFree.size ||
+    pendingInner.size || pinsDirty || noteDirty || dimsDirty
+  ) {
+    setStatus("still saving your last change; untangle again in a moment");
+    schedulePersist();
+    return;
+  }
+  if (unpin) {
+    const n = pinnedSet.size;
+    if (
+      n && !await askConfirm(
+        `Release ${n} pin${n === 1 ? "" : "s"} and untangle the whole board?`,
+        "Release pins",
+      )
+    ) return;
+  }
+  const status = document.getElementById("status");
+  const btn = untangleButtons[unpin ? 1 : 0];
+  const label = btn.textContent;
+  for (const b of untangleButtons) b.disabled = b !== btn;
+  btn.textContent = "Stop";
+  untangleRunning = true;
+  status.textContent = "untangling…";
+  newNonce();
+  try {
+    const r = await fetch(API + "/untangle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseRev: lastRev, unpin, nonce: lastSentNonce }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 409) await mergeReload();
+      setStatus("untangle: " + (j.error || "HTTP " + r.status));
+      return;
+    }
+    const fmt = (s) => `${s.crossings} crossings, ${s.labels} label issues`;
+    const when = j.stopped ? " (stopped early)" : "";
+    if (!j.moved) {
+      setStatus(`untangle: nothing better found${when} (${fmt(j.before)})`);
+      return;
+    }
+    lastRev = j.rev;
+    await mergeReload();
+    setStatus(
+      `untangled${when}: ${fmt(j.before)} → ${fmt(j.after)}; ` +
+        `moved ${j.moved} boxes`,
+    );
+  } catch (e) {
+    setStatus("untangle failed: " + e.message);
+  } finally {
+    untangleRunning = false;
+    btn.textContent = label;
+    for (const b of untangleButtons) b.disabled = false;
+    if (/^(untangling|stopping)…/.test(status.textContent)) {
+      status.textContent = "";
+    }
+  }
+}
+untangleButtons[0].onclick = () => runUntangle(false);
+untangleButtons[1].onclick = () => runUntangle(true);
+
 // Flow field — steers wire sides and routing; picking one shows it.
 const flowSelect = document.getElementById("flowSelect");
 const syncFlowSelect = (st) => {
@@ -5565,6 +5652,10 @@ async function mergeReload() {
 }
 
 const es = new EventSource("/events");
+es.addEventListener("untangle", (ev) => {
+  const data = JSON.parse(ev.data);
+  if ((data.diagram || "default") === BOARD) showUntangleProgress(data);
+});
 es.addEventListener("reload", (ev) => {
   let data = {};
   try {
