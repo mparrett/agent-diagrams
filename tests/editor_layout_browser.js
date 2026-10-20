@@ -496,8 +496,14 @@ try {
     if (await page.evaluate(`window.__wb.state().rev`) === rev0) break;
     await wait(100);
   }
+  // The editor declines while a save is in flight (a reload can start one),
+  // so press until the button turns into Stop.
   const busy = await page.evaluate(`(async () => {
-    document.getElementById("bUntangle").click();
+    const b = document.getElementById("bUntangle");
+    for (let i = 0; i < 50 && b.textContent !== "Stop"; i++) {
+      b.click();
+      await new Promise((r) => setTimeout(r, 100));
+    }
     const r = await fetch("/untangle", {
       method: "POST",
       body: JSON.stringify({ baseRev: ${rev0} }),
