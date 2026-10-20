@@ -1235,7 +1235,9 @@ export const ROW_GAP_PX = 45;
 
 // Air either side of a band divider: room for the line, its label above it, and
 // wires crossing it square-on rather than squeezed between two rows of boxes.
-export const BAND_GAP_PX = 60;
+// An odd number of cells, so the line runs through the middle of one cell and
+// leaves a free lane either side for a wire to jog in (see bandGaps).
+export const BAND_GAP_PX = 75;
 
 // A divider is a band edge when its own `band`, else the board's `dividerBands`,
 // says so, and it has a gap to sit in. Its `after` names that gap: between row
@@ -1986,7 +1988,7 @@ function bandGaps(items, placed) {
       out.push({
         from: idxs[i],
         to: idxs[i + 1],
-        at: Math.round((end + start) / 2 * CELL),
+        at: bandLineAt(end, start),
       });
     }
     return out;
@@ -1995,6 +1997,20 @@ function bandGaps(items, placed) {
     h: axis("row", (b) => b.row, (b) => b.row + b.h),
     v: axis("col", (b) => b.col, (b) => b.col + b.w),
   };
+}
+
+// Where a band line goes in the gap between cell rows (or columns) `end`
+// and `start`. Midway in an odd-width gap, which is a cell centre, leaving a
+// free lane either side for a wire to jog in. An even-width gap's midpoint is
+// a cell boundary with no lane free beside it, so from four cells up the line
+// takes the cell just before the middle instead (7.5px off centre). A gap of
+// two cells or fewer has no lane to spare either way and keeps the boundary,
+// which can never be inside a box. Whole pixels, so a drawn position can be
+// typed back (remove-divider h <at>).
+function bandLineAt(end, start) {
+  const n = start - end;
+  const mid = n % 2 === 0 && n >= 4 ? end + n / 2 - 0.5 : (end + start) / 2;
+  return Math.round(mid * CELL);
 }
 
 // The gap a band divider's `after` falls in, or undefined when it names none
@@ -2032,9 +2048,23 @@ export const FRAME_COST = 25;
 // Share of FRAME_COST paid one cell either side of a border.
 const FRAME_NEAR = 0.4;
 
+// Per-cell cost of a band divider's line (`costs.band`). Same reasoning as a
+// frame border: every wire between bands has to cross it, so crossing stays
+// cheap, but a wire jogging sideways in the gap pays on every cell it runs
+// along the line, and takes the next cell over instead.
+export const BAND_COST = 25;
+
 // `avoid`: px rects (group labels) wires should route round. `frames`: px
-// rects of group frames, whose borders wires should cross briefly.
-export function buildGrid(grid, boxes, costs, avoid = [], frames = []) {
+// rects of group frames, whose borders wires should cross briefly. `lines`:
+// band dividers ({orient, at}), likewise.
+export function buildGrid(
+  grid,
+  boxes,
+  costs,
+  avoid = [],
+  frames = [],
+  lines = [],
+) {
   grid.reset();
   const connMap = new Map();
 
@@ -2095,6 +2125,28 @@ export function buildGrid(grid, boxes, costs, avoid = [], frames = []) {
     ring(0, frameCost);
     ring(1, frameCost * FRAME_NEAR);
     ring(-1, frameCost * FRAME_NEAR);
+  }
+
+  // 4b. Band lines: the cells the line runs through pay in full, their
+  // neighbours a share. A line on a cell boundary touches the cells both sides.
+  const bandCost = costs.band ?? BAND_COST;
+  for (const l of lines) {
+    const n = l.orient === "h" ? grid.rows : grid.cols;
+    for (let i = 0; i < n; i++) {
+      const off = Math.abs(i * CELL + CELL / 2 - l.at);
+      const cost = off <= CELL / 2
+        ? bandCost
+        : off <= CELL * 1.5
+        ? bandCost * FRAME_NEAR
+        : 0;
+      if (!cost) continue;
+      const m = l.orient === "h" ? grid.cols : grid.rows;
+      for (let j = 0; j < m; j++) {
+        const [gx, gy] = l.orient === "h" ? [j, i] : [i, j];
+        if (grid.get(gx, gy) === T_BLOCKED) continue;
+        grid.addCost(gx, gy, cost);
+      }
+    }
   }
 
   // 5. Place connection points
@@ -3825,12 +3877,57 @@ export function fillDividerIds(dividers) {
   }
 }
 
+// The px rect a divider's label chip covers, as drawDividers draws it; null
+// for an unlabelled divider. Routing and wire labels keep clear of band labels.
+export function dividerLabelRect(ctx, d, pal = DEFAULT_PALETTE) {
+  if (!d?.label || !Number.isFinite(d.at)) return null;
+  ctx.save();
+  ctx.font = `bold ${(pal.sizes || DEFAULT_SIZES).divider}px ${pal.font}`;
+  const tw = ctx.measureText(d.label).width;
+  ctx.restore();
+  // Text starts 8px in from the canvas edge (h) or the line (v), on a
+  // baseline 6px above the line (h) or 14px from the top (v).
+  const lx = d.orient === "h" ? 8 : d.at + 8;
+  const ly = d.orient === "h" ? d.at - 6 : 14;
+  return {
+    x: lx - LABEL_PAD_X,
+    y: ly - LABEL_BASELINE,
+    w: tw + 2 * LABEL_PAD_X,
+    h: 13,
+  };
+}
+// Chip padding: text sits LABEL_PAD_X in from the chip's left, its baseline
+// LABEL_BASELINE below the chip's top.
+const LABEL_PAD_X = 3, LABEL_BASELINE = 9;
+
+// What routing needs from the band dividers: their lines, and their label
+// chips to route round. `dividers` are computeLayout's (positions resolved).
+export function bandObstacles(ctx, dividers, state, pal = DEFAULT_PALETTE) {
+  const bands = (dividers || []).filter((d) =>
+    isBandDivider(d, state) && Number.isFinite(d.at)
+  );
+  const labels = bands.map((d) => dividerLabelRect(ctx, d, pal))
+    .filter(Boolean);
+  // A wire label sitting on a band line reads as the line's own label, so
+  // label placement also keeps a strip along each line clear.
+  const strip = (d) =>
+    d.orient === "h"
+      ? { x: 0, y: d.at - 3, w: 1e6, h: 6 }
+      : { x: d.at - 3, y: 0, w: 6, h: 1e6 };
+  return {
+    lines: bands.map((d) => ({ orient: d.orient, at: d.at })),
+    labels,
+    labelAvoid: [...labels, ...bands.map(strip)],
+  };
+}
+
 /**
  * Boundary dividers — full-width/-height dotted lines that partition the
- * canvas into regions (the "boxes inside boxes" alternative). Wires route
- * straight through them. A plain divider is annotation only; a band divider
+ * canvas into regions (the "boxes inside boxes" alternative). A plain divider
+ * is annotation only and wires route straight through it; a band divider
  * (see isBandDivider) sits in the gap after row or column `after`, and layout
- * widens that gap to hold it. Pass computeLayout's `dividers`, which carry the
+ * widens that gap to hold it, and wires cross it square-on rather than run
+ * along it (bandObstacles). Pass computeLayout's `dividers`, which carry the
  * resolved `at`.
  *
  *   dividers: [{ id?, orient: "h"|"v", at: <px>, after?: <row|col>,
@@ -3868,16 +3965,14 @@ export function drawDividers(ctx, dividers, W, H, pal = DEFAULT_PALETTE) {
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    if (d.label) {
+    const chip = dividerLabelRect(ctx, d, pal);
+    if (chip) {
       ctx.font = `bold ${(pal.sizes || DEFAULT_SIZES).divider}px ${pal.font}`;
       ctx.textAlign = "left";
-      const tw = ctx.measureText(d.label).width;
-      const lx = d.orient === "h" ? 8 : d.at + 8;
-      const ly = d.orient === "h" ? d.at - 6 : 14;
       ctx.fillStyle = pal.background;
-      ctx.fillRect(lx - 3, ly - 9, tw + 6, 13);
+      ctx.fillRect(chip.x, chip.y, chip.w, chip.h);
       ctx.fillStyle = color;
-      ctx.fillText(d.label, lx, ly);
+      ctx.fillText(d.label, chip.x + LABEL_PAD_X, chip.y + LABEL_BASELINE);
     }
     ctx.restore();
   }

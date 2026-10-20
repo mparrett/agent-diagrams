@@ -13,6 +13,7 @@ import { createCanvas, Fonts } from "@gfx/canvas";
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
 
 import {
+  bandObstacles,
   BOARD_MARGIN,
   BOARD_MARGIN_BOTTOM,
   boardExtent,
@@ -2614,12 +2615,14 @@ export class Diagram {
     // Build routing grid + route (layout already computed above)
     const grid = new Grid(COLS, ROWS);
     const costs = { ...DEFAULT_COSTS, ...(this._state.costs || {}) };
+    const bands = bandObstacles(ctx, gridBoxes.dividers, this._state, pal);
     const connMap = buildGrid(
       grid,
       gridBoxes,
       costs,
-      groupLabels,
+      [...groupLabels, ...bands.labels],
       frames.map((f) => f.rect),
+      bands.lines,
     );
     const astarState = createAstarState(COLS, ROWS);
     const routes = routeEdges(
@@ -2643,7 +2646,7 @@ export class Diagram {
       bridges: this._state.crossingBridges !== false,
       startMarkers: this._state.startMarkers !== false,
       boxes: gridBoxes,
-      avoid: groupLabels,
+      avoid: [...groupLabels, ...bands.labelAvoid],
       frames: frames.map((f) => f.rect),
       frameFills: frames,
     });

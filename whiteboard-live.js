@@ -15,6 +15,7 @@
 
 import {
   anchoredNoteOrigin,
+  bandObstacles,
   BOARD_MARGIN,
   BOARD_MARGIN_BOTTOM,
   boardExtent,
@@ -288,7 +289,15 @@ function rebuild() {
   // the labels as render() will draw them.
   const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
   const labels = groupLabelRects(ctx, frames, PAL);
-  connMap = buildGrid(grid, BOXES, costs, labels, frames.map((f) => f.rect));
+  const bands = bandObstacles(ctx, BOXES.dividers, diagramState, PAL);
+  connMap = buildGrid(
+    grid,
+    BOXES,
+    costs,
+    [...labels, ...bands.labels],
+    frames.map((f) => f.rect),
+    bands.lines,
+  );
   routes = routeEdges(astarState, grid, EDGES_DEF, BOXES, connMap, costs, PAL, {
     centerConnectors: diagramState.connectorAnchor === "center",
     edgeWidth: diagramState.edgeWidth,
@@ -348,7 +357,12 @@ function render() {
   labelRects = drawRoutes(ctx, routes, CELL, PAL, {
     startMarkers: diagramState.startMarkers !== false,
     boxes: BOXES,
-    avoid: groupLabels,
+    avoid: [
+      ...groupLabels,
+      // From the lines as shown, so a dragged band line keeps labels off it
+      // where it is now, not where it was.
+      ...bandObstacles(ctx, shownDividers(), diagramState, PAL).labelAvoid,
+    ],
     frames: frames.map((f) => f.rect),
     frameFills: frames,
   }) || []; // stash for label hit-testing
