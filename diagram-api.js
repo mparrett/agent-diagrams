@@ -1611,8 +1611,8 @@ export class Diagram {
   // anchors change together. Hand-placed wire labels on wires whose ends moved
   // are dropped, and so are `rowY` overrides once rows are renumbered; both
   // describe the old layout. Returns the scores before and after and the ids
-  // that moved.
-  untangle({ budget, seed, unpin = false } = {}) {
+  // that moved. `onEval` and `stop` pass through to the search.
+  untangle({ budget, seed, unpin = false, onEval, stop } = {}) {
     // The search sees the board with pins released; the board itself only
     // changes if the search finds something better.
     const snapshot = structuredClone({
@@ -1635,7 +1635,7 @@ export class Diagram {
       );
       return { res, dividerLabelRects: labels };
     };
-    const r = untangle(snapshot, render, { budget, seed });
+    const r = untangle(snapshot, render, { budget, seed, onEval, stop });
     if (!r.moved.length) return r;
     // Released pins score against the auto layout, but the board on screen is
     // the pinned one; a result that only beats the auto layout is no gain.

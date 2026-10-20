@@ -2857,7 +2857,24 @@ const untangleButtons = [
   document.getElementById("bUntangle"),
   document.getElementById("bUntangleAll"),
 ];
+let untangleRunning = false;
+// Progress from the server's "untangle" events, while this editor runs one.
+function showUntangleProgress(p) {
+  if (!untangleRunning) return;
+  const el = document.getElementById("status");
+  if (el.textContent.startsWith("stopping")) return;
+  el.textContent = `untangling… ${p.evals}/${p.budget} tried; best so far ` +
+    `${p.crossings} crossings, ${p.labels} label issues`;
+}
+async function stopUntangle() {
+  document.getElementById("status").textContent =
+    "stopping… keeping the best layout so far";
+  try {
+    await fetch(API + "/untangle-stop", { method: "POST" });
+  } catch { /* the run's own response reports the outcome */ }
+}
 async function runUntangle(unpin) {
+  if (untangleRunning) return stopUntangle();
   if (
     persistInFlight || pendingLayout.size || pendingFree.size ||
     pendingInner.size || pinsDirty || noteDirty || dimsDirty
@@ -2876,7 +2893,11 @@ async function runUntangle(unpin) {
     ) return;
   }
   const status = document.getElementById("status");
-  for (const b of untangleButtons) b.disabled = true;
+  const btn = untangleButtons[unpin ? 1 : 0];
+  const label = btn.textContent;
+  for (const b of untangleButtons) b.disabled = b !== btn;
+  btn.textContent = "Stop";
+  untangleRunning = true;
   status.textContent = "untangling…";
   newNonce();
   try {
@@ -2892,20 +2913,26 @@ async function runUntangle(unpin) {
       return;
     }
     const fmt = (s) => `${s.crossings} crossings, ${s.labels} label issues`;
+    const when = j.stopped ? " (stopped early)" : "";
     if (!j.moved) {
-      setStatus(`untangle: nothing better found (${fmt(j.before)})`);
+      setStatus(`untangle: nothing better found${when} (${fmt(j.before)})`);
       return;
     }
     lastRev = j.rev;
     await mergeReload();
     setStatus(
-      `untangled: ${fmt(j.before)} → ${fmt(j.after)}; moved ${j.moved} boxes`,
+      `untangled${when}: ${fmt(j.before)} → ${fmt(j.after)}; ` +
+        `moved ${j.moved} boxes`,
     );
   } catch (e) {
     setStatus("untangle failed: " + e.message);
   } finally {
+    untangleRunning = false;
+    btn.textContent = label;
     for (const b of untangleButtons) b.disabled = false;
-    if (status.textContent === "untangling…") status.textContent = "";
+    if (/^(untangling|stopping)…/.test(status.textContent)) {
+      status.textContent = "";
+    }
   }
 }
 untangleButtons[0].onclick = () => runUntangle(false);
@@ -5625,6 +5652,10 @@ async function mergeReload() {
 }
 
 const es = new EventSource("/events");
+es.addEventListener("untangle", (ev) => {
+  const data = JSON.parse(ev.data);
+  if ((data.diagram || "default") === BOARD) showUntangleProgress(data);
+});
 es.addEventListener("reload", (ev) => {
   let data = {};
   try {

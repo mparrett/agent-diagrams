@@ -231,3 +231,20 @@ Deno.test("scoring renders a long thin board without crashing", () => {
   const res = d.renderToCanvas({ pixels: false });
   assert(res.routes.every((r) => r.path), "routed");
 });
+
+Deno.test("untangle reports each candidate and stops when asked", () => {
+  const d = load(structuredClone(CROSSED));
+  const seen = [];
+  const r = d.untangle({
+    budget: 200,
+    onEval: (evals, budget, top) => seen.push([evals, budget, top.cost]),
+    stop: () => seen.length >= 5,
+  });
+  assertEquals(r.evals, 5, "evals");
+  assertEquals(seen.map((s) => s[0]), [1, 2, 3, 4, 5]);
+  assert(seen.every((s) => s[1] === 200), "budget passed");
+  assert(
+    seen.every((s, i) => i === 0 || s[2] <= seen[i - 1][2]),
+    "top never gets worse",
+  );
+});

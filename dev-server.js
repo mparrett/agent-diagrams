@@ -177,8 +177,10 @@ const jsonResp = (status, obj) =>
 // ─── SSE client registry ─────────────────────────────────────────
 const clients = new Set();
 
-function broadcast(data = {}) {
-  const chunk = enc.encode(`event: reload\ndata: ${JSON.stringify(data)}\n\n`);
+function broadcast(data = {}, event = "reload") {
+  const chunk = enc.encode(
+    `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+  );
   for (const c of clients) {
     try {
       c.enqueue(chunk);
@@ -601,7 +603,16 @@ async function handler(req) {
   }
 
   // Untangle: { baseRev, unpin?, budget?, nonce? }. Runs in a worker, one per
-  // board at a time; the watcher's reload carries the result to every client.
+  // board at a time; "untangle" events carry its progress, and the watcher's
+  // reload carries the result to every client. /untangle-stop ends it early,
+  // keeping the best layout found so far.
+  if (req.method === "POST" && tail === "/untangle-stop") {
+    if (!board.untangling) {
+      return jsonResp(409, { error: "not untangling this board" });
+    }
+    Atomics.store(board.untangling, 0, 1);
+    return jsonResp(200, {});
+  }
   if (req.method === "POST" && tail === "/untangle") {
     let body;
     try {
@@ -621,14 +632,22 @@ async function handler(req) {
     if (board.untangling) {
       return jsonResp(409, { error: "already untangling this board" });
     }
-    board.untangling = true;
+    const stopFlag = new Int32Array(new SharedArrayBuffer(4));
+    board.untangling = stopFlag;
     const worker = new Worker(
       new URL("./untangle-worker.js", import.meta.url),
       { type: "module" },
     );
     try {
       const out = await new Promise((resolve) => {
-        worker.onmessage = (e) => resolve(e.data);
+        worker.onmessage = (e) => {
+          if (e.data.progress) {
+            broadcast(
+              { diagram: board.name, ...e.data.progress },
+              "untangle",
+            );
+          } else resolve(e.data);
+        };
         worker.onerror = (e) => {
           e.preventDefault();
           resolve({ status: 500, error: String(e.message ?? e) });
@@ -638,6 +657,7 @@ async function handler(req) {
           baseRev: body.baseRev,
           unpin: !!body.unpin,
           budget: body.budget,
+          stopFlag,
         });
       });
       if (out.moved) board.pendingNonce = body.nonce ?? null;
@@ -645,7 +665,7 @@ async function handler(req) {
       return jsonResp(status, rest);
     } finally {
       worker.terminate();
-      board.untangling = false;
+      board.untangling = null;
     }
   }
 
