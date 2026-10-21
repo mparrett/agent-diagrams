@@ -105,6 +105,7 @@ let CSS_W, CSS_H;
 let costs = { ...DEFAULT_COSTS };
 let showGrid = false, showHeat = false, showConn = false, showFlow = false;
 let dragMode = true, drag = null, didDrag = false;
+let viewMode = false; // View tool: every drag pans and nothing is saved
 let connectMode = false, connectSourceId = null, connectCursor = null;
 let spaceHeld = false; // Space down → any canvas drag pans, whatever the mode
 // Hover affordances: the box/edge under the cursor (held by id / by from-to,
@@ -961,10 +962,10 @@ cvs.addEventListener("pointerdown", (e) => {
       render();
       return;
     }
-    startLongPress(e); // hold-to-open-menu armed for any mode
+    if (!viewMode) startLongPress(e); // hold-to-open-menu armed for any editing mode
   }
   // Space pans from anywhere, even over a box or in connect mode.
-  const panOnly = spaceHeld && e.pointerType !== "touch";
+  const panOnly = viewMode || (spaceHeld && e.pointerType !== "touch");
   if (!panOnly && (!dragMode || connectMode)) return;
   didDrag = false;
   dragDownX = e.clientX;
@@ -1971,7 +1972,7 @@ const epKey = (ep) =>
 const nubKey = (nb) => nb ? nb.boxId + ":" + nb.side + ":" + nb.idx : null;
 function updateHover(e) {
   const p = canvasCoords(e);
-  const hit = hitTest(p);
+  const hit = viewMode ? { kind: "empty", p } : hitTest(p);
   const noteId = hit.kind === "note" ? hit.note.id : null;
   const ep = hit.kind === "endpoint" ? hit.endpoint : null;
   const nub = hit.kind === "nub"
@@ -2023,8 +2024,8 @@ function updateHover(e) {
 // mode. (Open-hand `grab` reads as "pan the canvas", so it's avoided for
 // objects — it muddied draggable vs. clickable.)
 function updateCursor() {
-  // Space wins over every hover affordance: the next drag pans, whatever is under it.
-  if (spaceHeld && (!drag || drag.kind === "pan")) {
+  // Space and View win over every hover affordance: the next drag pans, whatever is under it.
+  if ((spaceHeld || viewMode) && (!drag || drag.kind === "pan")) {
     cvs.style.cursor = drag ? "grabbing" : "grab";
     return;
   }
@@ -2136,7 +2137,7 @@ cvs.addEventListener("click", (e) => {
     didDrag = false;
     return;
   } // tail of a drag, not a click
-  if (spaceHeld) return; // a no-move Space press is a pan that didn't move
+  if (spaceHeld || viewMode) return; // a no-move pan press is a pan that didn't move
   if (connectMode) {
     handleConnectClick(e);
     return;
@@ -2229,6 +2230,13 @@ function setDiagramTitle(t) {
   el.textContent = t || (BOARD === "default" ? "Diagram" : BOARD);
 }
 
+// The View tool keeps every edit from starting; this catches any that slips past.
+// /untangle-stop is not routed here: stopping a run already going is allowed.
+function apiWrite(path, init) {
+  if (viewMode) return Promise.reject(new Error("view only"));
+  return fetch(API + path, init);
+}
+
 function setStatus(msg) {
   const el = document.getElementById("status");
   el.textContent = msg;
@@ -2264,11 +2272,26 @@ document.getElementById("bConn").onclick = function () {
   this.classList.toggle("on", showConn);
   render();
 };
-// Drag and Connect are mutually exclusive modes (segmented radio): selecting one
-// deactivates the other so exactly one interaction mode is ever active.
+// Select, Connect and View are mutually exclusive modes (segmented radio):
+// selecting one deactivates the others so exactly one is ever active.
+const TOOL_KEY = "wb.tool";
 function setMode(mode) {
   dragMode = mode === "drag";
   connectMode = mode === "connect";
+  viewMode = mode === "view";
+  // inert rather than disabled: it also takes the controls out of the tab order,
+  // and leaves the disabled state the untangle buttons manage alone.
+  for (const sec of document.querySelectorAll(".sec[data-edits]")) {
+    for (const el of sec.children) {
+      if (el.classList.contains("sec-toggle") || el.querySelector("#uiTheme")) {
+        continue;
+      }
+      el.inert = viewMode;
+    }
+  }
+  try {
+    localStorage.setItem(TOOL_KEY, mode);
+  } catch { /* storage blocked — the tool just won't persist */ }
   connectSourceId = null;
   connectCursor = null;
   hoverBoxId = null;
@@ -2277,12 +2300,20 @@ function setMode(mode) {
   selectedEdgeId = null; // and stale tap-selection
   document.getElementById("bDrag").classList.toggle("on", dragMode);
   document.getElementById("bConnect").classList.toggle("on", connectMode);
+  document.getElementById("bView").classList.toggle("on", viewMode);
   updateCursor();
-  setStatus(connectMode ? "connect: pick a source node" : "");
+  setStatus(
+    connectMode
+      ? "connect: pick a source node"
+      : viewMode
+      ? "view: drags pan; the board is not changed from here"
+      : "",
+  );
   render();
 }
 document.getElementById("bDrag").onclick = () => setMode("drag");
 document.getElementById("bConnect").onclick = () => setMode("connect");
+document.getElementById("bView").onclick = () => setMode("view");
 // NOTE: there used to be a "Reset" button here, documented as "drops all manual
 // positions back to auto-layout". It restored b._origCol/_origRow — but
 // computeLayout sets _origCol from the *solved* position, which for any node
@@ -2639,7 +2670,7 @@ themeSelect.addEventListener("change", async () => {
   render();
   newNonce();
   try {
-    const r = await fetch(API + "/theme", {
+    const r = await apiWrite("/theme", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2666,7 +2697,7 @@ async function applyFontSize(px) {
   resolveBoxes(); // boxes resize with the font
   newNonce();
   try {
-    const r = await fetch(API + "/fontsize", {
+    const r = await apiWrite("/fontsize", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2705,7 +2736,7 @@ centerConnectorsBox.addEventListener("change", async () => {
   render(); // routes re-allocate with the new anchor
   newNonce();
   try {
-    const r = await fetch(API + "/connectoranchor", {
+    const r = await apiWrite("/connectoranchor", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ mode, baseRev: lastRev, nonce: lastSentNonce }),
@@ -2724,7 +2755,7 @@ centerConnectorsBox.addEventListener("change", async () => {
 async function postBoard(field, value, label) {
   newNonce();
   try {
-    const r = await fetch(API + "/board", {
+    const r = await apiWrite("/board", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -2831,7 +2862,7 @@ document.getElementById("bFlowPlace").onclick = async () => {
   }
   newNonce();
   try {
-    const r = await fetch(API + "/flowplace", {
+    const r = await apiWrite("/flowplace", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ baseRev: lastRev, nonce: lastSentNonce }),
@@ -2901,7 +2932,7 @@ async function runUntangle(unpin) {
   status.textContent = "untangling…";
   newNonce();
   try {
-    const r = await fetch(API + "/untangle", {
+    const r = await apiWrite("/untangle", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ baseRev: lastRev, unpin, nonce: lastSentNonce }),
@@ -2956,7 +2987,7 @@ flowSelect.addEventListener("change", async () => {
   render();
   newNonce();
   try {
-    const r = await fetch(API + "/flow", {
+    const r = await apiWrite("/flow", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ field, baseRev: lastRev, nonce: lastSentNonce }),
@@ -2979,7 +3010,7 @@ startMarkersBox.addEventListener("change", async () => {
   render();
   newNonce();
   try {
-    const r = await fetch(API + "/startmarkers", {
+    const r = await apiWrite("/startmarkers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ on, baseRev: lastRev, nonce: lastSentNonce }),
@@ -3204,7 +3235,7 @@ function showEditor(clientX, clientY) {
 async function postNode(payload) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
-  const r = await fetch(API + "/node", {
+  const r = await apiWrite("/node", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -3481,7 +3512,7 @@ async function growFrameToView(edge) {
 // Double-click a note to edit its text, or a node to edit its text/color.
 // Double-click a frame handle to extend it to the edge of the view.
 cvs.addEventListener("dblclick", (e) => {
-  if (spaceHeld) return; // a Space press pans; it never edits
+  if (spaceHeld || viewMode) return; // a pan press never edits
   const hit = hitTest(canvasCoords(e));
   if (hit.kind === "frame") {
     growFrameToView(hit.frame);
@@ -3526,7 +3557,7 @@ let eeId = null, eeSnapshot = null; // eeId is the edited edge's identity
 async function postEdge(payload) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
-  const r = await fetch(API + "/edge", {
+  const r = await apiWrite("/edge", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -3545,7 +3576,7 @@ async function postEdge(payload) {
 async function postCanvas(payload) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
-  const r = await fetch(API + "/canvas", {
+  const r = await apiWrite("/canvas", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -3754,7 +3785,7 @@ let editingNoteId = null;
 async function postNote(payload) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
-  const r = await fetch(API + "/note", {
+  const r = await apiWrite("/note", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -4045,7 +4076,7 @@ const overlaysOpen = () =>
   dividerEditor.style.display !== "none";
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Backspace" && e.key !== "Delete") return;
-  if (isTypingTarget(e.target) || overlaysOpen()) return; // let fields/overlays own the key
+  if (viewMode || isTypingTarget(e.target) || overlaysOpen()) return; // let fields/overlays own the key
   if (hoverBoxId === null && hoverDividerId) {
     e.preventDefault();
     deleteDivider(hoverDividerId);
@@ -4152,7 +4183,7 @@ function openContextMenuFor(clientX, clientY) {
 
 cvs.addEventListener("contextmenu", (e) => {
   e.preventDefault(); // no browser menu anywhere on the canvas
-  if (spaceHeld) return;
+  if (spaceHeld || viewMode) return;
   if (didDrag) {
     didDrag = false;
     closeCtxMenu();
@@ -4399,7 +4430,7 @@ const DE_DASH = [
 async function postDivider(payload) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
-  const r = await fetch(API + "/divider", {
+  const r = await apiWrite("/divider", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
@@ -4538,7 +4569,7 @@ async function postGroup(payload, done) {
   payload.baseRev = lastRev;
   payload.nonce = newNonce();
   try {
-    const r = await fetch(API + "/group", {
+    const r = await apiWrite("/group", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -4816,7 +4847,7 @@ document.getElementById("leSave").onclick = async () => {
   }
   newNonce();
   try {
-    const r = await fetch(API + "/legend", {
+    const r = await apiWrite("/legend", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ entries, baseRev: lastRev, nonce: lastSentNonce }),
@@ -4944,7 +4975,7 @@ function schedulePersistCosts() {
 async function persistCosts() {
   newNonce();
   try {
-    const r = await fetch(API + "/costs", {
+    const r = await apiWrite("/costs", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ costs, baseRev: lastRev, nonce: lastSentNonce }),
@@ -5043,6 +5074,9 @@ try {
     document.body.classList.add("nav-collapsed");
   }
 } catch { /* storage blocked — start with the dock expanded */ }
+try {
+  if (localStorage.getItem(TOOL_KEY) === "view") setMode("view");
+} catch { /* storage blocked — start in Select */ }
 
 // Content extents (E): the bbox of all boxes + notes, in board px. Drives the
 // readout (and, in Phase 2, Auto-fit).
@@ -5497,7 +5531,7 @@ async function persistLayout() {
     schedulePersist();
     return;
   }
-  if (holdSaves) return;
+  if (holdSaves || viewMode) return;
   if (
     pendingLayout.size === 0 && pendingFree.size === 0 &&
     pendingInner.size === 0 && !pinsDirty && !noteDirty && !dimsDirty
@@ -5518,7 +5552,7 @@ async function persistLayout() {
   newNonce();
   persistInFlight = true;
   try {
-    const r = await fetch(API + "/layout", {
+    const r = await apiWrite("/layout", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

@@ -524,6 +524,35 @@ try {
     `${status}; rev ${read().rev}`,
   );
   await parity("editor matches renderer after Untangle");
+
+  // View: drags pan, Delete does nothing, and the board is never written.
+  await page.evaluate(`document.getElementById("bView").click()`);
+  const viewed = read();
+  await drag("a", 90, 60);
+  await page.keyboard.press("Delete");
+  await wait(1500);
+  check(
+    "View leaves the board alone through a drag and Delete",
+    same(read(), viewed),
+    `rev ${viewed.rev} -> ${read().rev}`,
+  );
+  const inertOf = (id) =>
+    page.evaluate(`!!document.getElementById("${id}").closest("[inert]")`);
+  check(
+    "View disables the editing controls but not the UI-only ones",
+    await inertOf("bAutoLayout") && await inertOf("themeSelect") &&
+      !await inertOf("uiTheme") && !await inertOf("bDrag"),
+  );
+  await open();
+  check(
+    "View survives a reload",
+    await page.evaluate(
+      `document.getElementById("bView").classList.contains("on")`,
+    ),
+  );
+  await page.evaluate(`document.getElementById("bDrag").click()`);
+  await drag("a", 90, 0);
+  check("Select edits again after View", read().rev > viewed.rev);
 } finally {
   await browser.close();
   server.kill();
