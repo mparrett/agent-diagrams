@@ -524,6 +524,53 @@ try {
     `${status}; rev ${read().rev}`,
   );
   await parity("editor matches renderer after Untangle");
+
+  // View: drags pan, Delete does nothing, and the board is never written. A
+  // drag made just before switching still saves, rather than waiting in View.
+  {
+    const c = await at("boxCenter", "b");
+    const revBefore = read().rev;
+    await page.mouse.move(c.x, c.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(c.x + i * 90 / 8, c.y);
+      await wait(30);
+    }
+    await page.mouse.up();
+    await page.evaluate(`document.getElementById("bView").click()`);
+    await wait(1500);
+    check(
+      "a drag just before View still saves",
+      read().rev > revBefore && "b" in read().layout,
+      `rev ${revBefore} -> ${read().rev}`,
+    );
+  }
+  const viewed = read();
+  await drag("a", 90, 60);
+  await page.keyboard.press("Delete");
+  await wait(1500);
+  check(
+    "View leaves the board alone through a drag and Delete",
+    same(read(), viewed),
+    `rev ${viewed.rev} -> ${read().rev}`,
+  );
+  const inertOf = (id) =>
+    page.evaluate(`!!document.getElementById("${id}").closest("[inert]")`);
+  check(
+    "View disables the editing controls but not the UI-only ones",
+    await inertOf("bAutoLayout") && await inertOf("themeSelect") &&
+      !await inertOf("uiTheme") && !await inertOf("bDrag"),
+  );
+  await open();
+  check(
+    "View survives a reload",
+    await page.evaluate(
+      `document.getElementById("bView").classList.contains("on")`,
+    ),
+  );
+  await page.evaluate(`document.getElementById("bDrag").click()`);
+  await drag("a", 90, 0);
+  check("Select edits again after View", read().rev > viewed.rev);
 } finally {
   await browser.close();
   server.kill();

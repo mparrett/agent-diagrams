@@ -117,6 +117,7 @@ button.mini.icon { flex: 0 0 30px; min-width: 30px; }
 .seg button { flex: 1; border: none; border-radius: 0; text-align: center; padding: 7px 0; background: var(--raised); color: var(--text-dim); }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.sec [inert] { opacity: 0.4; }
 
 /* Form controls, styled for the dark panel. */
 select {
@@ -425,16 +426,17 @@ button.mini.wide { flex: 0 0 116px; }
     <div class="seg">
       <button id="bDrag" class="on" title="Select: click a box or wire to edit it, drag to move, right-click for more">Select</button>
       <button id="bConnect" title="Connect: click a box, then another, to draw a wire between them">Connect</button>
+      <button id="bView" title="View: look around without changing the board; any drag pans. For watching an agent work">View</button>
     </div>
   </section>
 
-  <section class="sec">
+  <section class="sec" data-edits>
     <div class="sec-label">Add</div>
     <button id="bAddNode" class="primary" title="Add a node and open its editor">+ Node</button>
     <p class="hint">Notes, pins, and wire options: right-click the canvas or a box.</p>
   </section>
 
-  <section class="sec">
+  <section class="sec" data-edits>
     <div class="sec-label">Layout</div>
     <button id="bAutoLayout" class="warn" title="Clear every pin and lay out the whole board from its rows and columns">Auto layout <span class="aside">clears pins</span></button>
     <button id="bAutoLayoutKeep" title="Lay out the unpinned boxes again; pinned boxes stay where they are">Re-flow unpinned</button>
@@ -456,7 +458,7 @@ button.mini.wide { flex: 0 0 116px; }
     </div>
   </section>
 
-  <section class="sec" data-sec="board">
+  <section class="sec" data-sec="board" data-edits>
     <button class="sec-label sec-toggle">Board <span class="chev"></span></button>
     <input id="boardTitle" type="text" class="text" placeholder="Title" autocomplete="off" title="The caption drawn at the top left of the board; empty for none. Enter or leave the field to save">
     <label class="row">
@@ -517,7 +519,7 @@ button.mini.wide { flex: 0 0 116px; }
     </label>
   </section>
 
-  <section class="sec" data-sec="wires">
+  <section class="sec" data-sec="wires" data-edits>
     <button class="sec-label sec-toggle">Wires <span class="chev"></span></button>
     <label class="row switch-row" title="Fan each side's wires out from its center; off lines them up for straight runs">
       <span class="lbl">Center connectors</span>
@@ -566,7 +568,7 @@ button.mini.wide { flex: 0 0 116px; }
     </div>
   </section>
 
-  <section class="sec collapsed" data-sec="frame">
+  <section class="sec collapsed" data-sec="frame" data-edits>
     <button class="sec-label sec-toggle">Frame <span class="chev"></span></button>
     <button id="bTrimCanvas" title="Shrink the frame (the exported area) to hug the diagram, with an even margin">Fit to content</button>
     <button id="bExpandCanvas" title="Set the frame to the area you can see; it never crops the diagram">Fit to view</button>
