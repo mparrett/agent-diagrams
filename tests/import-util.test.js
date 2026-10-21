@@ -17,13 +17,13 @@ function assertEquals(actual, expected, msg = "") {
 Deno.test("parseArgs splits flags from positionals and keeps '=' in values", () => {
   const { flags, positional } = parseArgs([
     "dev-server.js",
-    "--out=diagrams/deps",
+    "--out=out/deps",
     "--files",
     "--title=a=b",
     "extra",
   ]);
   assertEquals(positional, ["dev-server.js", "extra"]);
-  assertEquals(flags.out, "diagrams/deps");
+  assertEquals(flags.out, "out/deps");
   assertEquals(flags.files, true);
   // Splitting on every "=" would truncate this to "a" — titles and URLs
   // legitimately contain one.

@@ -371,7 +371,7 @@ just import-tree . "--out=$HOME/.local/share/agent-diagrams/tree --depth=2 --fil
 
 `import-depgraph` takes an entrypoint (or a saved `deno info --json` dump) and draws the import DAG — packages by default, raw modules with `--granularity=module`. Node color is the ecosystem (local, `std/`, jsr, other), edge style is how many imports the dependency carries, and depth is BFS distance from the entrypoint. `import-filetree` does the same for a directory tree, coloring files by extension.
 
-Both write `diagram-state.json` into `--out=<dir>` (default: cwd) and refuse to clobber an existing board without `--force`. Run `deno task cli --state <path> render` afterwards, or drop the output under `diagrams/` and pick it from the dev server's board list. Each script's header comment lists its flags.
+Both write `diagram-state.json` into `--out=<dir>` (default: cwd) and refuse to clobber an existing board without `--force`. Run `deno task cli --state <path> render` afterwards, or write it into your boards directory, as above, and pick it from the dev server's board list. Each script's header comment lists its flags.
 
 **Wrapping.** The layout spreads a row horizontally without bound and never reclaims vertical space, so a level with 30 nodes becomes a 5500px strip that hits the renderer's 4096px raster cap. Both importers wrap each depth level into bands of `--per-row=<n>` (default 8) to keep the canvas in a sane aspect ratio. Raise it for wide boards, lower it for tall ones.
 
