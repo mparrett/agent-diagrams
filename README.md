@@ -44,7 +44,10 @@ deno task cli add-node cache "Redis" gray 1 2 "session store"
 
 **Which state file?** Every command resolves `diagram-state.json` relative to the **current working directory** — so you can `init`/`render`/CLI from any project, not just the tool repo. To point somewhere else, pass `--state <path>` (works on every command, including `render-diagram.js` and the dev server) or set the `DIAGRAM_STATE` env var. Precedence: `--state` > `DIAGRAM_STATE` > a `./diagram-state.json` in the cwd > the bundled example board. The PNG is always written next to the state file.
 
-The repo ships with an example board at `diagrams/example/` (a request flow, `diagram-state.json` + rendered `diagram.png`). It's the zero-config default for `render`/`serve` when the cwd has no `diagram-state.json`, and the dev server's `default` board.
+The repo ships two example boards, each a `diagram-state.json` plus its rendered `diagram.png`:
+
+- `diagrams/basic/`: a small request flow with a legend, store shapes and a wire label. It's the zero-config default for `render`/`serve` when the cwd has no `diagram-state.json`, and the dev server's `default` board.
+- `diagrams/adv-bands/`: band dividers, a group and wire labels, laid out with `untangle`.
 
 ## Driving it live (humans & agents)
 
@@ -66,7 +69,7 @@ Open in a browser:
 
 **Multiple whiteboards.** One server hosts many boards: the `--state` file is the
 `default` board, and every `diagram-state.json` under your **boards directory** is a
-board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). The boards
+board named by its subpath (`flow`, `team/flow`, …). The boards
 directory lives outside this repo, so editing never touches its working tree:
 `--diagrams-dir=<dir>` > `AGENT_DIAGRAMS_DIR` > `$XDG_DATA_HOME/agent-diagrams` >
 `~/.local/share/agent-diagrams`, created on first start. Consider `git init` in it:
@@ -361,14 +364,14 @@ Rebuilding a 60-call board took 41s with a render per call and 19s with `DIAGRAM
 Two importers in `bin/` build a board from a graph you already have, so you don't hand-author one:
 
 ```bash
-just import-deps dev-server.js "--out=diagrams/deps"      # Deno module graph
-just import-tree . "--out=diagrams/tree --depth=2 --files" # directory tree
+just import-deps dev-server.js "--out=$HOME/.local/share/agent-diagrams/deps"   # Deno module graph
+just import-tree . "--out=$HOME/.local/share/agent-diagrams/tree --depth=2 --files"  # directory tree
 # without `just`:  deno task import:deps <entrypoint> [flags]
 ```
 
 `import-depgraph` takes an entrypoint (or a saved `deno info --json` dump) and draws the import DAG — packages by default, raw modules with `--granularity=module`. Node color is the ecosystem (local, `std/`, jsr, other), edge style is how many imports the dependency carries, and depth is BFS distance from the entrypoint. `import-filetree` does the same for a directory tree, coloring files by extension.
 
-Both write `diagram-state.json` into `--out=<dir>` (default: cwd) and refuse to clobber an existing board without `--force`. Run `deno task cli --state <path> render` afterwards, or drop the output under `diagrams/` and pick it from the dev server's board list. Each script's header comment lists its flags.
+Both write `diagram-state.json` into `--out=<dir>` (default: cwd) and refuse to clobber an existing board without `--force`. Run `deno task cli --state <path> render` afterwards, or write it into your boards directory, as above, and pick it from the dev server's board list. Each script's header comment lists its flags.
 
 **Wrapping.** The layout spreads a row horizontally without bound and never reclaims vertical space, so a level with 30 nodes becomes a 5500px strip that hits the renderer's 4096px raster cap. Both importers wrap each depth level into bands of `--per-row=<n>` (default 8) to keep the canvas in a sane aspect ratio. Raise it for wide boards, lower it for tall ones.
 

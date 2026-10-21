@@ -20,10 +20,10 @@
  * stateless about content (the file is the source of truth; rev-CAS + lockfile
  * are per-file), so boards are just a name → path registry:
  *   - "default" = the --state file (or, with no --state, a cwd diagram-state.json,
- *     else the bundled diagrams/example board, read-only).
+ *     else the bundled diagrams/basic board, read-only).
  *   - every diagram-state.json under the boards directory (--diagrams-dir >
  *     AGENT_DIAGRAMS_DIR > $XDG_DATA_HOME/agent-diagrams), named by subpath
- *     (e.g. "letgo-io", "letgo-io-phases/1-current"). Rescanned on demand.
+ *     (e.g. "flow", "team/flow"). Rescanned on demand.
  *   - the repo's own diagrams/ tree, as "examples/<subpath>", READ-ONLY: writes
  *     are refused and the server never re-renders their PNGs. POST
  *     /d/<name>/copy copies any board into the boards directory to edit it.
