@@ -2276,6 +2276,26 @@ document.getElementById("bConn").onclick = function () {
 // selecting one deactivates the others so exactly one is ever active.
 const TOOL_KEY = "wb.tool";
 function setMode(mode) {
+  const wasView = viewMode;
+  if (mode === "view" && !wasView) {
+    // Send what is already waiting rather than holding it while in View; its
+    // positions would otherwise shadow an agent's. Open editors apply edits as
+    // they are typed, and a running untangle would save behind View's back.
+    clearTimeout(persistTimer);
+    persistLayout();
+    for (
+      const close of [
+        closeNodeEditor,
+        closeEdgeEditor,
+        closeNoteEditor,
+        closeGroupEditor,
+        closeLegendEditor,
+        closeDividerEditor,
+        closeCtxMenu,
+      ]
+    ) close();
+    if (untangleRunning) stopUntangle();
+  }
   dragMode = mode === "drag";
   connectMode = mode === "connect";
   viewMode = mode === "view";
@@ -2292,6 +2312,7 @@ function setMode(mode) {
   try {
     localStorage.setItem(TOOL_KEY, mode);
   } catch { /* storage blocked — the tool just won't persist */ }
+  if (wasView && !viewMode) schedulePersist(); // anything a View-time save skipped
   connectSourceId = null;
   connectCursor = null;
   hoverBoxId = null;
@@ -5074,9 +5095,6 @@ try {
     document.body.classList.add("nav-collapsed");
   }
 } catch { /* storage blocked — start with the dock expanded */ }
-try {
-  if (localStorage.getItem(TOOL_KEY) === "view") setMode("view");
-} catch { /* storage blocked — start in Select */ }
 
 // Content extents (E): the bbox of all boxes + notes, in board px. Drives the
 // readout (and, in Phase 2, Auto-fit).
@@ -5611,6 +5629,10 @@ async function persistLayout() {
     persistInFlight = false;
   }
 }
+// Restored here, after the save machinery setMode touches is declared.
+try {
+  if (localStorage.getItem(TOOL_KEY) === "view") setMode("view");
+} catch { /* storage blocked — start in Select */ }
 
 // Merge an inbound change: take fresh content + positions, but RETAIN the
 // human's unpersisted drags. Drop boxes whose node was deleted. Flag genuine
