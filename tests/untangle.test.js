@@ -248,3 +248,25 @@ Deno.test("untangle reports each candidate and stops when asked", () => {
     "top never gets worse",
   );
 });
+
+Deno.test("a shared measure cache renders what fresh measuring does", () => {
+  const s = { ...structuredClone(CROSSED), title: "Measured" };
+  s.nodes[0].details = ["a detail line long enough to wrap somewhere"];
+  const shape = (r) =>
+    JSON.stringify({
+      boxes: r.gridBoxes.map((b) => [b.id, b.col, b.row, b.w, b.h]),
+      routes: r.routes.map((rt) => rt.path),
+    });
+  const fresh = shape(
+    load(structuredClone(s)).renderToCanvas({ pixels: false }),
+  );
+  const measureCache = new Map();
+  for (let i = 0; i < 2; i++) {
+    const r = load(structuredClone(s)).renderToCanvas({
+      pixels: false,
+      measureCache,
+    });
+    assertEquals(shape(r), fresh, `render ${i + 1}`);
+  }
+  assert(measureCache.size > 0, "the cache was used");
+});

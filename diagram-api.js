@@ -514,6 +514,22 @@ export function validateState(state, path = "diagram-state.json") {
 // ═══════════════════════════════════════════════════════════════
 // DIAGRAM CLASS
 // ═══════════════════════════════════════════════════════════════
+// Untangle renders the same boxes and labels hundreds of times, and measuring
+// their text was half of each render. Widths depend only on the font and the
+// text, so renders that share `cache` measure each pair once. Only for one
+// process's own run: fonts registered later would not reach a cached width.
+function memoMeasure(ctx, cache) {
+  if (!cache) return ctx;
+  const raw = ctx.measureText.bind(ctx);
+  ctx.measureText = (text) => {
+    const key = ctx.font + "\0" + text;
+    let m = cache.get(key);
+    if (!m) cache.set(key, m = raw(text));
+    return m;
+  };
+  return ctx;
+}
+
 export class Diagram {
   constructor(state, stateDir, statePath) {
     this.statePath = statePath ??
@@ -1623,9 +1639,11 @@ export class Diagram {
       pinned: unpin ? [] : this._state.pinned,
       rowY: this.rowY,
     });
+    const measureCache = new Map();
     const render = (s) => {
       const res = new Diagram(structuredClone(s)).renderToCanvas({
         pixels: false,
+        measureCache,
       });
       const { labels } = bandObstacles(
         res.ctx,
@@ -2630,7 +2648,9 @@ export class Diagram {
   // `pixels: false` draws on a 1×1 canvas: the same geometry (routes, label
   // rects, issues) for a fraction of the time and memory, for callers that
   // score a layout instead of showing it.
-  renderToCanvas({ shadows = false, pixels = true } = {}) {
+  // `measureCache` (a Map) remembers text widths across renders that share it;
+  // see memoMeasure.
+  renderToCanvas({ shadows = false, pixels = true, measureCache } = {}) {
     const pal = this.palette = paletteFromState(this._state); // pick up any state mutations
     const { DPR } = this._dims;
 
@@ -2639,7 +2659,9 @@ export class Diagram {
     // width/height (the editor canvas is larger) are thus never clipped.
     const scratch = createCanvas(10, 10);
     ensureFonts(); // before any measureText — metrics must match drawing
-    const gridBoxes = this._computeGridBoxes(scratch.getContext("2d"));
+    const gridBoxes = this._computeGridBoxes(
+      memoMeasure(scratch.getContext("2d"), measureCache),
+    );
     const { W, H, COLS, ROWS } = this._fitCanvas(gridBoxes);
 
     // Cap the PNG's longest *pixel* side — a deliberately large board (now that B
@@ -2658,7 +2680,7 @@ export class Diagram {
     const canvas = pixels
       ? createCanvas(Math.round(W * scale), Math.round(H * scale))
       : createCanvas(1, 1);
-    const ctx = canvas.getContext("2d");
+    const ctx = memoMeasure(canvas.getContext("2d"), measureCache);
     ctx.scale(scale, scale);
 
     // Background
