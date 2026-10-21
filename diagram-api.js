@@ -91,6 +91,49 @@ export function resolveStatePath(explicit) {
   return resolve(dirname(fromFileUrl(import.meta.url)), EXAMPLE_STATE);
 }
 
+const env = (k) => {
+  try {
+    return Deno.env.get(k) || undefined;
+  } catch {
+    return undefined; // no --allow-env
+  }
+};
+
+/**
+ * Where a person's own boards live: explicit arg > AGENT_DIAGRAMS_DIR >
+ * $XDG_DATA_HOME/agent-diagrams > ~/.local/share/agent-diagrams. Outside the
+ * tool repo, so an editor session never writes into its working tree; the
+ * repo's own diagrams/ are served read-only as `examples/…` beside them.
+ */
+export function boardsDir(explicit) {
+  const p = explicit || env("AGENT_DIAGRAMS_DIR");
+  if (p) return resolve(Deno.cwd(), p);
+  const data = env("XDG_DATA_HOME") ||
+    join(env("HOME") ?? Deno.cwd(), ".local", "share");
+  return join(data, "agent-diagrams");
+}
+
+/** The repo's bundled boards, mounted read-only under EXAMPLES_PREFIX. */
+export const REPO_DIAGRAMS = resolve(
+  dirname(fromFileUrl(import.meta.url)),
+  "diagrams",
+);
+export const EXAMPLES_PREFIX = "examples/";
+
+/** A board name, as the server lists it, to its state file. */
+export function boardStatePath(name, dir = boardsDir()) {
+  if (name.split("/").includes("..")) {
+    throw new Error(`invalid board name "${name}"`);
+  }
+  return name.startsWith(EXAMPLES_PREFIX)
+    ? join(
+      REPO_DIAGRAMS,
+      name.slice(EXAMPLES_PREFIX.length),
+      "diagram-state.json",
+    )
+    : join(dir, name, "diagram-state.json");
+}
+
 /** Build the palette a state implies: theme (if any) + its custom overrides. */
 export function paletteFromState(state) {
   const scheme = state.theme && SCHEMES[state.theme]

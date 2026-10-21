@@ -106,6 +106,7 @@ let costs = { ...DEFAULT_COSTS };
 let showGrid = false, showHeat = false, showConn = false, showFlow = false;
 let dragMode = true, drag = null, didDrag = false;
 let viewMode = false; // View tool: every drag pans and nothing is saved
+let readOnlyBoard = false; // the server refuses writes; View is the only tool
 let connectMode = false, connectSourceId = null, connectCursor = null;
 let spaceHeld = false; // Space down → any canvas drag pans, whatever the mode
 // Hover affordances: the box/edge under the cursor (held by id / by from-to,
@@ -2276,6 +2277,7 @@ document.getElementById("bConn").onclick = function () {
 // selecting one deactivates the others so exactly one is ever active.
 const TOOL_KEY = "wb.tool";
 function setMode(mode) {
+  if (readOnlyBoard) mode = "view";
   const wasView = viewMode;
   if (mode === "view" && !wasView) {
     // Send what is already waiting rather than holding it while in View; its
@@ -2310,7 +2312,8 @@ function setMode(mode) {
     }
   }
   try {
-    localStorage.setItem(TOOL_KEY, mode);
+    // A read-only board forces View; that is not the tool this browser chose.
+    if (!readOnlyBoard) localStorage.setItem(TOOL_KEY, mode);
   } catch { /* storage blocked — the tool just won't persist */ }
   if (wasView && !viewMode) schedulePersist(); // anything a View-time save skipped
   connectSourceId = null;
@@ -2335,6 +2338,27 @@ function setMode(mode) {
 document.getElementById("bDrag").onclick = () => setMode("drag");
 document.getElementById("bConnect").onclick = () => setMode("connect");
 document.getElementById("bView").onclick = () => setMode("view");
+// A read-only board (the repo's examples) opens in View with the other tools
+// off, and offers a copy in the boards directory to edit instead.
+function lockReadOnly() {
+  readOnlyBoard = true;
+  setMode("view");
+  for (const id of ["bDrag", "bConnect"]) {
+    document.getElementById(id).disabled = true;
+  }
+  document.getElementById("readOnlyNote").hidden = false;
+  setStatus("read-only board: copy it to edit");
+}
+document.getElementById("bCopyBoard").onclick = async () => {
+  try {
+    const r = await fetch(API + "/copy", { method: "POST" });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    location.search = "?d=" + j.name;
+  } catch (e) {
+    setStatus("copy failed: " + e.message);
+  }
+};
 // NOTE: there used to be a "Reset" button here, documented as "drops all manual
 // positions back to auto-layout". It restored b._origCol/_origRow — but
 // computeLayout sets _origCol from the *solved* position, which for any node
@@ -5169,9 +5193,11 @@ async function init() {
   for (const b of boardList) {
     const o = document.createElement("option");
     o.value = b.name;
-    o.textContent = b.title ? `${b.name} — ${b.title}` : b.name;
+    o.textContent = (b.title ? `${b.name} — ${b.title}` : b.name) +
+      (b.readOnly ? " (read-only)" : "");
     boardSel.appendChild(o);
   }
+  if (boardList.find((b) => b.name === BOARD)?.readOnly) lockReadOnly();
   boardSel.value = BOARD;
   boardSel.onchange = () => {
     location.search = boardSel.value === "default"

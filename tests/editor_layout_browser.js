@@ -71,7 +71,13 @@ async function solved() {
 }
 
 const server = new Deno.Command(Deno.execPath(), {
-  args: [...RUN, `${root}dev-server.js`, `--port=${port}`, `--state=${S}`],
+  args: [
+    ...RUN,
+    `${root}dev-server.js`,
+    `--port=${port}`,
+    `--state=${S}`,
+    `--diagrams-dir=${dir}/boards`,
+  ],
   cwd: root,
   stdout: "null",
   stderr: "null",
@@ -571,6 +577,30 @@ try {
   await page.evaluate(`document.getElementById("bDrag").click()`);
   await drag("a", 90, 0);
   check("Select edits again after View", read().rev > viewed.rev);
+
+  // A repo board opens locked in View, without that becoming this browser's
+  // tool, and copies out into the boards directory to edit.
+  await page.goto(
+    `http://127.0.0.1:${port}/whiteboard-live.html?test=1&d=examples/deps`,
+    { waitUntil: "networkidle2" },
+  );
+  await wait(1200);
+  check(
+    "an example opens read-only, in View",
+    await page.evaluate(`(() => {
+      const $ = (id) => document.getElementById(id);
+      return $("bView").classList.contains("on") && $("bDrag").disabled &&
+        !$("readOnlyNote").hidden && localStorage.getItem("wb.tool") !== "view";
+    })()`),
+  );
+  await page.evaluate(`document.getElementById("bCopyBoard").click()`);
+  await wait(2500);
+  check(
+    "Copy to my boards opens a writable copy",
+    await page.evaluate(
+      `location.search === "?d=deps" && !document.getElementById("bDrag").disabled`,
+    ) && Deno.statSync(`${dir}/boards/deps/diagram-state.json`).isFile,
+  );
 } finally {
   await browser.close();
   server.kill();

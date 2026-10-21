@@ -20,9 +20,13 @@
  * stateless about content (the file is the source of truth; rev-CAS + lockfile
  * are per-file), so boards are just a name → path registry:
  *   - "default" = the --state file (or, with no --state, a cwd diagram-state.json,
- *     else the bundled diagrams/example board).
- *   - every diagram-state.json under the repo's diagrams/ tree, named by subpath
+ *     else the bundled diagrams/example board, read-only).
+ *   - every diagram-state.json under the boards directory (--diagrams-dir >
+ *     AGENT_DIAGRAMS_DIR > $XDG_DATA_HOME/agent-diagrams), named by subpath
  *     (e.g. "letgo-io", "letgo-io-phases/1-current"). Rescanned on demand.
+ *   - the repo's own diagrams/ tree, as "examples/<subpath>", READ-ONLY: writes
+ *     are refused and the server never re-renders their PNGs. POST
+ *     /d/<name>/copy copies any board into the boards directory to edit it.
  * Board-scoped routes: /d/<name>/{diagram-state.json,diagram.png,layout,node,
  * edge,theme,costs,capture}; GET /diagrams lists boards. Unprefixed routes
  * keep operating on the default board (agents/back-compat). Names are mapped
@@ -30,6 +34,7 @@
  *
  * Usage: deno run --allow-read --allow-write --allow-net --allow-env=DIAGRAM_STATE \
  *          dev-server.js [--port=8000] [--host=127.0.0.1] [--state=<path>]
+ *          [--diagrams-dir=<dir>]
  *
  * State file: --state= > DIAGRAM_STATE env > ./diagram-state.json (cwd) > example.
  * The state file may live OUTSIDE the tool repo: static assets (editor/viewer
@@ -38,11 +43,15 @@
  */
 
 import { serveDir } from "@std/http/file-server";
-import { dirname, fromFileUrl, join } from "@std/path";
+import { basename, dirname, fromFileUrl, join } from "@std/path";
 import {
+  boardsDir,
   captureArtifacts,
   Diagram,
+  EXAMPLE_STATE,
+  EXAMPLES_PREFIX,
   LockBusy,
+  REPO_DIAGRAMS,
   resolveStatePath,
   RevConflict,
 } from "./diagram-api.js";
@@ -58,11 +67,23 @@ const HOST =
   (Deno.args.find((a) => a.startsWith("--host=")) || "--host=127.0.0.1").slice(
     7,
   );
-const STATE_PATH = resolveStatePath(
-  Deno.args.find((a) => a.startsWith("--state="))?.slice(8),
-);
+const STATE_ARG = Deno.args.find((a) => a.startsWith("--state="))?.slice(8);
+const STATE_PATH = resolveStatePath(STATE_ARG);
 const STATE_DIR = dirname(STATE_PATH);
-const DIAGRAMS_DIR = join(ROOT, "diagrams");
+// Named explicitly, even the bundled example is writable: that is how an
+// example gets edited for a PR. Only the zero-config fallback is read-only.
+const DEFAULT_READ_ONLY = !STATE_ARG && !Deno.env.get("DIAGRAM_STATE") &&
+  STATE_PATH === join(ROOT, EXAMPLE_STATE);
+const BOARDS_DIR = boardsDir(
+  Deno.args.find((a) => a.startsWith("--diagrams-dir="))?.slice(15),
+);
+Deno.mkdirSync(BOARDS_DIR, { recursive: true });
+// Where boards are discovered. The repo's own come second, under a prefix, so
+// a person's board can never shadow or be shadowed by one.
+const ROOTS = [
+  { dir: BOARDS_DIR, prefix: "", readOnly: false },
+  { dir: REPO_DIAGRAMS, prefix: EXAMPLES_PREFIX, readOnly: true },
+];
 
 // ─── Board registry ──────────────────────────────────────────────
 // name → { name, statePath, stateDir, outputPath, lastRev, suppressPngUntil,
@@ -90,11 +111,12 @@ function realOr(path) {
   }
 }
 
-function makeBoard(name, statePath) {
+function makeBoard(name, statePath, readOnly = false) {
   const stateDir = dirname(statePath);
   const outputName = outputNameFor(statePath);
   return {
     name,
+    readOnly,
     statePath,
     stateDir,
     outputPath: join(stateDir, outputName),
@@ -106,24 +128,31 @@ function makeBoard(name, statePath) {
   };
 }
 
-// Real paths of directories reached through a symlink under diagrams/ that lie
+// Real paths of directories reached through a symlink under a root that lie
 // outside it, so watch() can cover them too.
 const linkedDirs = new Set();
 
-/** (Re)discover boards: the default + every diagram-state.json under diagrams/,
+/** (Re)discover boards: the default + every diagram-state.json under each root,
  *  following symlinked directories (a board kept in another repo can be linked
  *  in). Existing entries are kept (they hold live watcher state). */
 function scanBoards() {
   if (!boards.has("default")) {
-    boards.set("default", makeBoard("default", STATE_PATH));
+    boards.set(
+      "default",
+      makeBoard("default", STATE_PATH, DEFAULT_READ_ONLY),
+    );
   }
-  const diagramsReal = realOr(DIAGRAMS_DIR);
+  for (const root of ROOTS) scanRoot(root);
+}
+
+function scanRoot({ dir: rootDir, prefix, readOnly }) {
+  const rootReal = realOr(rootDir);
   const seen = new Set(); // real paths walked this scan: a link cycle stops here
   const walk = (dir, rel) => {
     const real = realOr(dir);
     if (seen.has(real)) return;
     seen.add(real);
-    if (real !== diagramsReal && !real.startsWith(diagramsReal + "/")) {
+    if (real !== rootReal && !real.startsWith(rootReal + "/")) {
       linkedDirs.add(real);
     }
     let entries;
@@ -142,15 +171,24 @@ function scanBoards() {
         }
       }
       if (isDir) {
+        // A boards-dir "examples/" would collide with the mounted repo boards.
+        if (!rel && prefix === "" && e.name === EXAMPLES_PREFIX.slice(0, -1)) {
+          continue;
+        }
         walk(join(dir, e.name), rel ? `${rel}/${e.name}` : e.name);
       } else if (e.isFile && e.name === "diagram-state.json" && rel) {
         const path = join(dir, e.name);
         if (path === STATE_PATH) continue; // that's the default board
-        if (!boards.has(rel)) boards.set(rel, makeBoard(rel, path));
+        const name = prefix + rel;
+        // A link from the boards dir into the repo still lands on a repo board.
+        const intoRepo = realOr(path).startsWith(realOr(REPO_DIAGRAMS) + "/");
+        if (!boards.has(name)) {
+          boards.set(name, makeBoard(name, path, readOnly || intoRepo));
+        }
       }
     }
   };
-  walk(DIAGRAMS_DIR, "");
+  walk(rootDir, "");
 }
 
 /** Board list for GET /diagrams (rescans so new boards show up live). */
@@ -163,7 +201,7 @@ function listBoards() {
       title = s.title ?? null;
       rev = s.rev ?? null;
     } catch { /* missing/unreadable — list it anyway */ }
-    return { name: b.name, title, rev };
+    return { name: b.name, title, rev, readOnly: b.readOnly };
   });
 }
 
@@ -204,6 +242,15 @@ setInterval(() => {
 
 // ─── Watch + re-render (per board) ───────────────────────────────
 function rerender(board) {
+  if (board.readOnly) {
+    // Never write into the repo: its PNGs change through a PR, rendered by
+    // whoever edits the state. Still pick up the rev for the broadcast.
+    try {
+      board.lastRev = JSON.parse(Deno.readTextFileSync(board.statePath)).rev ??
+        0;
+    } catch { /* mid-write or gone — keep the last rev */ }
+    return;
+  }
   try {
     const d = Diagram.load(board.statePath);
     d.render(); // reads state, writes png
@@ -232,23 +279,26 @@ function boardForPath(p) {
 }
 
 async function watch() {
-  // One watcher covers the default board's dir and the repo diagrams/ tree
-  // (recursive, so boards created later are picked up automatically).
+  // One watcher covers the default board's dir and every root (recursive, so
+  // boards created later are picked up automatically).
   // A missing directory (a board moved or deleted) is skipped with a warning:
   // watchFs throws on it, which used to take the whole server down.
   // Linked board directories found by the first scan are watched as well;
   // one linked in later is listed, but live-reloads only after a restart.
-  const dirs =
-    (DIAGRAMS_DIR.startsWith(STATE_DIR)
-      ? [STATE_DIR, ...linkedDirs]
-      : [STATE_DIR, DIAGRAMS_DIR, ...linkedDirs]).filter((d) => {
-        try {
-          return Deno.statSync(d).isDirectory;
-        } catch {
-          console.warn(`not watching ${d}: no such directory`);
-          return false;
-        }
-      });
+  const all = [
+    ...new Set([STATE_DIR, ...ROOTS.map((r) => r.dir), ...linkedDirs]),
+  ];
+  // A directory inside another is already covered: the watch is recursive.
+  const dirs = all
+    .filter((d) => !all.some((o) => o !== d && d.startsWith(o + "/")))
+    .filter((d) => {
+      try {
+        return Deno.statSync(d).isDirectory;
+      } catch {
+        console.warn(`not watching ${d}: no such directory`);
+        return false;
+      }
+    });
   if (!dirs.length) return;
   const watcher = Deno.watchFs(dirs);
   const pending = new Map(); // board name → Set("state"|"png")
@@ -280,7 +330,8 @@ async function watch() {
     for (const p of ev.paths) {
       let hit = boardForPath(p);
       if (
-        !hit && p.endsWith("diagram-state.json") && p.startsWith(DIAGRAMS_DIR)
+        !hit && p.endsWith("diagram-state.json") &&
+        ROOTS.some((r) => p.startsWith(r.dir) || p.startsWith(realOr(r.dir)))
       ) {
         scanBoards(); // a brand-new board appeared — register, then re-match
         hit = boardForPath(p);
@@ -553,6 +604,49 @@ async function handleWrite(req, op, board) {
   }
 }
 
+// Copy a board into the boards directory: { name? } → { name }. Without a name
+// it takes the source directory's, numbered if that is taken; a name given
+// explicitly that is taken is a conflict instead.
+async function copyBoard(req, board) {
+  let body = {};
+  try {
+    body = (await req.json()) ?? {};
+  } catch { /* empty body ok */ }
+  const asked = typeof body === "object" ? body.name : undefined;
+  const base = asked ?? basename(board.stateDir);
+  if (
+    typeof base !== "string" || !/^[\w.-]+(\/[\w.-]+)*$/.test(base) ||
+    base.split("/").some((seg) => seg.startsWith(".")) ||
+    (base + "/").startsWith(EXAMPLES_PREFIX)
+  ) {
+    return jsonResp(400, { error: `invalid board name "${base}"` });
+  }
+  const taken = (n) => {
+    try {
+      Deno.statSync(join(BOARDS_DIR, n));
+      return true;
+    } catch {
+      return boards.has(n);
+    }
+  };
+  let name = base;
+  if (taken(name) && asked !== undefined) {
+    return jsonResp(409, { error: `board "${name}" already exists` });
+  }
+  for (let i = 2; taken(name); i++) name = `${base}-${i}`;
+  try {
+    const dir = join(BOARDS_DIR, name);
+    Deno.mkdirSync(dir, { recursive: true });
+    const path = join(dir, "diagram-state.json");
+    Deno.writeTextFileSync(path, Deno.readTextFileSync(board.statePath));
+    Diagram.load(path).render();
+    scanBoards();
+    return jsonResp(200, { name });
+  } catch (e) {
+    return jsonResp(500, { error: String(e?.message ?? e) });
+  }
+}
+
 // ─── HTTP handler ────────────────────────────────────────────────
 async function handler(req) {
   const url = new URL(req.url);
@@ -576,6 +670,15 @@ async function handler(req) {
       board = boards.get(name);
     }
     if (!board) return jsonResp(404, { error: `unknown board "${name}"` });
+  }
+
+  if (req.method === "POST" && tail === "/copy") return copyBoard(req, board);
+  // A read-only board takes no writes at all. Stopping a run is not a write.
+  if (req.method === "POST" && board.readOnly && tail !== "/untangle-stop") {
+    return jsonResp(403, {
+      error: `board "${board.name}" is read-only; copy it to edit`,
+      readOnly: true,
+    });
   }
 
   if (req.method === "POST" && WRITE_OPS[tail]) {
@@ -736,8 +839,11 @@ console.log(
   `                            http://localhost:${PORT}/whiteboard-live.html (editor)`,
 );
 console.log(
-  `boards: ${[...boards.keys()].join(", ")}  (default → ${STATE_PATH})`,
+  `boards: ${[...boards.keys()].join(", ")}  (default → ${STATE_PATH}${
+    DEFAULT_READ_ONLY ? ", read-only" : ""
+  })`,
 );
+console.log(`boards directory: ${BOARDS_DIR}`);
 // Binds 127.0.0.1 by default — the write endpoints are unauthenticated. Pass
 // --host=0.0.0.0 only if you understand anyone on the network can edit/clobber.
 Deno.serve({ hostname: HOST, port: PORT }, handler);

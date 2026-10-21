@@ -65,17 +65,30 @@ Open in a browser:
 - **Viewer** → <http://localhost:8000/whiteboard.html> — read-only PNG that live-reloads.
 
 **Multiple whiteboards.** One server hosts many boards: the `--state` file is the
-`default` board, and every `diagram-state.json` under the repo's `diagrams/` tree is a
-board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). Symlinked
-directories are followed, so boards kept in another repo can be linked in
-(`ln -s ~/elsewhere/boards diagrams/scratch/elsewhere`); restart the server after adding
-a link so it watches the linked directory for live reload. The editor
-sidebar has a board picker at the top (or open `whiteboard-live.html?d=<name>` /
-`whiteboard.html?d=<name>` directly); agents target a board with
-`--state diagrams/<name>/diagram-state.json` as usual. `GET /diagrams` lists boards;
-board-scoped endpoints live under `/d/<name>/…`; unprefixed endpoints keep operating
-on the default board. New boards appear live — `init` a state file under `diagrams/`
-and it's in the picker. Board names map to paths server-side only.
+`default` board, and every `diagram-state.json` under your **boards directory** is a
+board named by its subpath (`letgo-io`, `letgo-io-phases/1-current`, …). The boards
+directory lives outside this repo, so editing never touches its working tree:
+`--diagrams-dir=<dir>` > `AGENT_DIAGRAMS_DIR` > `$XDG_DATA_HOME/agent-diagrams` >
+`~/.local/share/agent-diagrams`, created on first start. Consider `git init` in it:
+diffing the board files is the easiest way to tell an agent's changes from yours.
+
+The repo's own `diagrams/` are served too, as `examples/<name>`, **read-only**: the
+server refuses writes to them and never re-renders their PNGs, and the editor opens
+them in View with a **Copy to my boards** button. The zero-config default board (the
+bundled example, when no `--state` is given) is read-only the same way; name it with
+`--state` to edit it on purpose, e.g. for a PR. `POST /d/<name>/copy` (optional
+`{ "name": … }`) copies any board into the boards directory.
+
+Symlinked directories are followed, so boards kept in another repo can be linked in
+(`ln -s ~/elsewhere/boards ~/.local/share/agent-diagrams/elsewhere`); restart the
+server after adding a link so it watches the linked directory for live reload. The
+editor sidebar has a board picker at the top (or open `whiteboard-live.html?d=<name>` /
+`whiteboard.html?d=<name>` directly); agents target a board with `--board <name>`
+(the same names, `examples/…` included) or `--state <path>`. `GET /diagrams` lists
+boards with a `readOnly` flag; board-scoped endpoints live under `/d/<name>/…`;
+unprefixed endpoints keep operating on the default board. New boards appear live —
+`init` a state file under the boards directory and it's in the picker. Board names
+map to paths server-side only.
 
 **As a human (in the editor):**
 
@@ -268,7 +281,7 @@ dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To ad
 ## CLI
 
 ```
-diagram-cli.js [--state <path>] <command> [args...]
+diagram-cli.js [--state <path> | --board <name>] <command> [args...]
 
   init [--empty]             Write a starter diagram-state.json (--empty: no sample nodes)
   add-node <id> <label> <color> <row> <col> [details...]
