@@ -48,6 +48,8 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
   const root = new URL("..", import.meta.url).pathname;
   const dir = Deno.makeTempDirSync({ prefix: "agent-diagrams-boards-" });
   const port = 8093;
+  // A board linked in from the repo is still the repo's.
+  Deno.symlinkSync(join(REPO_DIAGRAMS, "deps"), join(dir, "linked"));
   const env = { ...Deno.env.toObject() };
   delete env.DIAGRAM_STATE;
   const server = new Deno.Command(Deno.execPath(), {
@@ -91,6 +93,7 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
     const boards = await list();
     assertEquals(boards["examples/deps"], true, "examples are read-only");
     assertEquals(boards.default, true, "so is the zero-config default");
+    assertEquals(boards.linked, true, "and so is one linked in from the repo");
 
     const repoState = join(REPO_DIAGRAMS, "deps", "diagram-state.json");
     const before = Deno.readTextFileSync(repoState);
@@ -117,7 +120,34 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       before,
       "the copy is the board as it was",
     );
+    assertEquals(
+      (await fetch(url("/d/examples/deps/copy"), {
+        method: "POST",
+        body: "null",
+      }))
+        .status,
+      200,
+      "a null body is an empty one",
+    );
     assertEquals((await list()).deps, false, "the copy is writable");
+    const cli = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "-A",
+        "--unstable-ffi",
+        `${root}diagram-cli.js`,
+        `--diagrams-dir=${dir}`,
+        "--board",
+        "deps",
+        "status",
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assert(
+      cli.success && new TextDecoder().decode(cli.stdout).startsWith("rev "),
+      `the CLI finds the copy by name: ${new TextDecoder().decode(cli.stderr)}`,
+    );
     const wrote = await post("/d/deps/theme", {
       theme: "dawnfox",
       baseRev: JSON.parse(before).rev,

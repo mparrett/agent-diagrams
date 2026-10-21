@@ -6,8 +6,8 @@
  * --board <name> > DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the
  * bundled diagrams/example board. (`init` always scaffolds in the cwd.)
  * --board names a board as the dev server lists it: one in the boards
- * directory (AGENT_DIAGRAMS_DIR, else $XDG_DATA_HOME/agent-diagrams), or
- * examples/<name> for the repo's own.
+ * directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR > $XDG_DATA_HOME/
+ * agent-diagrams), or examples/<name> for the repo's own.
  *
  * Usage: `deno task cli <command>`, or from any directory
  *   deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi \
@@ -18,6 +18,7 @@
 
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
 import {
+  boardsDir,
   boardStatePath,
   captureArtifacts,
   Diagram,
@@ -33,7 +34,7 @@ const BUILTIN_STYLES = Object.keys(DEFAULT_EDGE_STYLES);
 
 // ─── Global --state / --board flags (strip before command parsing) ──
 const rawArgs = [...Deno.args];
-let stateArg, boardArg;
+let stateArg, boardArg, dirArg;
 let noRenderFlag = false;
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
@@ -50,6 +51,9 @@ for (let i = 0; i < rawArgs.length; i++) {
       Deno.exit(1);
     }
     rawArgs.splice(i--, 2);
+  } else if (a.startsWith("--diagrams-dir=")) {
+    dirArg = a.slice(15);
+    rawArgs.splice(i--, 1);
   } else if (a === "--no-render") {
     noRenderFlag = true;
     rawArgs.splice(i--, 1);
@@ -64,7 +68,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 }
 let boardPath;
 try {
-  boardPath = boardArg && boardStatePath(boardArg);
+  boardPath = boardArg && boardStatePath(boardArg, boardsDir(dirArg));
 } catch (e) {
   console.error(`Error: ${e.message}`);
   Deno.exit(1);
@@ -198,8 +202,8 @@ function usage() {
 State file: --state <path> (any command) > --board <name> > DIAGRAM_STATE env >
 ./diagram-state.json in the cwd (so the CLI works from any project) > the bundled
 diagrams/example board. --board takes a name as the dev server lists it: a board
-in the boards directory (AGENT_DIAGRAMS_DIR, else ~/.local/share/agent-diagrams),
-or examples/<name> for the repo's own.
+in the boards directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR >
+~/.local/share/agent-diagrams), or examples/<name> for the repo's own.
 
 Commands:
   init [--empty]             Write a starter diagram-state.json in the current dir

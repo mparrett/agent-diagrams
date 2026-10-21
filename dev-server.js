@@ -180,8 +180,10 @@ function scanRoot({ dir: rootDir, prefix, readOnly }) {
         const path = join(dir, e.name);
         if (path === STATE_PATH) continue; // that's the default board
         const name = prefix + rel;
+        // A link from the boards dir into the repo still lands on a repo board.
+        const intoRepo = realOr(path).startsWith(realOr(REPO_DIAGRAMS) + "/");
         if (!boards.has(name)) {
-          boards.set(name, makeBoard(name, path, readOnly));
+          boards.set(name, makeBoard(name, path, readOnly || intoRepo));
         }
       }
     }
@@ -608,9 +610,9 @@ async function handleWrite(req, op, board) {
 async function copyBoard(req, board) {
   let body = {};
   try {
-    body = await req.json();
+    body = (await req.json()) ?? {};
   } catch { /* empty body ok */ }
-  const asked = body.name;
+  const asked = typeof body === "object" ? body.name : undefined;
   const base = asked ?? basename(board.stateDir);
   if (
     typeof base !== "string" || !/^[\w.-]+(\/[\w.-]+)*$/.test(base) ||
