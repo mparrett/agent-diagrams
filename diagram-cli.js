@@ -3,8 +3,11 @@
  * CLI tool for manipulating diagram state and rendering.
  *
  * State file resolution (all commands): --state <path> (or --state=<path>) >
- * DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the bundled
- * diagrams/example board. (`init` always scaffolds in the cwd.)
+ * --board <name> > DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the
+ * bundled diagrams/example board. (`init` always scaffolds in the cwd.)
+ * --board names a board as the dev server lists it: one in the boards
+ * directory (AGENT_DIAGRAMS_DIR, else $XDG_DATA_HOME/agent-diagrams), or
+ * examples/<name> for the repo's own.
  *
  * Usage: `deno task cli <command>`, or from any directory
  *   deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi \
@@ -15,6 +18,7 @@
 
 import { dirname, fromFileUrl, join, resolve } from "@std/path";
 import {
+  boardStatePath,
   captureArtifacts,
   Diagram,
   LockBusy,
@@ -27,15 +31,25 @@ import { SCHEMES } from "./themes.js";
 const BUILTIN_COLORS = Object.keys(DEFAULT_COLORS);
 const BUILTIN_STYLES = Object.keys(DEFAULT_EDGE_STYLES);
 
-// ─── Global --state flag (strip before command parsing) ────────────
+// ─── Global --state / --board flags (strip before command parsing) ──
 const rawArgs = [...Deno.args];
-let stateArg;
+let stateArg, boardArg;
 let noRenderFlag = false;
 for (let i = 0; i < rawArgs.length; i++) {
   const a = rawArgs[i];
   if (a.startsWith("--state=")) {
     stateArg = a.slice(8);
     rawArgs.splice(i--, 1);
+  } else if (a.startsWith("--board=")) {
+    boardArg = a.slice(8);
+    rawArgs.splice(i--, 1);
+  } else if (a === "--board") {
+    boardArg = rawArgs[i + 1];
+    if (!boardArg) {
+      console.error("Error: --board requires a name");
+      Deno.exit(1);
+    }
+    rawArgs.splice(i--, 2);
   } else if (a === "--no-render") {
     noRenderFlag = true;
     rawArgs.splice(i--, 1);
@@ -48,7 +62,14 @@ for (let i = 0; i < rawArgs.length; i++) {
     rawArgs.splice(i--, 2);
   }
 }
-const STATE = resolveStatePath(stateArg);
+let boardPath;
+try {
+  boardPath = boardArg && boardStatePath(boardArg);
+} catch (e) {
+  console.error(`Error: ${e.message}`);
+  Deno.exit(1);
+}
+const STATE = resolveStatePath(stateArg ?? boardPath);
 
 // A scripted build (many calls, then one `render`) skips the PNG on every
 // mutating call: --no-render on the call, or DIAGRAM_NO_RENDER=1 for a whole
@@ -172,10 +193,13 @@ const STARTER_STATE = {
 
 function usage() {
   console.error(
-    `Usage: diagram-cli.js [--state <path>] [--no-render] <command> [args...]
+    `Usage: diagram-cli.js [--state <path> | --board <name>] [--no-render] <command> [args...]
 
-State file: --state <path> (any command) > DIAGRAM_STATE env > ./diagram-state.json
-in the cwd (so the CLI works from any project) > the bundled diagrams/example board.
+State file: --state <path> (any command) > --board <name> > DIAGRAM_STATE env >
+./diagram-state.json in the cwd (so the CLI works from any project) > the bundled
+diagrams/example board. --board takes a name as the dev server lists it: a board
+in the boards directory (AGENT_DIAGRAMS_DIR, else ~/.local/share/agent-diagrams),
+or examples/<name> for the repo's own.
 
 Commands:
   init [--empty]             Write a starter diagram-state.json in the current dir
