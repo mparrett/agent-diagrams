@@ -73,7 +73,7 @@ import { scoreRender, untangle } from "./untangle.js";
  * `render`/`serve` with no args render something regardless of where they're run).
  * (Env read is skipped gracefully when --allow-env wasn't granted.)
  */
-export const EXAMPLE_STATE = "diagrams/example/diagram-state.json";
+export const EXAMPLE_STATE = "diagrams/basic/diagram-state.json";
 
 export function resolveStatePath(explicit) {
   let p = explicit;

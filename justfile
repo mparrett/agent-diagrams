@@ -52,7 +52,7 @@ upstream-check:
     deno task upstream-check
 
 # Draw a Deno module graph. Takes an entrypoint or a `deno info --json` dump.
-# e.g. `just import-deps dev-server.js "--out=diagrams/deps"`
+# e.g. `just import-deps dev-server.js "--out=$HOME/.local/share/agent-diagrams/deps"`
 import-deps entry args="":
     deno task import:deps {{entry}} {{args}}
 

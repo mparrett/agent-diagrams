@@ -178,9 +178,8 @@ Deno.test("text survives garbage collection after the fonts load", async () => {
 Deno.test("the shipped example board keeps its labels", async () => {
   // Real committed artifact, not a fixture — a regression here would otherwise
   // only surface as an unreadable diagram in the repo.
-  const path =
-    new URL("../diagrams/example/diagram-state.json", import.meta.url)
-      .pathname;
+  const path = new URL("../diagrams/basic/diagram-state.json", import.meta.url)
+    .pathname;
   const r = await checkRaster(Diagram.load(path));
   assert(r.checked > 0, "example board should have boxes");
   const lost = r.boxes.filter((b) => !b.labelOk).map((b) => b.id);

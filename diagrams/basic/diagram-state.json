@@ -1,0 +1,153 @@
+{
+  "title": "Basic — a request flow",
+  "width": 715,
+  "height": 650,
+  "nodes": [
+    {
+      "id": "user",
+      "label": "User",
+      "color": "blue",
+      "details": [],
+      "row": 0,
+      "col": 1,
+      "shape": "person"
+    },
+    {
+      "id": "web",
+      "label": "Web app",
+      "color": "blue",
+      "details": [
+        "browser SPA"
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "api",
+      "label": "API",
+      "color": "green",
+      "details": [
+        "REST + auth"
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "db",
+      "label": "Orders",
+      "color": "gray",
+      "details": [
+        "Postgres"
+      ],
+      "row": 3,
+      "col": 0,
+      "shape": "cylinder"
+    },
+    {
+      "id": "cache",
+      "label": "Cache",
+      "color": "gray",
+      "details": [
+        "Redis"
+      ],
+      "row": 3,
+      "col": 1,
+      "shape": "cylinder"
+    },
+    {
+      "id": "queue",
+      "label": "Event queue",
+      "color": "purple",
+      "details": [
+        "order.created"
+      ],
+      "row": 3,
+      "col": 2
+    },
+    {
+      "id": "worker",
+      "label": "Worker",
+      "color": "amber",
+      "details": [
+        "fulfilment"
+      ],
+      "row": 4,
+      "col": 2
+    }
+  ],
+  "edges": [
+    {
+      "id": "user~web",
+      "from": "user",
+      "to": "web",
+      "style": "solid"
+    },
+    {
+      "id": "web~api",
+      "from": "web",
+      "to": "api",
+      "style": "solid",
+      "label": "HTTPS"
+    },
+    {
+      "id": "api~db",
+      "from": "api",
+      "to": "db",
+      "style": "dotted"
+    },
+    {
+      "id": "api~cache",
+      "from": "api",
+      "to": "cache",
+      "style": "dotted"
+    },
+    {
+      "id": "api~queue",
+      "from": "api",
+      "to": "queue",
+      "style": "dashed",
+      "label": "publish"
+    },
+    {
+      "id": "queue~worker",
+      "from": "queue",
+      "to": "worker",
+      "style": "dashed"
+    },
+    {
+      "id": "worker~db",
+      "from": "worker",
+      "to": "db",
+      "style": "dotted"
+    }
+  ],
+  "layout": {},
+  "rowY": {},
+  "rev": 23,
+  "noteLayout": {},
+  "legend": [
+    {
+      "color": "blue",
+      "label": "Client"
+    },
+    {
+      "color": "green",
+      "label": "Service"
+    },
+    {
+      "color": "gray",
+      "label": "Store"
+    },
+    {
+      "color": "purple",
+      "label": "Queue"
+    },
+    {
+      "color": "amber",
+      "label": "Worker"
+    }
+  ],
+  "footer": "Solid = sync call | Dashed = async | Dotted = data access",
+  "uniformWidth": true,
+  "connectorAnchor": "center"
+}

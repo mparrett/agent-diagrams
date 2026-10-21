@@ -7,7 +7,7 @@
  * import-depgraph exercises the wide-and-shallow shape, this one is
  * deep-and-narrow.
  *
- *   deno task import:tree . --out=diagrams/tree --depth=2 --files
+ *   deno task import:tree . --out=$HOME/.local/share/agent-diagrams/tree --depth=2 --files
  *
  * Flags:
  *   --out=<dir>            where to write diagram-state.json (default: cwd)

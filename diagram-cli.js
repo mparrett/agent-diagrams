@@ -4,7 +4,7 @@
  *
  * State file resolution (all commands): --state <path> (or --state=<path>) >
  * --board <name> > DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the
- * bundled diagrams/example board. (`init` always scaffolds in the cwd.)
+ * bundled diagrams/basic board. (`init` always scaffolds in the cwd.)
  * --board names a board as the dev server lists it: one in the boards
  * directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR > $XDG_DATA_HOME/
  * agent-diagrams), or examples/<name> for the repo's own.
@@ -201,7 +201,7 @@ function usage() {
 
 State file: --state <path> (any command) > --board <name> > DIAGRAM_STATE env >
 ./diagram-state.json in the cwd (so the CLI works from any project) > the bundled
-diagrams/example board. --board takes a name as the dev server lists it: a board
+diagrams/basic board. --board takes a name as the dev server lists it: a board
 in the boards directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR >
 ~/.local/share/agent-diagrams), or examples/<name> for the repo's own.
 

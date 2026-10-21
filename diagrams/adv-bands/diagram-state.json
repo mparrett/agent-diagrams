@@ -1,0 +1,224 @@
+{
+  "title": "Advanced — bands, groups and wire labels",
+  "width": 1192,
+  "height": 620,
+  "nodes": [
+    {
+      "id": "web",
+      "label": "Web",
+      "color": "blue",
+      "details": [],
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "mobile",
+      "label": "Mobile",
+      "color": "blue",
+      "details": [],
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "partner",
+      "label": "Partner API",
+      "color": "blue",
+      "details": [
+        "B2B"
+      ],
+      "row": 0,
+      "col": 5
+    },
+    {
+      "id": "gw",
+      "label": "Gateway",
+      "color": "pink",
+      "details": [
+        "auth, rate limits"
+      ],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "inventory",
+      "label": "Inventory",
+      "color": "green",
+      "details": [],
+      "row": 2,
+      "col": 5
+    },
+    {
+      "id": "orders",
+      "label": "Orders",
+      "color": "green",
+      "details": [],
+      "row": 2,
+      "col": 2
+    },
+    {
+      "id": "payments",
+      "label": "Payments",
+      "color": "green",
+      "details": [],
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "ledger",
+      "label": "Ledger",
+      "color": "gray",
+      "details": [],
+      "row": 3,
+      "col": 0,
+      "shape": "cylinder"
+    },
+    {
+      "id": "events",
+      "label": "Events",
+      "color": "purple",
+      "details": [
+        "Kafka"
+      ],
+      "row": 3,
+      "col": 4
+    },
+    {
+      "id": "ordersdb",
+      "label": "Orders DB",
+      "color": "gray",
+      "details": [],
+      "row": 3,
+      "col": 2,
+      "shape": "cylinder"
+    }
+  ],
+  "edges": [
+    {
+      "id": "web~gw",
+      "from": "web",
+      "to": "gw",
+      "style": "solid"
+    },
+    {
+      "id": "mobile~gw",
+      "from": "mobile",
+      "to": "gw",
+      "style": "solid"
+    },
+    {
+      "id": "partner~gw",
+      "from": "partner",
+      "to": "gw",
+      "style": "solid",
+      "label": "mTLS"
+    },
+    {
+      "id": "gw~orders",
+      "from": "gw",
+      "to": "orders",
+      "style": "solid"
+    },
+    {
+      "id": "gw~inventory",
+      "from": "gw",
+      "to": "inventory",
+      "style": "solid"
+    },
+    {
+      "id": "orders~payments",
+      "from": "orders",
+      "to": "payments",
+      "style": "solid",
+      "label": "charge"
+    },
+    {
+      "id": "orders~ordersdb",
+      "from": "orders",
+      "to": "ordersdb",
+      "style": "dotted"
+    },
+    {
+      "id": "payments~ledger",
+      "from": "payments",
+      "to": "ledger",
+      "style": "dotted"
+    },
+    {
+      "id": "orders~events",
+      "from": "orders",
+      "to": "events",
+      "style": "dashed",
+      "label": "emit"
+    },
+    {
+      "id": "inventory~events",
+      "from": "inventory",
+      "to": "events",
+      "style": "dashed"
+    }
+  ],
+  "layout": {},
+  "rowY": {},
+  "rev": 37,
+  "noteLayout": {},
+  "groups": [
+    {
+      "id": "core",
+      "nodes": [
+        "inventory",
+        "orders",
+        "payments"
+      ],
+      "label": "Core services",
+      "dash": "dashed"
+    }
+  ],
+  "dividerBands": true,
+  "dividers": [
+    {
+      "id": "div0",
+      "orient": "h",
+      "at": 0,
+      "label": "Edge",
+      "after": 0
+    },
+    {
+      "id": "div1",
+      "orient": "h",
+      "at": 0,
+      "label": "Services",
+      "after": 1
+    },
+    {
+      "id": "div2",
+      "orient": "h",
+      "at": 0,
+      "label": "Data",
+      "after": 2
+    }
+  ],
+  "legend": [
+    {
+      "color": "blue",
+      "label": "Client"
+    },
+    {
+      "color": "pink",
+      "label": "Edge"
+    },
+    {
+      "color": "green",
+      "label": "Service"
+    },
+    {
+      "color": "purple",
+      "label": "Stream"
+    },
+    {
+      "color": "gray",
+      "label": "Store"
+    }
+  ],
+  "uniformWidth": true,
+  "connectorAnchor": "center"
+}

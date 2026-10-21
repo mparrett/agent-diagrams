@@ -7,7 +7,7 @@
  * Depth is BFS distance from the entrypoint, so the board reads top-down from
  * what you run to what it ultimately pulls in.
  *
- *   deno task import:deps dev-server.js --out=diagrams/deps
+ *   deno task import:deps dev-server.js --out=$HOME/.local/share/agent-diagrams/deps
  *   deno task import:deps graph.json --granularity=module --per-row=12
  *
  * Flags:

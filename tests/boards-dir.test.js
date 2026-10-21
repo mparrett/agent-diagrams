@@ -9,8 +9,8 @@ function assertEquals(actual, expected, msg = "") {
 
 Deno.test("boardStatePath maps examples/ to the repo and the rest to the boards dir", () => {
   assertEquals(
-    boardStatePath("examples/deps", "/b"),
-    join(REPO_DIAGRAMS, "deps", "diagram-state.json"),
+    boardStatePath("examples/basic", "/b"),
+    join(REPO_DIAGRAMS, "basic", "diagram-state.json"),
   );
   assertEquals(
     boardStatePath("team/flow", "/b"),
@@ -49,7 +49,7 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
   const dir = Deno.makeTempDirSync({ prefix: "agent-diagrams-boards-" });
   const port = 8093;
   // A board linked in from the repo is still the repo's.
-  Deno.symlinkSync(join(REPO_DIAGRAMS, "deps"), join(dir, "linked"));
+  Deno.symlinkSync(join(REPO_DIAGRAMS, "adv-bands"), join(dir, "linked"));
   const env = { ...Deno.env.toObject() };
   delete env.DIAGRAM_STATE;
   const server = new Deno.Command(Deno.execPath(), {
@@ -91,37 +91,41 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       }
     }
     const boards = await list();
-    assertEquals(boards["examples/deps"], true, "examples are read-only");
+    assertEquals(boards["examples/adv-bands"], true, "examples are read-only");
     assertEquals(boards.default, true, "so is the zero-config default");
     assertEquals(boards.linked, true, "and so is one linked in from the repo");
 
-    const repoState = join(REPO_DIAGRAMS, "deps", "diagram-state.json");
+    const repoState = join(REPO_DIAGRAMS, "adv-bands", "diagram-state.json");
     const before = Deno.readTextFileSync(repoState);
-    const refused = await post("/d/examples/deps/theme", { theme: "dawnfox" });
+    const refused = await post("/d/examples/adv-bands/theme", {
+      theme: "dawnfox",
+    });
     assertEquals(refused.status, 403, "a write to an example");
     assertEquals(Deno.readTextFileSync(repoState), before, "repo file");
 
-    assertEquals((await post("/d/examples/deps/copy")).body, { name: "deps" });
-    assertEquals((await post("/d/examples/deps/copy")).body, {
-      name: "deps-2",
+    assertEquals((await post("/d/examples/adv-bands/copy")).body, {
+      name: "adv-bands",
+    });
+    assertEquals((await post("/d/examples/adv-bands/copy")).body, {
+      name: "adv-bands-2",
     });
     assertEquals(
-      (await post("/d/examples/deps/copy", { name: "deps" })).status,
+      (await post("/d/examples/adv-bands/copy", { name: "adv-bands" })).status,
       409,
       "a name asked for that is taken",
     );
     assertEquals(
-      (await post("/d/examples/deps/copy", { name: "../out" })).status,
+      (await post("/d/examples/adv-bands/copy", { name: "../out" })).status,
       400,
       "a name outside the boards dir",
     );
     assertEquals(
-      Deno.readTextFileSync(join(dir, "deps", "diagram-state.json")),
+      Deno.readTextFileSync(join(dir, "adv-bands", "diagram-state.json")),
       before,
       "the copy is the board as it was",
     );
     assertEquals(
-      (await fetch(url("/d/examples/deps/copy"), {
+      (await fetch(url("/d/examples/adv-bands/copy"), {
         method: "POST",
         body: "null",
       }))
@@ -129,7 +133,7 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       200,
       "a null body is an empty one",
     );
-    assertEquals((await list()).deps, false, "the copy is writable");
+    assertEquals((await list())["adv-bands"], false, "the copy is writable");
     const cli = await new Deno.Command(Deno.execPath(), {
       args: [
         "run",
@@ -138,7 +142,7 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
         `${root}diagram-cli.js`,
         `--diagrams-dir=${dir}`,
         "--board",
-        "deps",
+        "adv-bands",
         "status",
       ],
       stdout: "piped",
@@ -148,7 +152,7 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       cli.success && new TextDecoder().decode(cli.stdout).startsWith("rev "),
       `the CLI finds the copy by name: ${new TextDecoder().decode(cli.stderr)}`,
     );
-    const wrote = await post("/d/deps/theme", {
+    const wrote = await post("/d/adv-bands/theme", {
       theme: "dawnfox",
       baseRev: JSON.parse(before).rev,
     });

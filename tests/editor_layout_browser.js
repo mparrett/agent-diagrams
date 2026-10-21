@@ -581,7 +581,7 @@ try {
   // A repo board opens locked in View, without that becoming this browser's
   // tool, and copies out into the boards directory to edit.
   await page.goto(
-    `http://127.0.0.1:${port}/whiteboard-live.html?test=1&d=examples/deps`,
+    `http://127.0.0.1:${port}/whiteboard-live.html?test=1&d=examples/basic`,
     { waitUntil: "networkidle2" },
   );
   await wait(1200);
@@ -598,8 +598,8 @@ try {
   check(
     "Copy to my boards opens a writable copy",
     await page.evaluate(
-      `location.search === "?d=deps" && !document.getElementById("bDrag").disabled`,
-    ) && Deno.statSync(`${dir}/boards/deps/diagram-state.json`).isFile,
+      `location.search === "?d=basic" && !document.getElementById("bDrag").disabled`,
+    ) && Deno.statSync(`${dir}/boards/basic/diagram-state.json`).isFile,
   );
 } finally {
   await browser.close();
