@@ -22,7 +22,7 @@ Currently pinned: **0.5.6** (`deno.json`). Latest release: **0.5.8**.
 
 | # | Fault | Workaround | Canary | Reported | Last checked |
 |---|---|---|---|---|---|
-| 1 | Glyph drop — `fillText` silently draws nothing | **ours, fixed 2026-10-13**: font buffers are now kept alive | — | not upstream's | 0.5.6, 2026-10-13 |
+| 1 | Glyph drop — `fillText` silently draws nothing | **ours, fixed 2026-10-13**, and across isolates 2026-10-21: font bytes live in native memory | — | not upstream's | 0.5.6, 2026-10-21 |
 | 2 | `shadowBlur` displaced under `ctx.scale(DPR)` | shadows off in the PNG renderer | yes, automated | no | 0.5.8, 2026-07-31 |
 | 3 | `getImageData` doesn't reflect what was drawn | decode the encoded PNG instead | no | no | 0.5.8, 2026-07-30 |
 | 4 | SIGSEGV on linux-x64 the moment it rasterizes | **ours, fixed 2026-10-13**: same cause as 1 | — | not upstream's | 0.5.6, 2026-10-13 |
@@ -36,7 +36,9 @@ passed `Fonts.register` a `Uint8Array` from `Deno.readFileSync` and kept no
 reference to it. The binding hands Skia a pointer into that array without
 copying, and Skia reads glyph data from it for the rest of the process, so
 once the garbage collector reclaimed the array Skia was reading freed memory.
-The array now lives in a module-level list. With that one change the canary's
+The array now lives in a module-level list.
+
+**Second half, found 2026-10-21 (#34).** A module-level list lives only as long as its isolate, and Skia's registry belongs to the process. The first registration of a family also wins over any later one. So when a Worker (untangle) or an earlier `deno test` file registered first and then ended, every later render in the process drew from freed memory. The labels went blank in about half of full-suite runs, and the run passed when the file ran alone. The bytes are now copied into `malloc`'d memory that is never freed, once per process; `tests/font-lifetime.test.js` holds it. With that one change the canary's
 25 unaliased renders all drew (about half did before), and a dense board
 rendered in 12 separate processes gave 12 identical PNGs (4 variants in 6
 before, with letters missing and bold set in regular).

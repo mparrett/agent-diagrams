@@ -4,7 +4,6 @@ Open work, roughly in priority order within each section. Remove an item when it
 
 ## Next
 
-- **Intermittent raster test failure.** `raster-parity.test.js`, "the checker tells drawn text from blank space", fails in about half of full-suite runs and passes alone. The font-buffer fix holds under the GC test; the cause is unknown and may mean text can drop in long-running processes. Blocks a clean PR.
 
 ## From the layout study
 
@@ -14,7 +13,6 @@ Rebuilding five D2 diagrams headless (layout study) left these open:
 - **Title block.** No title size, rule, centering or subtitle; the subtitle goes in the footer.
 - **Legend edge entries.** The legend lists colors only; dashed and colored edge styles can't be keyed.
 - **Page shape** for callout cards; a note has no card behind it.
-- **The second raster flake.** "the shipped example board keeps its labels" also failed once in a full-suite run and passes alone, like the item under Next.
 
 ## Routing and groups
 
