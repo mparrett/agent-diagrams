@@ -154,24 +154,63 @@ export function paletteFromState(state) {
 // native Skia shapes proportional fonts correctly, so sans now measures the same
 // here as in the browser. Falls back silently if assets are gone.
 let _fontsLoaded = false;
-// Fonts.register hands Skia a pointer into the Uint8Array without copying it,
-// and Skia reads glyphs from that memory for the life of the process. Dropping
-// the array let the garbage collector free it under Skia, so a render drew
-// whatever then occupied it: missing letters, symbols from a fallback face,
-// bold set in regular, a different PNG on every run. This array is the only
-// thing keeping the font data alive. Never let it go out of scope.
+// Fonts.register hands Skia a pointer into the bytes without copying them,
+// Skia reads glyphs from that memory for the rest of the process, and the first
+// registration of a family wins over any later one. So the bytes have to
+// outlive every isolate, not just this one: when a Worker (untangle) or an
+// earlier test file registered first and then ended, its memory was freed and
+// every later render drew from it, dropping glyphs at random (#34). They are
+// copied into native memory that is never freed, once per process.
+const LIBC = {
+  darwin: "libSystem.B.dylib",
+  linux: "libc.so.6",
+  windows: "msvcrt.dll",
+};
+let _libc = null;
+// Without a libc to allocate from, the bytes stay in this list: safe for this
+// isolate's lifetime, as before #34, rather than no fonts at all.
 const _fontBuffers = [];
+function nativeCopy(data) {
+  if (_libc !== false) {
+    try {
+      _libc ??= Deno.dlopen(LIBC[Deno.build.os] ?? "libc.so.6", {
+        malloc: { parameters: ["usize"], result: "pointer" },
+      });
+      const ptr = _libc.symbols.malloc(BigInt(data.length));
+      if (!ptr) throw new Error("malloc failed");
+      const out = new Uint8Array(
+        Deno.UnsafePointerView.getArrayBuffer(ptr, data.length),
+      );
+      out.set(data);
+      return out;
+    } catch (e) {
+      _libc = false; // warn once, and stop trying
+      console.warn(
+        "font bytes kept in JS memory; a Worker that renders may break later renders:",
+        e instanceof Error ? e.message : e,
+      );
+    }
+  }
+  _fontBuffers.push(data);
+  return data;
+}
 function ensureFonts() {
   if (_fontsLoaded) return;
   _fontsLoaded = true; // attempt once per process either way
+  // A family another isolate in this process registered already, from memory
+  // that outlives it, is skipped: registering again would only lose to it.
+  const have = new Set(Fonts.families);
   try {
     const dir = join(dirname(fromFileUrl(import.meta.url)), "assets", "fonts");
+    const bytes = new Map();
     // Skia picks the weight from each file's own metadata, so regular + bold
     // register under one family alias.
     const reg = (file, family) => {
-      const data = Deno.readFileSync(join(dir, file));
-      _fontBuffers.push(data);
-      Fonts.register(data, family);
+      if (have.has(family)) return;
+      if (!bytes.has(file)) {
+        bytes.set(file, nativeCopy(Deno.readFileSync(join(dir, file))));
+      }
+      Fonts.register(bytes.get(file), family);
     };
     reg("DejaVuSansMono.ttf", "DiagramMono");
     reg("DejaVuSansMono-Bold.ttf", "DiagramMono");
