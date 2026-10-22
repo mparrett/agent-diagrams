@@ -578,6 +578,19 @@ try {
   await drag("a", 90, 0);
   check("Select edits again after View", read().rev > viewed.rev);
 
+  // Fit takes in what is drawn past the boxes: adv-bands' divider labels
+  // start 5px into the board, well left of its first box.
+  await page.goto(
+    `http://127.0.0.1:${port}/whiteboard-live.html?test=1&d=examples/adv-bands`,
+    { waitUntil: "networkidle2" },
+  );
+  await wait(1200);
+  await page.evaluate(`document.getElementById("zoomFit").click()`);
+  check(
+    "Fit keeps the divider labels in view",
+    await page.evaluate(`window.__wb.getView().panX <= 5`),
+  );
+
   // A repo board opens locked in View, without that becoming this browser's
   // tool, and copies out into the boards directory to edit.
   await page.goto(
