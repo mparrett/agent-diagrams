@@ -1,7 +1,7 @@
 // Draws a line of DiagramMono and prints how many pixels it inked. With
 // "worker", a Worker renders first, so it registers the fonts, and is
 // terminated before this isolate draws. See tests/font-lifetime.test.js.
-import { createCanvas } from "@gfx/canvas";
+import { createCanvas, Fonts } from "@gfx/canvas";
 import { Diagram } from "../diagram-api.js";
 import { decodePng } from "../raster-check.js";
 
@@ -10,10 +10,19 @@ if (Deno.args[0] === "worker") {
     new URL("./font-lifetime-worker.js", import.meta.url),
     { type: "module" },
   );
-  await new Promise((r) => {
-    w.onmessage = r;
+  await new Promise((resolve, reject) => {
+    w.onmessage = resolve;
+    w.onerror = (e) => {
+      e.preventDefault();
+      reject(new Error(String(e.message ?? e)));
+    };
     w.postMessage("go");
   });
+  // The Worker registered the fonts, so this isolate's own ensureFonts will
+  // find them; otherwise this probe would not test anything.
+  if (!Fonts.families.includes("DiagramMono")) {
+    throw new Error("the Worker did not register DiagramMono");
+  }
   w.terminate();
   await new Promise((r) => setTimeout(r, 300));
   // Reuse what the Worker freed, so a dangling font reads junk.
