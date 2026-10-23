@@ -382,6 +382,12 @@ function render() {
     PAL,
     diagramState.footer,
   );
+  drawnBounds = unionRects([
+    ...frames.map((f) => f.rect),
+    ...groupLabels,
+    ...shownDividers().map((d) => dividerLabelRect(ctx, d, PAL)),
+    ...labelRects.map((l) => l.rect),
+  ]);
   if (showConn || connectMode) drawConnPoints(ctx, connMap, CELL); // Connect mode reveals attach slots
   drawFailedRoutes(ctx, routes, BOXES, CELL);
   drawHoverOverlay(); // before connect overlay → source ring wins
@@ -5140,26 +5146,26 @@ function contentExtent() {
   if (!isFinite(x0)) return null;
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
-// contentExtent plus what is drawn past the boxes: group frames and their
-// labels, divider label chips (which sit at the board's left edge) and wire
-// labels. Fit uses this so none of them is clipped.
+// What render() drew past the boxes: group frames and their labels, divider
+// label chips (which sit at the board's left edge) and wire labels. Fit takes
+// these in so none of them is clipped. The legend is left out: it sits in the
+// board's corner, so on a board much larger than its content, fitting it
+// would fit the board rather than the diagram.
+let drawnBounds = null;
 function drawnExtent() {
   const e = contentExtent();
-  if (!e) return null;
-  let x0 = e.x, y0 = e.y, x1 = e.x + e.w, y1 = e.y + e.h;
-  const add = (r) => {
-    if (!r) return;
+  return e && unionRects([e, drawnBounds]);
+}
+function unionRects(rects) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rects) {
+    if (!r) continue;
     x0 = Math.min(x0, r.x);
     y0 = Math.min(y0, r.y);
     x1 = Math.max(x1, r.x + r.w);
     y1 = Math.max(y1, r.y + r.h);
-  };
-  const frames = groupFrames(diagramState?.groups, BOXES, PAL, diagramState);
-  for (const f of frames) add(f.rect);
-  for (const l of groupLabelRects(ctx, frames, PAL)) add(l);
-  for (const d of shownDividers()) add(dividerLabelRect(ctx, d, PAL));
-  for (const lr of labelRects) add(lr.rect);
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+  return isFinite(x0) ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 }
 function updateZoomLabel() {
   zoomPctEl.textContent = Math.round(view.zoom * 100) + "%";
@@ -5263,7 +5269,8 @@ async function init() {
   // Compute layout from JSON
   BOXES = computeLayout(ctx, diagramState, diagramState.width || 1500);
   fitGridToBoxes();
-  if (!restoreView()) zoomToFit(); // restore last view, else fit the whole board
+  const restored = restoreView();
+  if (!restored) zoomToFit(); // restore last view, else fit the whole board
   lastFitW = VIEW_W; // baseline for resize/rotate refit
   snapshotBaseline();
   updateCursor();
@@ -5271,6 +5278,11 @@ async function init() {
   rebuild();
   stageMsg.hidden = true;
   render();
+  // Fit again now that render() has placed the wire labels.
+  if (!restored) {
+    zoomToFit();
+    render();
+  }
 
   const failCount = routes.filter((r) => r.path === null).length;
   setStatus(

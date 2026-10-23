@@ -585,10 +585,16 @@ try {
     { waitUntil: "networkidle2" },
   );
   await wait(1200);
+  const fitsDrawn = `window.__wb.getView().panX <= 5`;
+  check(
+    "opening a board fits its divider labels",
+    await page.evaluate(fitsDrawn),
+  );
+  await page.evaluate(`window.__wb.pan(300, 200)`);
   await page.evaluate(`document.getElementById("zoomFit").click()`);
   check(
     "Fit keeps the divider labels in view",
-    await page.evaluate(`window.__wb.getView().panX <= 5`),
+    await page.evaluate(fitsDrawn),
   );
 
   // A repo board opens locked in View, without that becoming this browser's
