@@ -1565,6 +1565,7 @@ export function computeLayout(ctx, state, canvasW) {
     // not.
     const rowIdxs = [...new Set(nodes.map((n) => n.row))].sort((a, b) => a - b);
     const rowYEff = new Map();
+    const rowH = new Map();
     let rowCursor = top + offY, prevIdx = null;
     for (const [i, r] of rowIdxs.entries()) {
       // Skipped row indices are an authoring hint for extra air — honor them.
@@ -1580,6 +1581,7 @@ export function computeLayout(ctx, state, canvasW) {
       for (const n of nodes) {
         if (n.row === r) maxH = Math.max(maxH, pixDims.get(n.id).h);
       }
+      rowH.set(r, maxH);
       // Air from skipped row indices (added at the next iteration) counts
       // toward the frames' clearance, so a board that already skips a row
       // between groups keeps its spacing.
@@ -1756,6 +1758,17 @@ export function computeLayout(ctx, state, canvasW) {
         cursor = cursor === null ? col + b.w : Math.max(cursor, col + b.w);
       }
     }
+    // The authored rows and columns as pixel lanes, for the editor's Lanes
+    // overlay: where a box with that row/col lands before the passes above
+    // nudge it, so a box drawn off its lane shows where it was knocked.
+    gridBoxes.lanes = {
+      rows: rowIdxs.map((r) => ({ idx: r, y: rowYEff.get(r), h: rowH.get(r) })),
+      cols: colIdxs.map((c) => ({
+        idx: c,
+        x: Math.max(margin, colX.get(c)) + offX,
+        w: colW.get(c),
+      })),
+    };
     return gridBoxes;
   }
 
@@ -1961,6 +1974,7 @@ export function computeLayout(ctx, state, canvasW) {
   // and label.
   gridBoxes.groupBoxes = groupBoxes;
   gridBoxes.bandGaps = gaps;
+  gridBoxes.lanes = placed.lanes;
   gridBoxes.dividers = resolveDividers(state, gaps);
   return gridBoxes;
 }
@@ -2861,6 +2875,41 @@ export function drawGridLines(ctx, cols, rows, cell, pal = DEFAULT_PALETTE) {
     ctx.lineTo(cols * cell, r * cell);
     ctx.stroke();
   }
+}
+
+// The authored row/col lanes (computeLayout's `lanes`): a faint dashed edge
+// either side of each. Labels sit just outside the first row and column, not
+// at the board's edge, which the editor's fit-to-content view can scroll off.
+export function drawLanes(ctx, lanes, W, H, pal = DEFAULT_PALETTE) {
+  if (!lanes) return;
+  const labelX = Math.max(4, (lanes.cols[0]?.x ?? 28) - 24);
+  const labelY = Math.max(4, (lanes.rows[0]?.y ?? 18) - 14);
+  ctx.save();
+  ctx.strokeStyle = pal.textDim;
+  ctx.fillStyle = pal.textDim;
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.font = "10px monospace";
+  const line = (x0, y0, x1, y1) => {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  };
+  ctx.textBaseline = "bottom";
+  for (const r of lanes.rows) {
+    line(0, r.y, W, r.y);
+    line(0, r.y + r.h, W, r.y + r.h);
+    ctx.fillText(`r${r.idx}`, labelX, r.y - 2);
+  }
+  ctx.textBaseline = "top";
+  for (const c of lanes.cols) {
+    line(c.x, 0, c.x, H);
+    line(c.x + c.w, 0, c.x + c.w, H);
+    ctx.fillText(`c${c.idx}`, c.x + 3, labelY);
+  }
+  ctx.restore();
 }
 
 export function drawHeatmap(ctx, grid, cell, nearCost) {

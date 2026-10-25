@@ -106,7 +106,7 @@ The sidebar runs top to bottom in the order you work on a board:
 - **Frame** (the exported area): **Fit to content**, **Fit to view**, **Add margin**. Dragging a frame handle resizes one edge; double-clicking a handle extends that edge to the view.
 - **Export:** **Copy layout JSON** copies the full state, including the authoritative `layout` map, for paste-back into the file; **Open PNG viewer** opens the rendered PNG.
 
-The canvas toolbar (top right) has zoom, **fit**, and **center**, and the view overlays: **Grid**, **Heat** (routing cost, with a legend), **Ports** (connection points), and **Flow** (the flow field as arrows). What the last action did shows in a pill at the bottom left.
+The canvas toolbar (top right) has zoom, **fit**, and **center**, and the view overlays: **Grid**, **Lanes** (each box's `row`/`col` lane, labelled `r0…`/`c0…`), **Heat** (routing cost, with a legend), **Ports** (connection points), and **Flow** (the flow field as arrows). What the last action did shows in a pill at the bottom left.
 
 **As an agent (file or CLI, while the server runs):**
 

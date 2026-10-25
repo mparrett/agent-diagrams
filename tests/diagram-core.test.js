@@ -209,6 +209,39 @@ Deno.test("boardExtentForContent applies pixel-content margins", () => {
   });
 });
 
+Deno.test("computeLayout reports the authored row/col lanes the boxes sit in", () => {
+  const ctx = measureContext();
+  const boxes = computeLayout(ctx, {
+    nodes: [
+      { id: "a", label: "A", color: "blue", row: 0, col: 0 },
+      { id: "b", label: "A much wider box", color: "blue", row: 0, col: 2 },
+      { id: "c", label: "C", color: "blue", row: 1, col: 2 },
+      { id: "p", label: "Pinned", color: "blue", row: 3, col: 5 },
+    ],
+    edges: [],
+    layout: { p: { x: 40, y: 400 } },
+  }, 900);
+  const { rows, cols } = boxes.lanes;
+  // A pinned box keeps its row's band, but sets no column width.
+  assertEquals(rows.map((r) => r.idx), [0, 1, 3]);
+  assertEquals(cols.map((c) => c.idx), [0, 2]);
+  for (const id of ["a", "b", "c"]) {
+    const b = boxes.find((x) => x.id === id);
+    const node = { a: [0, 0], b: [0, 2], c: [1, 2] }[id];
+    const row = rows.find((r) => r.idx === node[0]);
+    const col = cols.find((c) => c.idx === node[1]);
+    assert(Math.abs(b.row * CELL - row.y) <= CELL / 2, `${id} off its row`);
+    assert(
+      b.col * CELL >= col.x - CELL &&
+        b.col * CELL + b.pixW <= col.x + col.w + CELL,
+      `${id} outside its column`,
+    );
+  }
+  // Column 2 is as wide as its widest box.
+  const wide = boxes.find((x) => x.id === "b");
+  assertEquals(cols[1].w, wide.pixW);
+});
+
 Deno.test("computeLayout floors sparse boxes to the card minimum, lets content grow past it", () => {
   const ctx = measureContext();
   const boxes = computeLayout(ctx, {
