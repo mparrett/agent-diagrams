@@ -39,6 +39,7 @@ import {
   drawGroupLabels,
   drawGroups,
   drawHeatmap,
+  drawLanes,
   drawLegend,
   drawNotes,
   drawRoutes,
@@ -105,6 +106,7 @@ let CSS_W, CSS_H;
 
 let costs = { ...DEFAULT_COSTS };
 let showGrid = false, showHeat = false, showConn = false, showFlow = false;
+let showLanes = false;
 let dragMode = true, drag = null, didDrag = false;
 let viewMode = false; // View tool: every drag pans and nothing is saved
 let readOnlyBoard = false; // the server refuses writes; View is the only tool
@@ -345,6 +347,7 @@ function render() {
   ctx.fillRect(0, 0, CSS_W, CSS_H); // the board (export frame)
 
   if (showGrid) drawGridLines(ctx, COLS, ROWS, CELL, PAL);
+  if (showLanes) drawLanes(ctx, BOXES.lanes, CSS_W, CSS_H, PAL);
   if (showHeat && grid) drawHeatmap(ctx, grid, CELL, costs.near);
   if (showFlow && grid) {
     drawFlowField(ctx, diagramState?.flow, grid.cols, grid.rows, CELL);
@@ -2259,6 +2262,11 @@ function setStatus(msg) {
 document.getElementById("bGrid").onclick = function () {
   showGrid = !showGrid;
   this.classList.toggle("on", showGrid);
+  render();
+};
+document.getElementById("bLanes").onclick = function () {
+  showLanes = !showLanes;
+  this.classList.toggle("on", showLanes);
   render();
 };
 document.getElementById("bHeat").onclick = function () {
