@@ -1432,6 +1432,7 @@ export function computeLayout(ctx, state, canvasW) {
       top = 0,
       rowGap = ROW_GAP_PX,
       bands = { rows: [], cols: [] },
+      lanes = false,
     } = opts;
     // A gap between authored rows (or columns) a and b holds a band edge.
     const bandBetween = (afters, a, b) => afters.some((k) => a <= k && k < b);
@@ -1760,15 +1761,22 @@ export function computeLayout(ctx, state, canvasW) {
     }
     // The authored rows and columns as pixel lanes, for the editor's Lanes
     // overlay: where a box with that row/col lands before the passes above
-    // nudge it, so a box drawn off its lane shows where it was knocked.
-    gridBoxes.lanes = {
-      rows: rowIdxs.map((r) => ({ idx: r, y: rowYEff.get(r), h: rowH.get(r) })),
-      cols: colIdxs.map((c) => ({
-        idx: c,
-        x: Math.max(margin, colX.get(c)) + offX,
-        w: colW.get(c),
-      })),
-    };
+    // nudge it, so a box drawn off its lane shows where it was knocked. Board
+    // level only: an inner group's lanes are local to it.
+    if (lanes) {
+      gridBoxes.lanes = {
+        rows: rowIdxs.map((r) => ({
+          idx: r,
+          y: rowYEff.get(r),
+          h: rowH.get(r),
+        })),
+        cols: colIdxs.map((c) => ({
+          idx: c,
+          x: Math.max(margin, colX.get(c)) + offX,
+          w: colW.get(c),
+        })),
+      };
+    }
     return gridBoxes;
   }
 
@@ -1931,6 +1939,7 @@ export function computeLayout(ctx, state, canvasW) {
     margin: LAYOUT_MARGIN,
     top: 48,
     rowGap: boardRowGap,
+    lanes: true,
     bands: {
       rows: bandDividers.filter((d) => d.orient === "h").map((d) => d.after),
       cols: bandDividers.filter((d) => d.orient === "v").map((d) => d.after),
@@ -2905,6 +2914,9 @@ export function drawLanes(ctx, lanes, W, H, pal = DEFAULT_PALETTE) {
   }
   ctx.textBaseline = "top";
   for (const c of lanes.cols) {
+    // A column only spanning boxes cross has no width of its own; one line
+    // labelled as a column would read as a real lane.
+    if (!c.w) continue;
     line(c.x, 0, c.x, H);
     line(c.x + c.w, 0, c.x + c.w, H);
     ctx.fillText(`c${c.idx}`, c.x + 3, labelY);
