@@ -979,6 +979,154 @@ export class Diagram {
     return had;
   }
 
+  // ─── Grid insertion and growth ────────────────────────────
+  // The items laid out on one grid: an inner group's direct members, or the
+  // board's top level (nodes and inner groups no inner group lists). `within`
+  // is the inner group's id, or null for the board.
+  _gridItems(within) {
+    const groups = (this._state.groups || []).filter((g) =>
+      g.layout === "inner"
+    );
+    const byId = new Map([
+      ...this.nodes.map((n) => [n.id, n]),
+      ...groups.map((g) => [g.id, g]),
+    ]);
+    if (within != null) {
+      const g = groups.find((x) => x.id === within);
+      if (!g) throw new Error(`No inner group "${within}"`);
+      return g.nodes.map((id) => byId.get(id)).filter(Boolean);
+    }
+    const listed = new Set(groups.flatMap((g) => g.nodes));
+    return [...byId.values()].filter((it) => !listed.has(it.id));
+  }
+
+  // Whether an item on `within`'s grid sits in cell (row, col), counting a
+  // spanning item in every column it covers.
+  _cellTaken(within, row, col, except) {
+    return this._gridItems(within).some((it) => {
+      if (it.id === except || it.row !== row) return false;
+      const span = Number.isInteger(it.span) && it.span > 0 ? it.span : 1;
+      return it.col <= col && col < it.col + span;
+    });
+  }
+
+  // Make room for a row (axis "row") or column ("col") at index `at`: every
+  // item on the grid at or past it moves one along. On the board, `rowY`
+  // entries and band dividers past it move too, so bands keep their boxes.
+  insertLine(axis, at, within = null) {
+    if (axis !== "row" && axis !== "col") {
+      throw new Error(`axis must be "row" or "col", got "${axis}"`);
+    }
+    if (!Number.isInteger(at)) {
+      throw new Error(`insert ${axis} needs an integer index, got "${at}"`);
+    }
+    for (const it of this._gridItems(within)) {
+      if (it[axis] >= at) it[axis] += 1;
+    }
+    if (within != null) return;
+    if (axis === "row" && this._state.rowY) {
+      const shifted = {};
+      for (const [k, y] of Object.entries(this._state.rowY)) {
+        shifted[Number(k) >= at ? Number(k) + 1 : k] = y;
+      }
+      this._state.rowY = shifted;
+    }
+    const orient = axis === "row" ? "h" : "v";
+    for (const d of this._state.dividers || []) {
+      if (d.orient === orient && Number.isInteger(d.after) && d.after >= at) {
+        d.after += 1;
+      }
+    }
+  }
+
+  // Put item `id` in cell (row, col) of its own grid and release any pin, so
+  // it lays out from there. A taken cell gets a fresh column (or row, with
+  // axis "row") inserted for it, pushing the occupant along.
+  placeInCell(id, row, col, { axis = "col" } = {}) {
+    if (!Number.isInteger(row) || !Number.isInteger(col)) {
+      throw new Error(`cell needs integer row and col, got ${row}, ${col}`);
+    }
+    const within = this.groupParent(id)?.id ?? null;
+    const item = this._gridItems(within).find((it) => it.id === id);
+    if (!item) throw new Error(`No node or group "${id}"`);
+    if (this._cellTaken(within, row, col, id)) {
+      this.insertLine(axis, axis === "row" ? row : col, within);
+    }
+    item.row = row;
+    item.col = col;
+    this.freeNode(id);
+  }
+
+  // Add nodes beside `from`, one step n, e, s or w on its grid, each wired
+  // from the one it grows out of. Several ids fan out side by side from
+  // `from`; with `chain` each grows from the one before. A taken cell is
+  // made free by inserting a row or column there, so nothing already placed
+  // ends up sharing a cell. New nodes join `from`'s inner group, if any, and
+  // take its colour unless `color` is given. Returns [{id, row, col}].
+  grow(from, dir, ids, opts = {}) {
+    const STEP = { n: [-1, 0], s: [1, 0], e: [0, 1], w: [0, -1] };
+    if (!STEP[dir]) throw new Error(`dir must be n, e, s or w, got "${dir}"`);
+    const list = Array.isArray(ids) ? ids : [ids];
+    if (!list.length) throw new Error("grow needs at least one id");
+    // Checked up front: a later failure would leave earlier inserts and
+    // nodes behind.
+    const taken = new Set([
+      ...this.nodes.map((n) => n.id),
+      ...(this._state.groups || []).map((g) => g.id),
+    ]);
+    for (const id of list) {
+      if (!id || taken.has(id)) throw new Error(`id "${id}" is taken`);
+      taken.add(id);
+    }
+    const root = this.nodes.find((n) => n.id === from);
+    if (!root) throw new Error(`Node "${from}" not found`);
+    const style = opts.style ?? "solid";
+    this._validateStyle(style);
+    const color = opts.color ?? root.color;
+    this._validateColor(color);
+    const parent = this.groupParent(from);
+    const within = parent?.id ?? null;
+    const [dr, dc] = STEP[dir];
+    // Fanned-out siblings line up across the growth direction.
+    const [sr, sc] = dr ? [0, 1] : [1, 0];
+    // Live nodes, not copies: a later insert can move ones already placed.
+    const placed = [];
+    for (const [i, id] of list.entries()) {
+      const anchor = opts.chain && i > 0 ? placed[i - 1] : root;
+      let row, col;
+      if (i === 0 || opts.chain) {
+        row = anchor.row + dr;
+        col = anchor.col + dc;
+      } else {
+        row = placed[i - 1].row + sr;
+        col = placed[i - 1].col + sc;
+      }
+      const axis = (i === 0 || opts.chain ? dr : sr) ? "row" : "col";
+      const idx = axis === "row" ? row : col;
+      if (idx < 0 || this._cellTaken(within, row, col)) {
+        // Growing n or w inserts before the anchor, which moves it (and the
+        // cell) along with everything past it.
+        const back = (i === 0 || opts.chain) && (dr < 0 || dc < 0);
+        const at = back ? idx + 1 : idx;
+        this.insertLine(axis, at, within);
+        if (back) {
+          if (axis === "row") row += 1;
+          else col += 1;
+        }
+      }
+      this.addNode(id, {
+        label: list.length === 1 && opts.label ? opts.label : id,
+        color,
+        row,
+        col,
+      });
+      if (parent) parent.nodes.push(id);
+      this.addEdge(anchor.id, id, style);
+      placed.push(this.nodes.find((n) => n.id === id));
+    }
+    return placed.map(({ id, row, col }) => ({ id, row, col }));
+  }
+
   // ─── Edge operations ──────────────────────────────────────
   // Stable unique edge id. `from~to` for the first edge of a pair; `from~to~2`,
   // `~3`… for parallel edges between the same pair. Decoupled from from/to so it

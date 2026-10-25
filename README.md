@@ -292,6 +292,11 @@ diagram-cli.js [--state <path> | --board <name>] <command> [args...]
   remove-node <id>           (also removes connected edges)
   remove-edge <from> <to>    (or remove-edge --id=ID to target one of several parallel edges)
   move-node <id> <row> <col>
+  grow <from> <n|e|s|w> <id>[,<id>...] [--label=] [--color=] [--style=] [--chain]
+                             Add boxes one cell from <from>, wired from it: several ids fan out side
+                             by side, --chain makes a line. A taken cell gets a row or column inserted
+  insert-row <at> / insert-col <at> [--in=<group>]   Shift rows (columns) at or past <at> along one
+  place <id> <row> <col>     Put a box in a cell and release its pin; an occupant moves one column along
   free-node <id>             Drop the node's layout override + unpin → back to auto-layout
                              (a frozen override otherwise shadows row/col, so move-node no-ops)
   update-node <id> [--label=] [--color=] [--row=] [--col=] [--details=a,b,c] [--minW=px|0] [--w=cells|0] [--h=cells|0]
@@ -401,9 +406,9 @@ d.render();                               // writes diagram.png next to the stat
 
 - **drag boxes** to position them (auto-saves, debounced, syncs live),
 - **add a node** (`+ Node`) and **edit one** (double-click it) — label, color, details — via a small popover (changes apply live; Reset reverts them, Delete removes the node, Close finishes),
-- **right-click for a context menu** — on a box: *Connect from here*, *Edit…*, color swatches, *Connector layout* (per-side spread/collapse), *Pin/Unpin*, *Delete*; on an edge (its **label** counts too): *Edit…*, *Reverse direction*, *Delete*,
+- **right-click for a context menu** — on a box: *Connect from here*, *Edit…*, *Grow ▸* (a new box one cell up, right, down or left, wired from this one; a taken cell gets a row or column inserted), color swatches, *Connector layout* (per-side spread/collapse), *Pin/Unpin*, *Delete*; on an edge (its **label** counts too): *Edit…*, *Reverse direction*, *Delete*,
 - **hover affordances** — the box/edge under the cursor is highlighted and the cursor telegraphs the target (grab / pointer / crosshair),
-- **pin manually-placed nodes** — dragging a box pins it (corner marker); *Unpin* (box menu) frees one node back to auto-layout; **Auto layout** clears all pins and re-solves the whole board, while **Re-flow unpinned** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Re-flow unpinned** releases everything but the pins,
+- **pin manually-placed nodes** — dragging a box pins it (corner marker), except with **Lanes** showing, when a dropped box goes into the row/col lane under it and stays unpinned; *Unpin* (box menu) frees one node back to auto-layout; **Auto layout** clears all pins and re-solves the whole board, while **Re-flow unpinned** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Re-flow unpinned** releases everything but the pins,
 - **switch boards** via the board picker at the top of the sidebar (multi-whiteboard; see above),
 - pick a **color scheme**, **line up** or **spread** boxes, **reset** to auto layout, and live-tune the four A\* routing knobs (*Routing parameters*, under Wires in the sidebar).
 

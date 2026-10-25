@@ -455,6 +455,9 @@ const WRITE_OPS = {
           col: n.col,
         });
       } else if (b.action === "update") dd.updateNode(b.id, b.fields || {});
+      else if (b.action === "grow") {
+        return dd.grow(b.from, b.dir, b.ids, b.opts || {}); // → [{id, row, col}]
+      } else if (b.action === "place") dd.placeInCell(b.id, b.row, b.col);
       else if (b.action === "remove") {
         dd.removeNode(b.id, {
           keepEdges: !!b.keepEdges,

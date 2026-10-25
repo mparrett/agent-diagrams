@@ -1992,3 +1992,157 @@ Deno.test("divider bands: an even-width gap still leaves wires a lane off the li
     }
     assert(along === 0, `${along} steps along the line at ${at}`);
   }));
+
+// A plus-shaped board: hub in the middle of a 3x3 grid, one box each side.
+function plusBoard(dir, extra = {}) {
+  const path = `${dir}/diagram-state.json`;
+  const node = (id, row, col) => ({ id, label: id, color: "blue", row, col });
+  writeState(path, {
+    nodes: [
+      node("hub", 1, 1),
+      node("up", 0, 1),
+      node("left", 1, 0),
+      node("right", 1, 2),
+      node("down", 2, 1),
+    ],
+    ...extra,
+  });
+  return path;
+}
+const cells = (d) =>
+  Object.fromEntries(d.nodes.map((n) => [n.id, [n.row, n.col]]));
+
+Deno.test("grow into a free cell places the box and wires it", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    const out = d.grow("right", "e", "far", { label: "Far", color: "green" });
+    assert(json(out) === '[{"id":"far","row":1,"col":3}]', json(out));
+    const far = d.getNode("far");
+    assert(far.label === "Far" && far.color === "green", json(far));
+    assert(
+      d.edges.some((e) => e.from === "right" && e.to === "far"),
+      json(d.edges),
+    );
+    // Nothing else moved.
+    assert(cells(d).hub.join() === "1,1" && cells(d).right.join() === "1,2");
+  }));
+
+Deno.test("grow into a taken cell pushes the occupant along", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    d.grow("hub", "s", "mid");
+    const c = cells(d);
+    // A row was inserted at 2: mid takes it, down moves to row 3.
+    assert(c.mid.join() === "2,1" && c.down.join() === "3,1", json(c));
+    assert(c.hub.join() === "1,1" && c.up.join() === "0,1", json(c));
+    assert(d.getNode("mid").color === "blue", "colour from the source");
+  }));
+
+Deno.test("grow north or west inserts before the source and moves it", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    d.grow("up", "n", "top"); // row -1 does not exist: insert at row 0
+    let c = cells(d);
+    assert(c.top.join() === "0,1" && c.up.join() === "1,1", json(c));
+    assert(c.hub.join() === "2,1", json(c));
+    d.grow("hub", "w", "west"); // left is in the way: insert a column at 1
+    c = cells(d);
+    assert(c.west.join() === "2,1" && c.hub.join() === "2,2", json(c));
+    assert(c.left.join() === "2,0", json(c));
+  }));
+
+Deno.test("grow fans several ids out side by side, or chains them", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    d.grow("down", "s", ["a", "b", "c"]);
+    let c = cells(d);
+    assert(
+      c.a.join() === "3,1" && c.b.join() === "3,2" && c.c.join() === "3,3",
+      json(c),
+    );
+    assert(
+      ["a", "b", "c"].every((id) =>
+        d.edges.some((e) => e.from === "down" && e.to === id)
+      ),
+      json(d.edges),
+    );
+    d.grow("right", "e", ["p", "q"], { chain: true });
+    c = cells(d);
+    assert(c.p.join() === "1,3" && c.q.join() === "1,4", json(c));
+    assert(d.edges.some((e) => e.from === "p" && e.to === "q"), "chained");
+  }));
+
+Deno.test("a fan-out keeps earlier siblings when a later one pushes", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    // Growing up from left lands on (0,0), then (0,1) is up's cell: a column
+    // is inserted at 1, which moves hub, up, right and down along with it.
+    d.grow("left", "n", ["x", "y"]);
+    const c = cells(d);
+    assert(c.x.join() === "0,0" && c.y.join() === "0,1", json(c));
+    assert(c.up.join() === "0,2" && c.hub.join() === "1,2", json(c));
+  }));
+
+Deno.test("grow rejects a taken id before changing anything", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir));
+    const before = json(d.nodes);
+    assertThrowsWith(() => d.grow("hub", "s", ["new", "up"]), "taken", "grow");
+    assertThrowsWith(() => d.grow("hub", "x", "z"), "n, e, s or w", "dir");
+    assert(json(d.nodes) === before, "unchanged");
+  }));
+
+Deno.test("insert-row moves rowY and band dividers past it", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir, {
+      rowY: { "0": 40, "2": 400 },
+      dividers: [
+        { id: "a", orient: "h", at: 0, after: 0, band: true },
+        { id: "b", orient: "h", at: 0, after: 1, band: true },
+      ],
+    }));
+    d.insertLine("row", 1);
+    assert(json(d._state.rowY) === '{"0":40,"3":400}', json(d._state.rowY));
+    const after = d._state.dividers.map((x) => x.after).join();
+    assert(after === "0,2", after);
+    assert(cells(d).hub.join() === "2,1" && cells(d).up.join() === "0,1");
+  }));
+
+Deno.test("grow inside an inner group stays on the group's grid", () =>
+  withTempDir((dir) => {
+    const path = plusBoard(dir);
+    const s = JSON.parse(Deno.readTextFileSync(path));
+    s.nodes.push(
+      { id: "m1", label: "m1", color: "blue", row: 0, col: 0 },
+      { id: "m2", label: "m2", color: "blue", row: 1, col: 0 },
+    );
+    s.groups = [{
+      id: "g",
+      label: "G",
+      layout: "inner",
+      nodes: ["m1", "m2"],
+      row: 1,
+      col: 3,
+    }];
+    Deno.writeTextFileSync(path, JSON.stringify(s));
+    const d = Diagram.load(path);
+    d.grow("m1", "s", "m3");
+    const c = cells(d);
+    assert(c.m3.join() === "1,0" && c.m2.join() === "2,0", json(c));
+    // The board's own boxes keep their rows.
+    assert(c.hub.join() === "1,1" && c.down.join() === "2,1", json(c));
+    assert(d._state.groups[0].nodes.includes("m3"), "joined the group");
+  }));
+
+Deno.test("placeInCell frees the pin and pushes an occupant", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir, {
+      layout: { down: { x: 600, y: 600 } },
+      pinned: ["down"],
+    }));
+    d.placeInCell("down", 1, 2);
+    const c = cells(d);
+    assert(c.down.join() === "1,2" && c.right.join() === "1,3", json(c));
+    assert(!d.layout.down, json(d.layout));
+    assert(!(d._state.pinned || []).includes("down"), "unpinned");
+  }));

@@ -210,6 +210,16 @@ Commands:
                              (--empty: no sample nodes, for building a board from scratch)
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]
+  grow <from> <n|e|s|w> <id>[,<id>...] [--label=] [--color=] [--style=] [--chain]
+                             Add boxes one step from <from> on its grid, wired from it. Several ids
+                             fan out side by side; --chain grows each from the one before. A taken
+                             cell gets a row or column inserted, pushing what was there along.
+                             Colour and inner group come from <from>; --label only with one id
+  insert-row <at> [--in=<group>] / insert-col <at> [--in=<group>]
+                             Shift every row (column) at or past <at> along one, on the board or
+                             inside inner group <group>; rowY and band dividers follow
+  place <id> <row> <col>     Put a box in a cell and release its pin; a taken cell pushes its
+                             occupant one column along
   remove-node <id>
   remove-edge <from> <to>
   reverse-edge <from> <to>             Flip direction in place (keeps style/label, swaps per-end pins)
@@ -541,6 +551,81 @@ function run(args) {
       renderUnlessDeferred(d);
       console.log(
         `Moved node "${id}" to row=${rowStr} col=${colStr} (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "grow": {
+      const pos = args.slice(1).filter((a) => !a.startsWith("--"));
+      const flags = args.slice(1).filter((a) => a.startsWith("--"));
+      const [from, dir, idList] = pos;
+      if (!from || !dir || !idList || pos.length > 3) {
+        console.error(
+          "Error: grow requires <from> <n|e|s|w> <id>[,<id>...] [--label=] [--color=] [--style=] [--chain]",
+        );
+        Deno.exit(1);
+      }
+      rejectUnknownFlags("grow", flags, [
+        "--label",
+        "--color",
+        "--style",
+        "--chain",
+      ]);
+      const val = (name) =>
+        flags.find((f) => f.startsWith(`--${name}=`))?.slice(name.length + 3);
+      const ids = idList.split(",").filter(Boolean);
+      const label = val("label");
+      if (label !== undefined && ids.length > 1) {
+        console.error("Error: grow --label takes one id");
+        Deno.exit(1);
+      }
+      let placed;
+      const d = mutate((d) => {
+        placed = d.grow(from, dir, ids, {
+          label,
+          color: val("color"),
+          style: val("style"),
+          chain: flags.includes("--chain"),
+        });
+      });
+      renderUnlessDeferred(d);
+      const where = placed.map((p) => `${p.id} (row ${p.row}, col ${p.col})`);
+      console.log(`Grew ${where.join(", ")} from "${from}" (rev ${d.rev})`);
+      break;
+    }
+
+    case "insert-row":
+    case "insert-col": {
+      const axis = cmd === "insert-row" ? "row" : "col";
+      const pos = args.slice(1).filter((a) => !a.startsWith("--"));
+      const flags = args.slice(1).filter((a) => a.startsWith("--"));
+      rejectUnknownFlags(cmd, flags, ["--in"]);
+      const at = int(`${cmd} <at>`, pos[0]);
+      const within = flags.find((f) => f.startsWith("--in="))?.slice(5) ??
+        null;
+      const d = mutate((d) => d.insertLine(axis, at, within));
+      renderUnlessDeferred(d);
+      console.log(
+        `Inserted ${axis} ${at}${
+          within ? ` in "${within}"` : ""
+        } (rev ${d.rev})`,
+      );
+      break;
+    }
+
+    case "place": {
+      const [, id, rowStr, colStr] = args;
+      if (!id || !rowStr || !colStr) {
+        console.error("Error: place requires <id> <row> <col>");
+        Deno.exit(1);
+      }
+      const row = int("place <row>", rowStr);
+      const col = int("place <col>", colStr);
+      const d = mutate((d) => d.placeInCell(id, row, col));
+      renderUnlessDeferred(d);
+      const n = d.getNode(id) ?? d._state.groups.find((g) => g.id === id);
+      console.log(
+        `Placed "${id}" at row ${n.row}, col ${n.col} (rev ${d.rev})`,
       );
       break;
     }
