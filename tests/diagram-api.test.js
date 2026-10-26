@@ -2146,3 +2146,49 @@ Deno.test("placeInCell frees the pin and pushes an occupant", () =>
     assert(!d.layout.down, json(d.layout));
     assert(!(d._state.pinned || []).includes("down"), "unpinned");
   }));
+
+Deno.test("placing into a cell a wide box covers pushes the wide box", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "wide", label: "W", color: "blue", row: 0, col: 0, span: 2 },
+        { id: "x", label: "X", color: "blue", row: 1, col: 0 },
+      ],
+    });
+    const d = Diagram.load(path);
+    d.placeInCell("x", 0, 1);
+    const w = d.getNode("wide"), x = d.getNode("x");
+    assert(x.row === 0 && x.col === 0, json(x));
+    assert(w.col === 1 && w.span === 2, json(w));
+  }));
+
+Deno.test("a column inserted inside a span widens it", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, {
+      nodes: [
+        { id: "wide", label: "W", color: "blue", row: 0, col: 0, span: 3 },
+        { id: "a", label: "A", color: "blue", row: 1, col: 2 },
+      ],
+    });
+    const d = Diagram.load(path);
+    d.insertLine("col", 1);
+    const w = d.getNode("wide");
+    assert(w.col === 0 && w.span === 4, json(w));
+    assert(d.getNode("a").col === 3, json(d.getNode("a")));
+  }));
+
+Deno.test("an insert carries pinned boxes past it by the new line's pitch", () =>
+  withTempDir((dir) => {
+    const d = Diagram.load(plusBoard(dir, {
+      layout: { down: { x: 300, y: 400 } },
+      pinned: ["down"],
+    }));
+    d.grow("hub", "s", "mid");
+    assert(d.getNode("down").row === 3, json(d.getNode("down")));
+    const { y } = d.layout.down;
+    // At least the new box's row: its height plus the row gap.
+    assert(y >= 400 + 45 + 40, `pin moved to y=${y}`);
+    assert(d.layout.down.x === 300, "only along the inserted axis");
+  }));

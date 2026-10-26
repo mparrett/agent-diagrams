@@ -1674,17 +1674,21 @@ function laneAt(lanes, pos) {
   return best?.idx ?? 0;
 }
 
-// Put a dropped box into the lane cell under its centre: the server sets its
-// row/col and releases its pin, pushing an occupant one column along.
+// Put a dropped box into the lane cell under it: the server sets its row/col
+// and releases its pin, pushing an occupant one column along. A spanning box
+// is placed by its first column, which its left edge sits in; its centre is
+// in a middle one.
 async function dropInLane(b) {
   const { rows, cols } = BOXES.lanes;
+  const node = diagramState.nodes.find((n) => n.id === b.id);
+  const spans = Number.isInteger(node?.span) && node.span > 1;
   const row = laneAt(
     rows.map((r) => ({ idx: r.idx, at: r.y, size: r.h })),
     (b.row + b.h / 2) * CELL,
   );
   const col = laneAt(
     cols.filter((c) => c.w).map((c) => ({ idx: c.idx, at: c.x, size: c.w })),
-    (b.col + b.w / 2) * CELL,
+    spans ? (b.col + 0.5) * CELL : (b.col + b.w / 2) * CELL,
   );
   pendingLayout.delete(b.id);
   pendingFree.delete(b.id);
