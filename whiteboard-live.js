@@ -1616,6 +1616,20 @@ cvs.addEventListener("pointerup", (e) => {
     }
     return;
   }
+  // With Lanes showing, a dropped box goes into the lane cell under it (its
+  // row/col) instead of being pinned, so it keeps reflowing with the board.
+  // Inner-group members have no lanes drawn, so they pin as usual.
+  if (
+    drag && !drag.kind && didDrag && showLanes && BOXES.lanes &&
+    !innerGroupOf(drag.b.id)
+  ) {
+    const b = drag.b;
+    drag = null;
+    pendingReload = false; // dropInLane reloads anyway
+    updateCursor();
+    dropInLane(b);
+    return;
+  }
   const wasDragging = !!drag;
   const wasNote = drag?.kind === "note";
   const drag0 = drag;
@@ -1645,6 +1659,47 @@ cvs.addEventListener("pointerup", (e) => {
     mergeReload();
   } // apply deferred inbound change
 });
+
+// The lane index a position falls in along one axis: the lane holding it,
+// else the nearest. Past the last lane by more than half its size, the next
+// index, so a box can be dropped into a new row or column at the far edge.
+function laneAt(lanes, pos) {
+  let best = null, bestD = Infinity;
+  for (const l of lanes) {
+    const d = pos < l.at ? l.at - pos : Math.max(0, pos - (l.at + l.size));
+    if (d < bestD) [best, bestD] = [l, d];
+  }
+  const last = lanes.at(-1);
+  if (last && pos > last.at + last.size * 1.5) return last.idx + 1;
+  return best?.idx ?? 0;
+}
+
+// Put a dropped box into the lane cell under it: the server sets its row/col
+// and releases its pin, pushing an occupant one column along. A spanning box
+// is placed by its first column, which its left edge sits in; its centre is
+// in a middle one.
+async function dropInLane(b) {
+  const { rows, cols } = BOXES.lanes;
+  const node = diagramState.nodes.find((n) => n.id === b.id);
+  const spans = Number.isInteger(node?.span) && node.span > 1;
+  const row = laneAt(
+    rows.map((r) => ({ idx: r.idx, at: r.y, size: r.h })),
+    (b.row + b.h / 2) * CELL,
+  );
+  const col = laneAt(
+    cols.filter((c) => c.w).map((c) => ({ idx: c.idx, at: c.x, size: c.w })),
+    spans ? (b.col + 0.5) * CELL : (b.col + b.w / 2) * CELL,
+  );
+  pendingLayout.delete(b.id);
+  pendingFree.delete(b.id);
+  try {
+    await postNode({ action: "place", id: b.id, row, col });
+    setStatus(`${b.id} → row ${row}, col ${col} (rev ${lastRev})`);
+  } catch (err) {
+    setStatus("place failed: " + err.message);
+  }
+  await mergeReload();
+}
 
 // Commit an endpoint drag. Dropped on the edge's own box → re-pin that end's
 // side (fromEdge/toEdge) to the nearest side/slot; dropped on another box →
@@ -4400,6 +4455,7 @@ function openBoxMenu(id, x, y) {
       },
     },
     { label: "Edit…", action: () => openNodeEditor(id, x, y) },
+    { label: "Grow ▸", action: () => openGrowMenu(id, x, y) },
     {
       type: "swatches",
       colors: validColors(),
@@ -4435,6 +4491,43 @@ function openBoxMenu(id, x, y) {
     null,
     { label: "Delete", danger: true, action: () => deleteNode(id) },
   ]);
+}
+
+// Add a box one cell n/e/s/w of `id` on its grid, wired from it; a taken
+// cell gets a row or column inserted. Opens the new box's editor to name it.
+function openGrowMenu(id, x, y) {
+  const dirs = [["n", "Up ↑"], ["e", "Right →"], ["s", "Down ↓"], [
+    "w",
+    "Left ←",
+  ]];
+  openCtxMenu(
+    x,
+    y,
+    dirs.map(([dir, label]) => ({
+      label,
+      action: async () => {
+        const newId = "n" + Math.random().toString(36).slice(2, 7);
+        try {
+          await postNode({
+            action: "grow",
+            from: id,
+            dir,
+            ids: [newId],
+            opts: { label: "New Node" },
+          });
+          await mergeReload();
+          setStatus(
+            pinnedSet.has(id)
+              ? `grew ${newId} from ${id}; ${id} is pinned, so its row/col may not match where it sits`
+              : `grew ${newId} from ${id} (rev ${lastRev})`,
+          );
+          openNodeEditor(newId, x, y);
+        } catch (e) {
+          setStatus("grow failed: " + e.message);
+        }
+      },
+    })),
+  );
 }
 
 // Pin a member or an inner group at its solved position.
