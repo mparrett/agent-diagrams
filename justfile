@@ -60,6 +60,11 @@ import-deps entry args="":
 import-tree dir args="":
     deno task import:tree {{dir}} {{args}}
 
+# Draw a Python package's module imports and entry points (needs python3).
+# e.g. `just import-python myapp/ "--external --max=30"`
+import-python dir args="":
+    deno task import:python {{dir}} {{args}}
+
 # Snapshot diagram.png + state into artifacts/<timestamp>[-label]
 capture label="":
     deno task cli capture {{label}}

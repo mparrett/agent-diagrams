@@ -79,8 +79,9 @@ drawing; finish with `render`. A batch already renders only once; a
 
 ## Generate a board instead
 
-`just import-deps <entry>` (a Deno module graph) and `just import-tree <dir>`
-(a directory tree) build a board from code you already have. See
+`just import-deps <entry>` (a Deno module graph), `just import-tree <dir>`
+(a directory tree) and `just import-python <dir>` (a Python package's imports,
+CLI commands and routes) build a board from code you already have. See
 [Importing real graphs](../README.md#importing-real-graphs).
 
 ## Don'ts
