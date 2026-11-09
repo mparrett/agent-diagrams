@@ -18,6 +18,7 @@
  *   --max=<n>              keep only the n largest packages
  *   --width= / --height=   canvas size (default 1600x1000)
  *   --title=
+ *   --no-untangle          keep the depth-band layout instead of untangling it
  *
  * A package-granularity board of a mid-size project lands around 20 nodes and
  * is genuinely readable. Module granularity on the same project is ~320 nodes
@@ -33,6 +34,9 @@ import {
   parseArgs,
   resolveOut,
   seedBoard,
+  settleLayout,
+  WIRE_KEY,
+  wireStyle,
 } from "./import-util.js";
 
 const { flags, positional } = parseArgs(Deno.args);
@@ -171,7 +175,7 @@ const d = seedBoard(statePath, {
   title: flags.title ?? `Import graph — ${granularity} view`,
   footer: `${
     graph.modules?.length ?? 0
-  } modules → ${keepIds.size} ${granularity}s · ${bands} rows`,
+  } modules → ${keepIds.size} ${granularity}s · ${WIRE_KEY}`,
   theme: "afterglow",
   width: intFlag(flags, "width", 1600, { min: 100 }),
   height: intFlag(flags, "height", 1000, { min: 100 }),
@@ -193,15 +197,14 @@ let drawn = 0;
 for (const [ek, count] of edges) {
   const [f, t] = ek.split("\0");
   if (!keepIds.has(f) || !keepIds.has(t)) continue;
-  // Weight reads as line style: a package imported once is a thin hairline, a
-  // package leaned on heavily is a solid run.
-  const style = count > 3 ? "solid" : count > 1 ? "default" : "thin";
-  d.addEdge(f, t, style, count > 1 ? String(count) : undefined);
+  d.addEdge(f, t, wireStyle(count), count > 1 ? String(count) : undefined);
   drawn++;
 }
 
+const settled = settleLayout(d, flags);
 d.save();
 console.log(
   `${statePath}: ${keepIds.size} nodes, ${drawn} edges, ${bands} rows`,
 );
+console.log(settled);
 console.log(`render it with:  deno task cli --state ${statePath} render`);

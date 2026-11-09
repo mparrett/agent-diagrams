@@ -49,6 +49,7 @@ import {
   isBandDivider,
   isColorToken,
   legendEntries,
+  legendSwatchXs,
   legendTokens,
   makePalette,
   measureNote,
@@ -2637,8 +2638,40 @@ export class Diagram {
     // The renderer grows B to whole cells around the boxes; store what it will
     // draw, so the size reported here is the PNG's.
     const drawn = this.solvePositions().canvas;
-    this._state.width = Math.max(this._state.width, drawn.width);
+    // The title, legend and footer aren't content, but trimming past them
+    // clips their text: a two-box board would show half its title.
+    this._state.width = Math.max(
+      this._state.width,
+      drawn.width,
+      this._chromeWidth(),
+    );
     this._state.height = Math.max(this._state.height, drawn.height);
+  }
+
+  // Width the title, legend row and footer need, measured with the fonts
+  // render() draws them in. Each starts 20px in; the same again on the right.
+  _chromeWidth() {
+    const pal = this.palette;
+    const ctx = createCanvas(1, 1).getContext("2d");
+    let w = 0;
+    if (this._state.title) {
+      ctx.font = `bold ${pal.sizes.title}px ${pal.font}`;
+      w = ctx.measureText(this._state.title).width;
+    }
+    const legend = this._legend();
+    const footer = this._state.footer;
+    if (legend.length) {
+      // drawLegend sets the footer in the legend's font when both are shown.
+      ctx.font = `${pal.sizes.legend}px ${pal.font}`;
+      const widths = legend.map((e) => ctx.measureText(e.label).width);
+      const xs = legendSwatchXs(widths);
+      w = Math.max(w, xs.at(-1) + 18 + widths.at(-1) - 20);
+      if (footer) w = Math.max(w, ctx.measureText(footer).width);
+    } else if (footer) {
+      ctx.font = `${pal.sizes.footer}px ${pal.font}`;
+      w = Math.max(w, ctx.measureText(footer).width);
+    }
+    return w ? Math.ceil(w + 40) : 0;
   }
 
   // Grow B to a target rect (board px, e.g. the editor's visible viewport), clamped

@@ -389,6 +389,8 @@ just import-python myapp/ "--out=$HOME/.local/share/agent-diagrams/myapp"   # Py
 
 All three write `diagram-state.json` into `--out=<dir>` (default: cwd) and refuse to clobber an existing board without `--force`. Run `deno task cli --state <path> render` afterwards, or write it into your boards directory, as above, and pick it from the dev server's board list. Each script's header comment lists its flags.
 
+**After the import.** `import-depgraph` and `import-python` run `untangle` on the new board for up to 20 seconds, then trim the canvas to fit, so the first render is already untangled. Pass `--no-untangle` to keep the depth-band layout. A wire's style and label give how many imports it carries (dashed for one, solid with a count for more, colored past three), and the footer gives the same key. `import-python` also lists each module's line count in its box, and leaves out an empty `__init__.py` that nothing imports.
+
 **Wrapping.** The layout spreads a row horizontally without bound and never reclaims vertical space, so a level with 30 nodes becomes a 5500px strip that hits the renderer's 4096px raster cap. Each importer wraps each depth level into bands of `--per-row=<n>` (default 8) to keep the canvas in a sane aspect ratio. Raise it for wide boards, lower it for tall ones.
 
 **Scale.** A package-granularity view of a mid-size project lands around 20 nodes and reads well. Module granularity on the same project is ~320 nodes — it renders (in about 35s, with every box's text intact), but the result is for spotting shape, not reading detail. Use `--max=<n>` to keep only the largest packages.
@@ -478,7 +480,7 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 | `bin/upstream-check.js` | Asks whether any `@gfx/canvas` workaround can be deleted yet (`just upstream-check`) |
 | `bin/import-depgraph.js` | Builds a board from a Deno module graph (`just import-deps`) |
 | `bin/import-filetree.js` | Builds a board from a directory tree (`just import-tree`) |
-| `bin/import-util.js` | Shared importer helpers: flag parsing, row-band wrapping, board seeding |
+| `bin/import-util.js` | Shared importer helpers: flag parsing, row-band wrapping, board seeding, wire styles, the post-import untangle |
 | `dev-server.js` | Static server + SSE live-reload + in-process re-render |
 | `whiteboard-live.html` | Interactive browser editor — markup + styles |
 | `whiteboard-live.js` | …and its logic (browser module; under the same lint/fmt/check gate as the rest) |

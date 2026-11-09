@@ -47,15 +47,18 @@ async function importBoard(args, root = FIXTURE) {
 const byId = (state) => Object.fromEntries(state.nodes.map((n) => [n.id, n]));
 const edgeSet = (state) =>
   new Set(state.edges.map((e) => `${e.from} -> ${e.to}`));
+// A box's details are its entry points, then its line count.
+const entries = (node) =>
+  node.details.filter((d) => !/^[\d,]+ lines?$/.test(d));
 
 Deno.test("import-python: local modules, imports and entry points", async () => {
   const { state, err } = await importBoard([]);
   const nodes = byId(state);
 
+  // myapp/api/__init__.py is empty and nothing imports it, so it has no box.
   assertEquals(Object.keys(nodes).sort(), [
     "myapp",
     "myapp.__main__",
-    "myapp.api",
     "myapp.api.routes",
     "myapp.api.util",
     "myapp.broken",
@@ -89,25 +92,25 @@ Deno.test("import-python: local modules, imports and entry points", async () => 
   assertEquals(heavy.label, "2");
 
   // Entry points: routes, click commands capped at 4, argparse, __main__.
-  assertEquals(nodes["myapp.api.routes"].details, [
+  assertEquals(entries(nodes["myapp.api.routes"]), [
     "GET /items",
     "POST /items",
   ]);
-  assertEquals(nodes["myapp.cli"].details, [
+  assertEquals(entries(nodes["myapp.cli"]), [
     "cli",
     "show-config",
     "serve",
     "check",
     "+2 more",
   ]);
-  assertEquals(nodes["scripts.manage"].details, [
+  assertEquals(entries(nodes["scripts.manage"]), [
     "__main__",
     "migrate",
     "seed",
   ]);
-  assertEquals(nodes["myapp.__main__"].details, ["__main__"]);
+  assertEquals(entries(nodes["myapp.__main__"]), ["__main__"]);
   // Written the other way round: "__main__" == __name__.
-  assertEquals(nodes["scripts.helpers"].details, ["__main__"]);
+  assertEquals(entries(nodes["scripts.helpers"]), ["__main__"]);
   assertEquals(nodes["myapp.cli"].color, "amber");
   assertEquals(nodes["myapp.core"].color, "blue");
 
@@ -153,7 +156,6 @@ Deno.test("import-python: a subpackage root keeps its full name", async () => {
   const { state } = await importBoard(["--external"], `${FIXTURE}/myapp/api`);
   const ids = state.nodes.map((n) => n.id);
   assertEquals(ids.filter((id) => !id.startsWith("ext:")).sort(), [
-    "myapp.api",
     "myapp.api.routes",
     "myapp.api.util",
   ]);
@@ -198,4 +200,44 @@ Deno.test("import-python: a missing interpreter fails clearly", async () => {
   }).output();
   assertEquals(code, 1);
   assert(new TextDecoder().decode(stderr).includes("not found"));
+});
+
+Deno.test("import-python: line counts, the wire key, and the settled layout", async () => {
+  const { state, out } = await importBoard([]);
+  const nodes = byId(state);
+  assertEquals(nodes["myapp.core"].details, ["11 lines"]);
+  assertEquals(nodes["settings"].details, ["1 line"]);
+  assertEquals(nodes["myapp.broken"].details, ["syntax error", "2 lines"]);
+  assert(state.footer.includes("wires: dashed = 1 import"), state.footer);
+  assert(
+    out.includes("left out 1 empty __init__.py with no imports: myapp.api"),
+    out,
+  );
+  assert(/untangle/.test(out), out);
+});
+
+Deno.test("import-python: --no-untangle keeps the band layout", async () => {
+  const { state, out } = await importBoard(["--no-untangle"]);
+  assert(out.includes("as imported"), out);
+  assertEquals(Object.keys(state.layout ?? {}).length, 0);
+});
+
+Deno.test("import-python: an empty __init__.py stays when imported, or alone", async () => {
+  const root = await Deno.makeTempDir({ prefix: "agent-diagrams-pyinit-" });
+  try {
+    await Deno.mkdir(`${root}/pkg`);
+    await Deno.writeTextFile(
+      `${root}/pkg/__init__.py`,
+      '"""Only a docstring."""\n',
+    );
+    await Deno.writeTextFile(`${root}/main.py`, "import pkg\n");
+    let { state } = await importBoard(["--no-untangle"], root);
+    assertEquals(state.nodes.map((n) => n.id).sort(), ["main", "pkg"]);
+
+    await Deno.remove(`${root}/main.py`);
+    ({ state } = await importBoard(["--no-untangle"], root));
+    assertEquals(state.nodes.map((n) => n.id), ["pkg"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });

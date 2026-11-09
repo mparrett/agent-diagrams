@@ -182,3 +182,50 @@ export function resolveOut(flags) {
   }
   return path;
 }
+
+/**
+ * Line style for a wire carrying `count` import statements. One import is a
+ * hairline, a module leaned on from many statements is a solid run.
+ */
+export function wireStyle(count) {
+  return count > 3 ? "solid" : count > 1 ? "default" : "thin";
+}
+
+// The legend draws box swatches, which can't show a line style, so the wire
+// key rides in the footer. Named by look rather than style token, since that
+// is what a reader sees; "colored" holds across themes, a hue would not.
+export const WIRE_KEY =
+  "wires: dashed = 1 import, solid = 2+ (count shown), colored = 4+";
+
+const UNTANGLE_SECONDS = 20;
+
+/**
+ * Untangle the freshly imported board (unless `--no-untangle`) and trim the
+ * canvas to what was drawn. An importer's band layout is a first guess: left
+ * as is, the first render shows avoidable crossings and shared tracks across a
+ * canvas sized for the largest case. Returns a line for the importer to print.
+ */
+export function settleLayout(d, flags, { seconds = UNTANGLE_SECONDS } = {}) {
+  let line = "layout: as imported (--no-untangle)";
+  if (!boolFlag(flags, "no-untangle")) {
+    // Time-boxed, not just eval-boxed: a few dozen boxes finish the full
+    // budget in seconds, but one eval of a 300-box module graph takes ~5s.
+    const deadline = performance.now() + seconds * 1000;
+    let timedOut = false;
+    const r = d.untangle({
+      stop: () => (timedOut = performance.now() > deadline),
+    });
+    const fmt = (s) => `${s.crossings} crossings, ${s.labels} label issues`;
+    line = r.moved.length
+      ? `untangled: ${fmt(r.before)} → ${
+        fmt(r.after)
+      }; moved ${r.moved.length} boxes`
+      : `untangle found nothing better (${fmt(r.before)})`;
+    if (timedOut) {
+      line +=
+        `; stopped at ${seconds}s, run \`untangle\` on the board to search longer`;
+    }
+  }
+  d.fitCanvasToContent();
+  return line;
+}
