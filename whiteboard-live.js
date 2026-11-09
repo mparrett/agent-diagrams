@@ -5168,14 +5168,24 @@ function refitToStage() {
   zoomToFit();
   render();
 }
-window.addEventListener("resize", () => {
+function onStageResize() {
   initCanvas();
   if (Math.abs(VIEW_W - lastFitW) > 4) {
     lastFitW = VIEW_W;
     zoomToFit();
   } // width changed → resize/rotate
   render();
-});
+}
+window.addEventListener("resize", onStageResize);
+// The top bar wraps when its contents widen (a longer zoom or size readout),
+// which resizes the stage with no window resize. Re-measure then too, or the
+// canvas keeps its old height: clipped at the bottom, or a gap under it.
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect();
+  if (Math.round(r.width) !== VIEW_W || Math.round(r.height) !== VIEW_H) {
+    onStageResize();
+  }
+}).observe(stage);
 
 // ================================================================
 // VIEW: pan + zoom input

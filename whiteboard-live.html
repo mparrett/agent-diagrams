@@ -383,9 +383,11 @@ button.mini.wide { flex: 0 0 116px; }
   .topbar { padding: 2px 2px 6px; }
   #boardSelect { max-width: none; }               /* the picker takes the row; controls wrap below */
   .nav-toggle { width: 44px; height: 44px; }
-  #viewHud #sizeReadout, #viewHud .hud-sep:last-of-type { display: none; } /* a row of controls, not numbers */
+  #viewHud #sizeReadout, #viewHud #sizeSep { display: none; } /* a row of controls, not numbers */
   /* Collapsed = no controls below, so the canvas takes the whole screen. */
-  body.nav-collapsed .main, body.nav-collapsed .stage { min-height: 100dvh; }
+  /* The top bar is inside .main, so .main takes the screen and the stage the rest. */
+  body.nav-collapsed .main { height: 100dvh; min-height: 0; }
+  body.nav-collapsed .stage { min-height: 0; }
   .sidebar {                                      /* controls below, page scrolls to them */
     order: 2; width: 100%; height: auto; padding: 10px 12px; gap: 10px;
     border-right: none; border-top: 1px solid var(--line-soft);
@@ -592,7 +594,7 @@ button.mini.wide { flex: 0 0 116px; }
       <button id="bHeat" class="hud-toggle" title="Show what routing costs: blocked cells and the cost near boxes">Heat</button>
       <button id="bConn" class="hud-toggle" title="Show the connection points on each box">Ports</button>
       <button id="bFlow" class="hud-toggle" title="Show the flow field as arrows">Flow</button>
-      <span class="hud-sep"></span>
+      <span id="sizeSep" class="hud-sep"></span>
       <span id="sizeReadout"></span>
     </div>
   </div>
