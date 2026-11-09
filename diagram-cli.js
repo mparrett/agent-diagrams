@@ -4,7 +4,8 @@
  *
  * State file resolution (all commands): --state <path> (or --state=<path>) >
  * --board <name> > DIAGRAM_STATE env > a ./diagram-state.json in the cwd > the
- * bundled diagrams/basic board. (`init` always scaffolds in the cwd.)
+ * bundled diagrams/basic board. (`init` scaffolds at --state, at --board, or
+ * in the cwd.)
  * --board names a board as the dev server lists it: one in the boards
  * directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR > $XDG_DATA_HOME/
  * agent-diagrams), or examples/<name> for the repo's own.
@@ -206,7 +207,7 @@ in the boards directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR >
 ~/.local/share/agent-diagrams), or examples/<name> for the repo's own.
 
 Commands:
-  init [--empty]             Write a starter diagram-state.json in the current dir
+  init [--empty]             Write a starter diagram-state.json at --state, at --board, or in the cwd
                              (--empty: no sample nodes, for building a board from scratch)
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]
@@ -363,11 +364,25 @@ Built-in styles: ${BUILTIN_STYLES.join(", ")}
 if (!cmd) usage();
 
 if (cmd === "init") {
-  // init scaffolds in the cwd (or --state path) — it never targets the bundled
+  // init scaffolds in the cwd (or at --state / --board) — it never targets the bundled
   // example board the way other commands' zero-arg default can.
   const flags = args.slice(1);
   rejectUnknownFlags("init", flags, ["--empty"]);
-  const target = resolve(Deno.cwd(), stateArg ?? "diagram-state.json");
+  // Shipped boards change through a PR, never by scaffolding over them.
+  if (!stateArg && boardArg?.startsWith("examples/")) {
+    console.error(
+      `Error: ${boardArg} is a shipped example; init a board under your own name`,
+    );
+    Deno.exit(1);
+  }
+  const target = resolve(
+    Deno.cwd(),
+    stateArg ?? boardPath ?? "diagram-state.json",
+  );
+  // A new --board name is a new directory under the boards directory.
+  if (!stateArg && boardPath) {
+    Deno.mkdirSync(dirname(target), { recursive: true });
+  }
   try {
     Deno.statSync(target);
     console.error(`Error: ${target} already exists — refusing to overwrite`);

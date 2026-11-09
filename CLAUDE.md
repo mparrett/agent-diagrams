@@ -1,5 +1,7 @@
 # agent-diagrams — notes for agents
 
+**Using the tool rather than changing it?** Read [docs/agents.md](docs/agents.md).
+
 ## Serving
 
 **Bind `0.0.0.0` when serving for LAN testing** — the default `127.0.0.1` is

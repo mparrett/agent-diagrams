@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# One-word entry point for diagram-cli.js, so a board can be driven from any
+# directory and a permission allowlist needs one rule instead of a deno
+# command line. Symlink it onto PATH:
+#
+#   ln -s "$PWD/bin/agent-diagrams" ~/.local/bin/agent-diagrams
+#
+# Every argument passes through: `agent-diagrams --board flow add-node ...`.
+set -euo pipefail
+
+# Follow symlinks by hand: BSD readlink has no -f on older macOS.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+done
+root="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+# The same permissions as `deno task cli`; the renderer needs env and FFI.
+exec deno run --allow-read --allow-write --allow-net --allow-env \
+  --allow-ffi --unstable-ffi "$root/diagram-cli.js" "$@"
