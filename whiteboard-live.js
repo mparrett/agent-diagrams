@@ -63,6 +63,7 @@ import {
 } from "./diagram-core.js";
 import { DEFAULT_SCHEME, SCHEMES } from "./themes.js";
 import { drawFlowField } from "./flow-field.js";
+import { mountBoardPicker } from "./board-picker.js";
 
 // Active palette — built per-diagram, passed to every draw call (no module
 // state in the engine, so theme changes can't leak between diagrams).
@@ -5334,30 +5335,19 @@ async function init() {
 
   // Board picker — from the server's registry. On a plain static server the
   // fetch fails; keep just the current board in the list.
-  const boardSel = document.getElementById("boardSelect");
-  boardSel.innerHTML = "";
-  let boardList = [{ name: BOARD, title: null }];
+  let boardList = [{ name: BOARD, title: diagramState.title ?? null }];
   try {
     const r = await fetch("/diagrams", { cache: "no-store" });
     if (r.ok) boardList = await r.json();
   } catch { /* static server — no registry */ }
-  for (const b of boardList) {
-    const o = document.createElement("option");
-    o.value = b.name;
-    o.textContent = (b.title ? `${b.name} — ${b.title}` : b.name) +
-      (b.readOnly ? " (read-only)" : "");
-    boardSel.appendChild(o);
-  }
   if (boardList.find((b) => b.name === BOARD)?.readOnly) lockReadOnly();
-  boardSel.value = BOARD;
-  // The picker truncates a long name; hovering shows all of it.
-  boardSel.title = boardSel.selectedOptions[0]?.textContent ??
-    "Open another board";
-  boardSel.onchange = () => {
-    location.search = boardSel.value === "default"
-      ? ""
-      : "?d=" + boardSel.value;
-  };
+  mountBoardPicker(document.getElementById("boardPicker"), {
+    boards: boardList,
+    current: BOARD,
+    onPick: (name) => {
+      location.search = name === "default" ? "" : "?d=" + name;
+    },
+  });
 
   setDiagramTitle(diagramState.title);
 

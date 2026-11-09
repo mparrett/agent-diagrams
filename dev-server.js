@@ -191,18 +191,31 @@ function scanRoot({ dir: rootDir, prefix, readOnly }) {
   walk(rootDir, "");
 }
 
-/** Board list for GET /diagrams (rescans so new boards show up live). */
+/**
+ * Board list for GET /diagrams (rescans so new boards show up live). Sorted:
+ * the default board, then your boards by name, then the repo's examples by
+ * name. Discovery order is the filesystem's, which is not alphabetical and
+ * shifts as boards are added.
+ */
+function boardOrder(a, b) {
+  const rank = (n) =>
+    n === "default" ? 0 : n.startsWith(EXAMPLES_PREFIX) ? 2 : 1;
+  return rank(a) - rank(b) ||
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
 function listBoards() {
   scanBoards();
-  return [...boards.values()].map((b) => {
-    let title = null, rev = null;
-    try {
-      const s = JSON.parse(Deno.readTextFileSync(b.statePath));
-      title = s.title ?? null;
-      rev = s.rev ?? null;
-    } catch { /* missing/unreadable — list it anyway */ }
-    return { name: b.name, title, rev, readOnly: b.readOnly };
-  });
+  return [...boards.values()].sort((a, b) => boardOrder(a.name, b.name)).map(
+    (b) => {
+      let title = null, rev = null;
+      try {
+        const s = JSON.parse(Deno.readTextFileSync(b.statePath));
+        title = s.title ?? null;
+        rev = s.rev ?? null;
+      } catch { /* missing/unreadable — list it anyway */ }
+      return { name: b.name, title, rev, readOnly: b.readOnly };
+    },
+  );
 }
 
 const enc = new TextEncoder();
