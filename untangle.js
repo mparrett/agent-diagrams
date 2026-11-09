@@ -2,10 +2,12 @@
 // structure its author set up.
 //
 // Every candidate layout is scored on the engine's own routed wires, not on
-// straight-line estimates, so "better" means better as drawn. In priority
-// order: wires that fail to route, crossings, label defects (findIssues, plus
-// wire labels on a band divider's label), wires sharing a track with an
-// unrelated wire, then total wire length.
+// straight-line estimates, so "better" means better as drawn. The terms, most
+// costly first: wires that fail to route, crossings, label defects (findIssues,
+// which includes unrelated wires sharing two or more cells of track, plus wire
+// labels on a band divider's label), cells of shared track, and wire length.
+// Length is weighted (DEFAULT_LENGTH_WEIGHT), so enough of it can outweigh a
+// crossing or a label defect: that trade is the point of weighting it.
 //
 // What may move, and where:
 // - Only top-level boxes that are not pinned. Pinned boxes keep their place,
@@ -24,8 +26,9 @@
 
 import { findIssues, innerGroups, isBandDivider } from "./diagram-core.js";
 
-// Cost weights. A crossing outweighs any amount of wire length a typical
-// board has; a label defect is nearly as bad, since it hides text.
+// Cost weights. A label defect is nearly as bad as a crossing, since it hides
+// text. A cell of shared track is cheap on its own: two unrelated wires
+// sharing two or more cells also count as a label defect (shared-track).
 const W_FAILED = 1e6;
 const W_CROSSING = 1000;
 const W_LABEL = 400;
@@ -33,11 +36,11 @@ const W_TRUNK = 60;
 // Wires leaving or entering the same box may share track near it; that reads
 // as a fan-out, not a merge, so it costs a fraction.
 const KIN_TRUNK = 0.2;
-// Wire length counts this many points per cell. At 1, one crossing was worth
-// a thousand cells of wire, and untangle would send a box across the board
-// from the one it is wired to. On the boards it was tried on, 10-20 gave
-// shorter wires at no more crossings (and on one, fewer); around 50 it
-// starts trading label clashes for length.
+// Wire length counts this many points per cell, so a crossing is worth about
+// 67 cells. At 1 a crossing was worth a thousand, and untangle would send a
+// box across the board from the one it is wired to. As of 2026-11-09, on the
+// two boards it was tried on (13 and 18 boxes), 10-20 gave shorter wires at
+// no more crossings (on one, fewer), and 50 traded a label clash for length.
 export const DEFAULT_LENGTH_WEIGHT = 15;
 
 // Polyline corners of a cell path, so crossings are tested per segment.

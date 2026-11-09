@@ -323,8 +323,9 @@ Commands:
                                        row, without bands); pinned boxes stay put, --unpin releases them
                                        first. --budget caps candidate layouts tried (default 1500).
                                        --length-weight: points per cell of wire against 1000 per crossing
-                                       (default 15). Higher keeps wired boxes closer; around 50 it starts
-                                       accepting label clashes. 1 is the old crossings-first behaviour
+                                       (default 15). Higher keeps wired boxes closer, but enough length
+                                       outweighs a label clash; check with issues. 1 is the old
+                                       crossings-first behaviour
   flow-place [--gap=px] [--frame=WxH]
                              Pin the longest edge chain along the flow field's streamline and
                              the other nodes beside their neighbours; the field spans the frame

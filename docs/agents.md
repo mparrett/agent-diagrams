@@ -50,8 +50,8 @@ row or column when the target cell is taken.
   If it still puts two boxes that belong together far apart:
   - `--length-weight=N` sets how much wire length counts against crossings
     (default 15, against 1000 per crossing). Raise it to pull wired boxes
-    closer. Around 50 it starts accepting label clashes to shorten wires;
-    check with `issues`.
+    closer. High enough, it accepts a label clash to shorten wires (as of
+    2026-11-09, 50 did on a 13-box test board); check with `issues`.
   - Pin the boxes whose position matters first; `untangle` leaves pinned
     boxes where they are. A box gets pinned when it is dragged in the editor
     or moved by `spread` or `snap-h`/`snap-v`.
