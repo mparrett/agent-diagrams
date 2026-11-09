@@ -1024,3 +1024,26 @@ Deno.test("CLI: untangle saves a better board and reports the scores", async () 
     r = await runCli(path, ["untangle", "--bugdet=5"]);
     assert(r.code === 1 && r.err.includes("unknown flag"), r.err);
   }));
+
+Deno.test("CLI: render --preview in a batch makes its one render a preview", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const script = `${dir}/build.txt`;
+    Deno.writeTextFileSync(
+      script,
+      ["render --preview", "add-node z Z blue 3 0"].join("\n"),
+    );
+    const r = await runCli(path, ["batch", script]);
+    assert(r.code === 0, r.err);
+    assert(r.out.includes("rendered once (preview)"), r.out);
+    assertEquals(r.out.match(/^Wrote /gm)?.length, 1, "one render");
+    let full = true;
+    try {
+      Deno.statSync(`${dir}/diagram.png`);
+    } catch {
+      full = false;
+    }
+    assert(!full, "no full render");
+    Deno.statSync(`${dir}/diagram.preview.png`);
+  }));

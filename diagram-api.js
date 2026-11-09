@@ -2889,6 +2889,17 @@ export class Diagram {
 
     // Write PNG
     const outPath = preview ? this.previewPath : this.outputPath;
+    // A preview older than the state file shows an older board; remove it
+    // rather than leave it to be read as current. Judged by mtime, not by
+    // "a full render happened": the dev server re-renders the full PNG after
+    // every state change, which must not delete a preview of that same state.
+    if (!preview) {
+      try {
+        const pv = Deno.statSync(this.previewPath).mtime;
+        const st = Deno.statSync(this.statePath).mtime;
+        if (pv && st && pv < st) Deno.removeSync(this.previewPath);
+      } catch { /* no preview, or no state file yet */ }
+    }
     const tmpPath = `${outPath}.${Deno.pid}.${crypto.randomUUID()}.tmp`;
     const buf = canvas.encode("png");
     try {
