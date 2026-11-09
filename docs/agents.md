@@ -94,7 +94,10 @@ no board, ask for the state file or its `export` output.
 
 `just import-deps <entry>` (a Deno module graph), `just import-tree <dir>`
 (a directory tree) and `just import-python <dir>` (a Python package's imports,
-CLI commands and routes) build a board from code you already have. See
+CLI commands and routes) build a board from code you already have. The
+dependency and Python importers untangle the result and fit the canvas before
+they exit (`--no-untangle` skips it), so render first and fix only what
+`issues` reports. See
 [Importing real graphs](../README.md#importing-real-graphs).
 
 ## Don'ts

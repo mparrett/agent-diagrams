@@ -6,6 +6,7 @@ import {
   intFlag,
   makeCanon,
   parseArgs,
+  wireStyle,
 } from "../bin/import-util.js";
 
 function assertEquals(actual, expected, msg = "") {
@@ -182,4 +183,14 @@ Deno.test("the importer refuses to clobber an existing board without --force", a
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("wireStyle weights a wire by its import count", () => {
+  assertEquals([1, 2, 3, 4, 9].map(wireStyle), [
+    "thin",
+    "default",
+    "default",
+    "solid",
+    "solid",
+  ]);
 });

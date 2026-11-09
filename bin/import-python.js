@@ -20,8 +20,13 @@
  *   --skip=a,b,c           extra directory names to ignore
  *   --python=<path>        interpreter that parses the code (default: python3)
  *   --per-row=<n>          nodes per row band before wrapping (default: 8)
- *   --width= / --height=   canvas size (default 1600x1000)
+ *   --width= / --height=   canvas size; without either, it fits the board
  *   --title=
+ *   --no-untangle          keep the depth-band layout instead of untangling it
+ *
+ * Each box lists its entry points and its line count. An empty `__init__.py`
+ * that nothing imports is left out: it only marks a directory as a package,
+ * and would draw as a box with no wires.
  *
  * Parsing uses Python's own `ast` module in an isolated interpreter
  * (`python3 -I`): the target code is read, never imported or executed. A file
@@ -39,6 +44,9 @@ import {
   parseArgs,
   resolveOut,
   seedBoard,
+  settleLayout,
+  WIRE_KEY,
+  wireStyle,
 } from "./import-util.js";
 
 const { flags, positional } = parseArgs(Deno.args);
@@ -241,18 +249,25 @@ def is_stdlib(top):
 
 modules, edges, external, errors = [], {}, {}, []
 for name, (path, is_pkg, rel, script_dir) in sorted(files.items()):
+    # Known once the file is read, so a parse failure still shows its size.
+    lines = None
     try:
         with open(path, "rb") as fh:
-            tree = ast.parse(fh.read(), filename=rel)
+            src = fh.read()
+        lines = src.count(b"\n") + (1 if src and not src.endswith(b"\n") else 0)
+        tree = ast.parse(src, filename=rel)
     except SyntaxError as e:
         errors.append(rel + ":" + str(e.lineno) + ": " + str(e.msg))
-        modules.append({"id": name, "path": rel, "entries": [], "unparsed": True})
+        modules.append({"id": name, "path": rel, "entries": [], "lines": lines, "unparsed": True})
         continue
     except (ValueError, RecursionError, OSError) as e:
         errors.append(rel + ": " + str(e))
-        modules.append({"id": name, "path": rel, "entries": [], "unparsed": True})
+        modules.append({"id": name, "path": rel, "entries": [], "lines": lines, "unparsed": True})
         continue
-    modules.append({"id": name, "path": rel, "entries": entries_of(tree, name)})
+    # Nothing but an optional docstring: the file only marks a package.
+    body = tree.body[1:] if tree.body and isinstance(tree.body[0], ast.Expr) and const_str(tree.body[0].value) is not None else tree.body
+    modules.append({"id": name, "path": rel, "entries": entries_of(tree, name), "lines": lines,
+                    "empty": is_pkg and not body})
     package = name if is_pkg else name.rpartition(".")[0]
     near = package if script_dir and not is_pkg else ""
     for node in ast.walk(tree):
@@ -338,12 +353,20 @@ if (!result.modules.length) {
 }
 
 // ─── Pick the modules to draw ──────────────────────────────────
-const modules = new Map(result.modules.map((m) => [m.id, m]));
 const degree = new Map(result.modules.map((m) => [m.id, 0]));
 for (const e of result.edges) {
   degree.set(e.from, degree.get(e.from) + 1);
   degree.set(e.to, degree.get(e.to) + 1);
 }
+// An empty __init__.py with no wires says only "this is a package", which the
+// dotted names of its modules already say. Keep it when it is all there is.
+const marker = (m) => m.empty && degree.get(m.id) === 0;
+const dropped = result.modules.filter(marker);
+if (dropped.length === result.modules.length) dropped.length = 0;
+const droppedIds = new Set(dropped.map((m) => m.id));
+const modules = new Map(
+  result.modules.filter((m) => !droppedIds.has(m.id)).map((m) => [m.id, m]),
+);
 
 let keep = [...modules.keys()];
 if (keep.length > max) {
@@ -363,9 +386,11 @@ for (const e of result.edges) {
   adj.get(e.from).push(e.to);
 }
 const imported = new Set(result.edges.map((e) => e.to));
-let frontier = result.modules.filter((m) => m.entries.length).map((m) => m.id);
+let frontier = [...modules.values()].filter((m) => m.entries.length).map((m) =>
+  m.id
+);
 if (!frontier.length) {
-  frontier = result.modules.filter((m) => !imported.has(m.id)).map((m) => m.id);
+  frontier = [...modules.keys()].filter((id) => !imported.has(id));
 }
 const depth = new Map(frontier.map((id) => [id, 0]));
 for (let level = 0; frontier.length; level++) {
@@ -385,6 +410,10 @@ for (const id of modules.keys()) {
   if (!depth.has(id)) depth.set(id, maxDepth + 1);
 }
 
+// A size cue, so a 2,000-line module doesn't read the same as a 40-line one.
+const linesLabel = (n) =>
+  `${n.toLocaleString("en-US")} line${n === 1 ? "" : "s"}`;
+
 const nodes = keep.map((id) => {
   const m = modules.get(id);
   const entries = m.entries.length > ENTRY_CAP
@@ -401,7 +430,10 @@ const nodes = keep.map((id) => {
       : m.entries.length
       ? COLOR.entry
       : COLOR.module,
-    details: m.unparsed ? ["syntax error"] : entries,
+    details: [
+      ...(m.unparsed ? ["syntax error"] : entries),
+      ...(m.lines == null ? [] : [linesLabel(m.lines)]),
+    ],
     depth: depth.get(id),
   };
 });
@@ -437,7 +469,7 @@ const entryCount = keep.filter((id) => modules.get(id).entries.length).length;
 const d = seedBoard(statePath, {
   title: flags.title ?? `Python imports — ${rootName}`,
   footer:
-    `${modules.size} modules → ${keepIds.size} drawn · ${entryCount} with entry points · ${bands} rows`,
+    `${modules.size} modules → ${keepIds.size} drawn · ${entryCount} with entry points · ${WIRE_KEY}`,
   theme: "afterglow",
   width: intFlag(flags, "width", 1600, { min: 100 }),
   height: intFlag(flags, "height", 1000, { min: 100 }),
@@ -465,15 +497,26 @@ let drawn = 0;
 for (const e of [...result.edges, ...extEdges]) {
   if (!keepIds.has(e.from)) continue;
   if (!keepIds.has(e.to) && !e.to.startsWith("ext:")) continue;
-  // Same weighting as import-depgraph: one import is a hairline, a module
-  // leaned on from many statements is a solid run.
-  const style = e.count > 3 ? "solid" : e.count > 1 ? "default" : "thin";
-  d.addEdge(e.from, e.to, style, e.count > 1 ? String(e.count) : undefined);
+  d.addEdge(
+    e.from,
+    e.to,
+    wireStyle(e.count),
+    e.count > 1 ? String(e.count) : undefined,
+  );
   drawn++;
 }
 
+const settled = settleLayout(d, flags);
 d.save();
 console.log(
   `${statePath}: ${nodes.length} nodes, ${drawn} edges, ${bands} rows`,
 );
+if (dropped.length) {
+  console.log(
+    `left out ${dropped.length} empty __init__.py with no imports: ${
+      dropped.map((m) => m.id).join(", ")
+    }`,
+  );
+}
+console.log(settled);
 console.log(`render it with:  deno task cli --state ${statePath} render`);

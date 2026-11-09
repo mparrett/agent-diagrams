@@ -937,6 +937,31 @@ Deno.test("fit-canvas keeps a group label wider than its frame on the board", ()
     );
   }));
 
+Deno.test("fit-canvas keeps the title and footer on a narrow board", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const fittedWidth = (extra) => {
+      writeState(path, {
+        width: 1500,
+        height: 900,
+        nodes: [{ id: "a", label: "A", color: "blue", row: 0, col: 0 }],
+        ...extra,
+      });
+      const d = Diagram.load(path);
+      d.fitCanvasToContent();
+      return d.solvePositions().canvas.width;
+    };
+    const bare = fittedWidth({});
+    const long =
+      "a footer much wider than one small box, which used to be cut off";
+    assert(fittedWidth({ footer: long }) > bare + 200, "footer clipped");
+    assert(
+      fittedWidth({ title: `Title: ${long}` }) > bare + 200,
+      "title clipped",
+    );
+    assert(fittedWidth({ footer: long }) < 1500, "it should still trim");
+  }));
+
 Deno.test("legend entries are spaced by their own widths", () => {
   const widths = [140, 40, 60, 160];
   const xs = legendSwatchXs(widths);
