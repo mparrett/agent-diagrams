@@ -87,10 +87,10 @@ bundled example, when no `--state` is given) is read-only the same way; name it 
 Symlinked directories are followed, so boards kept in another repo can be linked in
 (`ln -s ~/elsewhere/boards ~/.local/share/agent-diagrams/elsewhere`); restart the
 server after adding a link so it watches the linked directory for live reload. The
-editor sidebar has a board picker at the top (or open `whiteboard-live.html?d=<name>` /
+editor's top bar has a board picker you can type into to find a board (or open `whiteboard-live.html?d=<name>` /
 `whiteboard.html?d=<name>` directly); agents target a board with `--board <name>`
 (the same names, `examples/…` included) or `--state <path>`. `GET /diagrams` lists
-boards with a `readOnly` flag; board-scoped endpoints live under `/d/<name>/…`;
+boards with a `readOnly` flag (default first, then your boards by name, then the examples); board-scoped endpoints live under `/d/<name>/…`;
 unprefixed endpoints keep operating on the default board. New boards appear live —
 `init` a state file under the boards directory and it's in the picker. Board names
 map to paths server-side only.
@@ -420,7 +420,7 @@ d.render();                               // writes diagram.png next to the stat
 - **right-click for a context menu** — on a box: *Connect from here*, *Edit…*, *Grow ▸* (a new box one cell up, right, down or left, wired from this one; a taken cell gets a row or column inserted), color swatches, *Connector layout* (per-side spread/collapse), *Pin/Unpin*, *Delete*; on an edge (its **label** counts too): *Edit…*, *Reverse direction*, *Delete*,
 - **hover affordances** — the box/edge under the cursor is highlighted and the cursor telegraphs the target (grab / pointer / crosshair),
 - **pin manually-placed nodes** — dragging a box pins it (corner marker), except with **Lanes** showing, when a dropped box goes into the row/col lane under it and stays unpinned; *Unpin* (box menu) frees one node back to auto-layout; **Auto layout** clears all pins and re-solves the whole board, while **Re-flow unpinned** re-flows only the *unpinned* nodes (from their `row`/`col` hints) around the pinned ones — place a few anchors by hand, then re-solve everything else. A drag saves a position for that box alone; every other box stays on auto-layout, and the editor lays out the same way the renderer does, so it stays WYSIWYG with the PNG. Boards saved by older versions have a position for every box: they stay as they are until **Re-flow unpinned** releases everything but the pins,
-- **switch boards** via the board picker at the top of the sidebar (multi-whiteboard; see above),
+- **switch boards** via the board picker in the top bar (multi-whiteboard; see above),
 - pick a **color scheme**, **line up** or **spread** boxes, **reset** to auto layout, and live-tune the four A\* routing knobs (*Routing parameters*, under Wires in the sidebar).
 
 Dividers are editable in the editor too: drag one along its axis, right-click it to edit its label, color and line, rotate it or delete it, or add one from the empty-canvas menu. A band divider snaps to the nearest row gap when dropped; turning bands on and off is CLI-only for now. Groups are created and edited via CLI/JSON; in the editor, inner groups and the boxes inside them can be dragged and pinned. Notes are now fully GUI-editable: drag to move/pin, right-click to edit/re-anchor/delete, or drop a new one from the empty-canvas menu.

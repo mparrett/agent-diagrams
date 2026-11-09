@@ -63,6 +63,7 @@ import {
 } from "./diagram-core.js";
 import { DEFAULT_SCHEME, SCHEMES } from "./themes.js";
 import { drawFlowField } from "./flow-field.js";
+import { mountBoardPicker } from "./board-picker.js";
 
 // Active palette — built per-diagram, passed to every draw call (no module
 // state in the engine, so theme changes can't leak between diagrams).
@@ -2292,10 +2293,12 @@ function downloadJSON(json) {
 // ("Diagram Tool"); the brand no longer gets hijacked by per-diagram titles.
 // The browser tab: the board's title, or its name when it has none. The board
 // picker in the top bar names it on the page.
+let boardPicker = null; // set once the board list loads
 function setDiagramTitle(t) {
   document.title = `${
     t || (BOARD === "default" ? "Diagram" : BOARD)
   } · agent-diagrams`;
+  boardPicker?.setTitle(t ?? null); // an edit or a live reload renames it
 }
 
 // The View tool keeps every edit from starting; this catches any that slips past.
@@ -5334,30 +5337,23 @@ async function init() {
 
   // Board picker — from the server's registry. On a plain static server the
   // fetch fails; keep just the current board in the list.
-  const boardSel = document.getElementById("boardSelect");
-  boardSel.innerHTML = "";
-  let boardList = [{ name: BOARD, title: null }];
+  let boardList = [{ name: BOARD, title: diagramState.title ?? null }];
   try {
     const r = await fetch("/diagrams", { cache: "no-store" });
     if (r.ok) boardList = await r.json();
   } catch { /* static server — no registry */ }
-  for (const b of boardList) {
-    const o = document.createElement("option");
-    o.value = b.name;
-    o.textContent = (b.title ? `${b.name} — ${b.title}` : b.name) +
-      (b.readOnly ? " (read-only)" : "");
-    boardSel.appendChild(o);
-  }
   if (boardList.find((b) => b.name === BOARD)?.readOnly) lockReadOnly();
-  boardSel.value = BOARD;
-  // The picker truncates a long name; hovering shows all of it.
-  boardSel.title = boardSel.selectedOptions[0]?.textContent ??
-    "Open another board";
-  boardSel.onchange = () => {
-    location.search = boardSel.value === "default"
-      ? ""
-      : "?d=" + boardSel.value;
-  };
+  boardPicker = mountBoardPicker(document.getElementById("boardPicker"), {
+    boards: boardList,
+    current: BOARD,
+    onPick: (name) => {
+      // Encoded, or a name with & # + % or a space opens the wrong board;
+      // slashes stay readable (team/flow), and the reader decodes either.
+      location.search = name === "default"
+        ? ""
+        : "?d=" + encodeURIComponent(name).replaceAll("%2F", "/");
+    },
+  });
 
   setDiagramTitle(diagramState.title);
 

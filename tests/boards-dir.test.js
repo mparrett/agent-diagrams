@@ -50,6 +50,24 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
   const port = 8093;
   // A board linked in from the repo is still the repo's.
   Deno.symlinkSync(join(REPO_DIAGRAMS, "adv-bands"), join(dir, "linked"));
+  // Names that sort differently by bytes, by case and by number.
+  for (
+    const n of [
+      "zeta",
+      "café",
+      "Alpha",
+      "board10",
+      "cafe",
+      "board2",
+      "team/flow",
+    ]
+  ) {
+    Deno.mkdirSync(join(dir, n), { recursive: true });
+    Deno.writeTextFileSync(
+      join(dir, n, "diagram-state.json"),
+      JSON.stringify({ nodes: [], edges: [], rev: 0 }),
+    );
+  }
   const env = { ...Deno.env.toObject() };
   delete env.DIAGRAM_STATE;
   const server = new Deno.Command(Deno.execPath(), {
@@ -91,6 +109,23 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       }
     }
     const boards = await list();
+    assertEquals(
+      Object.keys(boards),
+      [
+        "default",
+        "Alpha",
+        "board2",
+        "board10",
+        "cafe", // before café: equal to the collator, so bytes decide
+        "café",
+        "linked",
+        "team/flow",
+        "zeta",
+        // diagrams/basic is the zero-config default, listed once as "default".
+        "examples/adv-bands",
+      ],
+      "default, then your boards by name (case-blind, numbers by value), then examples",
+    );
     assertEquals(boards["examples/adv-bands"], true, "examples are read-only");
     assertEquals(boards.default, true, "so is the zero-config default");
     assertEquals(boards.linked, true, "and so is one linked in from the repo");
