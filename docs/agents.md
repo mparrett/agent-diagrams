@@ -77,6 +77,19 @@ Add `--no-render` to a call, or set `DIAGRAM_NO_RENDER=1`, to save without
 drawing; finish with `render`. A batch already renders only once; a
 `render --preview` line in it makes that render a preview.
 
+## Read a board without the picture
+
+Every rendered PNG carries its board's full state in a metadata chunk. Handed
+a `diagram.png` on its own, run `read-png <file> --structure-only` to get the
+title, legend, boxes, wires, groups and notes as JSON instead of reading the
+image; without the flag it prints the whole state, and `init --from-png <file>`
+turns it back into an editable board. `export [--structure-only]` prints the
+same from a state file.
+
+Some hosts re-encode uploaded images and drop that chunk: Slack does, while
+GitHub generally serves attachments unchanged. If `read-png` says the PNG has
+no board, ask for the state file or its `export` output.
+
 ## Generate a board instead
 
 `just import-deps <entry>` (a Deno module graph), `just import-tree <dir>`
