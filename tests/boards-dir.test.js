@@ -51,7 +51,17 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
   // A board linked in from the repo is still the repo's.
   Deno.symlinkSync(join(REPO_DIAGRAMS, "adv-bands"), join(dir, "linked"));
   // Names that sort differently by bytes, by case and by number.
-  for (const n of ["zeta", "Alpha", "board10", "board2", "team/flow"]) {
+  for (
+    const n of [
+      "zeta",
+      "café",
+      "Alpha",
+      "board10",
+      "cafe",
+      "board2",
+      "team/flow",
+    ]
+  ) {
     Deno.mkdirSync(join(dir, n), { recursive: true });
     Deno.writeTextFileSync(
       join(dir, n, "diagram-state.json"),
@@ -106,6 +116,8 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
         "Alpha",
         "board2",
         "board10",
+        "cafe", // before café: equal to the collator, so bytes decide
+        "café",
         "linked",
         "team/flow",
         "zeta",

@@ -200,8 +200,11 @@ function scanRoot({ dir: rootDir, prefix, readOnly }) {
 function boardOrder(a, b) {
   const rank = (n) =>
     n === "default" ? 0 : n.startsWith(EXAMPLES_PREFIX) ? 2 : 1;
+  // The byte comparison settles names that differ only in case or accents
+  // (Notes / notes), which would otherwise keep their discovery order.
   return rank(a) - rank(b) ||
-    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }) ||
+    (a < b ? -1 : a > b ? 1 : 0);
 }
 function listBoards() {
   scanBoards();

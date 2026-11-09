@@ -2293,10 +2293,12 @@ function downloadJSON(json) {
 // ("Diagram Tool"); the brand no longer gets hijacked by per-diagram titles.
 // The browser tab: the board's title, or its name when it has none. The board
 // picker in the top bar names it on the page.
+let boardPicker = null; // set once the board list loads
 function setDiagramTitle(t) {
   document.title = `${
     t || (BOARD === "default" ? "Diagram" : BOARD)
   } · agent-diagrams`;
+  boardPicker?.setTitle(t ?? null); // an edit or a live reload renames it
 }
 
 // The View tool keeps every edit from starting; this catches any that slips past.
@@ -5341,11 +5343,15 @@ async function init() {
     if (r.ok) boardList = await r.json();
   } catch { /* static server — no registry */ }
   if (boardList.find((b) => b.name === BOARD)?.readOnly) lockReadOnly();
-  mountBoardPicker(document.getElementById("boardPicker"), {
+  boardPicker = mountBoardPicker(document.getElementById("boardPicker"), {
     boards: boardList,
     current: BOARD,
     onPick: (name) => {
-      location.search = name === "default" ? "" : "?d=" + name;
+      // Encoded, or a name with & # + % or a space opens the wrong board;
+      // slashes stay readable (team/flow), and the reader decodes either.
+      location.search = name === "default"
+        ? ""
+        : "?d=" + encodeURIComponent(name).replaceAll("%2F", "/");
     },
   });
 

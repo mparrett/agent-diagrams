@@ -12,7 +12,8 @@ const EXAMPLES = "examples/";
 /**
  * Mount on `root` (an empty element). `boards` is GET /diagrams' list, already
  * in display order; `current` is the open board's name; `onPick(name)` runs
- * when another board is chosen.
+ * when another board is chosen. Returns { setTitle } to rename the open board
+ * on the button when its title changes.
  */
 export function mountBoardPicker(root, { boards, current, onPick }) {
   root.classList.add("board-picker");
@@ -36,9 +37,13 @@ export function mountBoardPicker(root, { boards, current, onPick }) {
   filter.setAttribute("aria-controls", list.id);
 
   const cur = boards.find((b) => b.name === current) ?? { name: current };
-  button.querySelector(".bp-name").textContent = cur.name;
-  button.querySelector(".bp-title").textContent = cur.title ?? "";
-  button.title = cur.title ? `${cur.name} — ${cur.title}` : cur.name;
+  function setTitle(title) {
+    cur.title = title;
+    button.querySelector(".bp-name").textContent = cur.name;
+    button.querySelector(".bp-title").textContent = title ?? "";
+    button.title = title ? `${cur.name} — ${title}` : cur.name;
+  }
+  setTitle(cur.title ?? null);
 
   let shown = []; // boards matching the filter, in list order
   let active = -1; // index into `shown`
@@ -119,7 +124,10 @@ export function mountBoardPicker(root, { boards, current, onPick }) {
     button.setAttribute("aria-expanded", "true");
     filter.value = "";
     render();
-    filter.focus();
+    // On a touch screen, focusing the filter raises the keyboard over the
+    // list; there the list is tapped, and the filter is a tap away.
+    if (!matchMedia("(pointer: coarse)").matches) filter.focus();
+    else list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
     document.addEventListener("pointerdown", onOutside, true);
   }
 
@@ -149,6 +157,8 @@ export function mountBoardPicker(root, { boards, current, onPick }) {
   });
   filter.addEventListener("input", render);
   filter.addEventListener("keydown", (e) => {
+    // Enter or Esc while an IME is composing confirms or cancels the text.
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!shown.length) return;
@@ -159,9 +169,13 @@ export function mountBoardPicker(root, { boards, current, onPick }) {
       if (active >= 0) pick(shown[active].name);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      // The editor closes its node/edge editors on Esc too; this one is ours.
+      e.stopPropagation();
       close(true);
     } else if (e.key === "Tab") {
       close(false);
     }
   });
+
+  return { setTitle };
 }
