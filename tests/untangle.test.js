@@ -270,3 +270,28 @@ Deno.test("a shared measure cache renders what fresh measuring does", () => {
   }
   assert(measureCache.size > 0, "the cache was used");
 });
+
+Deno.test("untangle --length-weight scales the wire-length term of the score", () => {
+  const terms = (s, w) =>
+    s.failed * 1e6 + s.crossings * 1000 + s.labels * 400 + s.trunk * 60 +
+    s.length * w;
+  // --unpin rescores the pinned board after the search; that score must use
+  // the same weight, or the comparison and the reported `before` are off.
+  const pinned = {
+    ...structuredClone(CROSSED),
+    layout: { a: { x: 60, y: 60 } },
+    pinned: ["a"],
+  };
+  for (const w of [1, 2.5, 30]) {
+    for (const [state, unpin] of [[CROSSED, false], [pinned, true]]) {
+      const r = load(structuredClone(state)).untangle({
+        budget: 200,
+        lengthWeight: w,
+        unpin,
+      });
+      const what = `weight ${w}${unpin ? ", unpin" : ""}`;
+      assertEquals(r.before.cost, terms(r.before, w), `before, ${what}`);
+      assertEquals(r.after.cost, terms(r.after, w), `after, ${what}`);
+    }
+  }
+});

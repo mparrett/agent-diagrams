@@ -61,7 +61,14 @@ const overlaps = (a, b) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 // Score one render (renderToCanvas's result). Lower is better.
-export function scoreRender(res, dividerLabelRects = []) {
+// `lengthWeight` scales the wire-length term. At 1, one crossing outweighs a
+// thousand cells of wire, so a box can end up across the board from the one
+// it is wired to; raising it trades some crossings for shorter wires.
+export function scoreRender(
+  res,
+  dividerLabelRects = [],
+  { lengthWeight = 1 } = {},
+) {
   const { routes } = res;
   const ok = routes.filter((r) => r.path?.length > 1);
   const polys = ok.map((r) => corners(r.path));
@@ -106,7 +113,7 @@ export function scoreRender(res, dividerLabelRects = []) {
     trunk,
     length,
     cost: failed * W_FAILED + crossings * W_CROSSING + labels * W_LABEL +
-      trunk * W_TRUNK + length,
+      trunk * W_TRUNK + length * lengthWeight,
   };
 }
 
@@ -130,6 +137,7 @@ function seeded(seed) {
  * opts.seed varies the search. opts.onEval(evals, budget, top) hears about
  * each candidate, with `top` the best score yet; opts.stop() returning true
  * ends the search early with the best layout found so far.
+ * opts.lengthWeight scales the wire-length term (see scoreRender).
  */
 export function untangle(state, render, opts = {}) {
   const budget = opts.budget ?? 1500;
@@ -139,7 +147,9 @@ export function untangle(state, render, opts = {}) {
   const scoreAsIs = (s) => {
     evals++;
     const { res, dividerLabelRects } = render(s);
-    const r = scoreRender(res, dividerLabelRects);
+    const r = scoreRender(res, dividerLabelRects, {
+      lengthWeight: opts.lengthWeight,
+    });
     if (!top || r.cost < top.cost) top = r;
     opts.onEval?.(evals, budget, top);
     return r;
