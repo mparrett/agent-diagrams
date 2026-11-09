@@ -98,6 +98,7 @@ attach:
 status:
     @PORT={{port}} HOST={{host}} SESSION={{session}} ./bin/serve.sh status
 
-# Tail the server's recent output
+# Tail the server's recent output. Reads the log `serve` tees, which outlives
+# a crashed server's tmux pane.
 logs:
-    tmux capture-pane -p -t "={{session}}:" -S -200
+    @tail -n 200 "${TMPDIR:-/tmp}/agent-diagrams-{{port}}.log"
