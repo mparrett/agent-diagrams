@@ -1,6 +1,7 @@
 import { assert } from "@std/assert";
 import { Diagram } from "../diagram-api.js";
 import { isBandDivider } from "../diagram-core.js";
+import { DEFAULT_LENGTH_WEIGHT } from "../untangle.js";
 
 function assertEquals(actual, expected, msg = "") {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -282,16 +283,18 @@ Deno.test("untangle --length-weight scales the wire-length term of the score", (
     layout: { a: { x: 60, y: 60 } },
     pinned: ["a"],
   };
-  for (const w of [1, 2.5, 30]) {
+  // undefined: no weight given, so the default applies.
+  for (const w of [undefined, 1, 2.5, 30]) {
     for (const [state, unpin] of [[CROSSED, false], [pinned, true]]) {
       const r = load(structuredClone(state)).untangle({
         budget: 200,
         lengthWeight: w,
         unpin,
       });
-      const what = `weight ${w}${unpin ? ", unpin" : ""}`;
-      assertEquals(r.before.cost, terms(r.before, w), `before, ${what}`);
-      assertEquals(r.after.cost, terms(r.after, w), `after, ${what}`);
+      const ew = w ?? DEFAULT_LENGTH_WEIGHT;
+      const what = `weight ${w ?? "default"}${unpin ? ", unpin" : ""}`;
+      assertEquals(r.before.cost, terms(r.before, ew), `before, ${what}`);
+      assertEquals(r.after.cost, terms(r.after, ew), `after, ${what}`);
     }
   }
 });

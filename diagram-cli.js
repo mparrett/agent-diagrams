@@ -29,6 +29,7 @@ import {
 } from "./diagram-api.js";
 import { DEFAULT_COLORS, DEFAULT_EDGE_STYLES } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
+import { DEFAULT_LENGTH_WEIGHT } from "./untangle.js";
 
 const BUILTIN_COLORS = Object.keys(DEFAULT_COLORS);
 const BUILTIN_STYLES = Object.keys(DEFAULT_EDGE_STYLES);
@@ -321,9 +322,10 @@ Commands:
                                        scored on the routed wires. Boxes keep their divider band (or their
                                        row, without bands); pinned boxes stay put, --unpin releases them
                                        first. --budget caps candidate layouts tried (default 1500).
-                                       --length-weight scales wire length in the score (default 1, where
-                                       one crossing outweighs 1000 cells of wire); raise it to keep wired
-                                       boxes closer, at the cost of a crossing or a label clash
+                                       --length-weight: points per cell of wire against 1000 per crossing
+                                       (default 15). Higher keeps wired boxes closer, but enough length
+                                       outweighs a label clash; check with issues. 1 is the old
+                                       crossings-first behaviour
   flow-place [--gap=px] [--frame=WxH]
                              Pin the longest edge chain along the flow field's streamline and
                              the other nodes beside their neighbours; the field spans the frame
@@ -1379,8 +1381,14 @@ function run(args) {
       const r = d.untangle(opts);
       const fmt = (s) =>
         `${s.crossings} crossings, ${s.labels} label issues, ${s.length} cells of wire`;
+      // Name the weight so a run can be reproduced, and say how to tune it:
+      // an agent that never reads the docs still learns the knob exists.
+      const weight = opts.lengthWeight ?? DEFAULT_LENGTH_WEIGHT;
+      const tune = `length weight ${weight}; --length-weight=N to change ` +
+        "(higher keeps wired boxes closer, lower allows longer wires)";
       if (!r.moved.length) {
         console.log(`nothing better found (${fmt(r.before)}); board unchanged`);
+        console.log(tune);
         break;
       }
       // One attempt: a retry would repeat the whole search against a board
@@ -1400,6 +1408,7 @@ function run(args) {
           fmt(r.after)
         }; moved ${r.moved.length} boxes (rev ${d.rev})`,
       );
+      console.log(tune);
       break;
     }
 
