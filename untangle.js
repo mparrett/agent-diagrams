@@ -33,6 +33,12 @@ const W_TRUNK = 60;
 // Wires leaving or entering the same box may share track near it; that reads
 // as a fan-out, not a merge, so it costs a fraction.
 const KIN_TRUNK = 0.2;
+// Wire length counts this many points per cell. At 1, one crossing was worth
+// a thousand cells of wire, and untangle would send a box across the board
+// from the one it is wired to. On the boards it was tried on, 10-20 gave
+// shorter wires at no more crossings (and on one, fewer); around 50 it
+// starts trading label clashes for length.
+export const DEFAULT_LENGTH_WEIGHT = 15;
 
 // Polyline corners of a cell path, so crossings are tested per segment.
 function corners(path) {
@@ -61,13 +67,11 @@ const overlaps = (a, b) =>
   a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 // Score one render (renderToCanvas's result). Lower is better.
-// `lengthWeight` scales the wire-length term. At 1, one crossing outweighs a
-// thousand cells of wire, so a box can end up across the board from the one
-// it is wired to; raising it trades some crossings for shorter wires.
+// `lengthWeight` scales the wire-length term (DEFAULT_LENGTH_WEIGHT above).
 export function scoreRender(
   res,
   dividerLabelRects = [],
-  { lengthWeight = 1 } = {},
+  { lengthWeight = DEFAULT_LENGTH_WEIGHT } = {},
 ) {
   const { routes } = res;
   const ok = routes.filter((r) => r.path?.length > 1);

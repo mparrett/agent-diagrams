@@ -313,7 +313,7 @@ diagram-cli.js [--state <path> | --board <name>] <command> [args...]
   update-divider <id> [--at=] [--orient=h|v] [--label=] [--color=] [--dash=]   Move, rotate or restyle
                  [--band=on|off|default] [--after=N]   On a band divider --at snaps to the nearest row gap
   set-divider-bands on|off|default                     Board default for dividers without their own --band
-  untangle [--unpin] [--budget=N] [--seed=N] [--length-weight=N]   Rearrange unpinned boxes to cut crossings (bands kept); --length-weight favours shorter wires
+  untangle [--unpin] [--budget=N] [--seed=N] [--length-weight=N]   Rearrange unpinned boxes to cut crossings (bands kept); --length-weight=N sets how much wire length counts (default 15)
   add-note <x> <y> [--title=] [--color=] <line> [line...] / remove-note <x> <y>
   add-group <id> <label> <node>... [--color=] [--dash=]   Labeled frame around nodes
   update-group <id> [--label=] [--nodes=a,b] [--add=a,b] [--remove=a,b] [--color=|none] [--dash=|none]

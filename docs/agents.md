@@ -46,13 +46,12 @@ row or column when the target cell is taken.
 
 ## Fix the layout
 
-- `untangle` rearranges unpinned boxes to cut crossings. Wire length counts
-  too, but by default one crossing outweighs 1000 cells of wire, so it can
-  push two boxes that belong together to opposite sides of the board. Two
-  ways to stop that:
-  - `--length-weight=N` makes length count N times as much. Try 10 to 20.
-    Much higher and it starts accepting label clashes to shorten wires; check
-    with `issues`.
+- `untangle` rearranges unpinned boxes to cut crossings and keep wires short.
+  If it still puts two boxes that belong together far apart:
+  - `--length-weight=N` sets how much wire length counts against crossings
+    (default 15, against 1000 per crossing). Raise it to pull wired boxes
+    closer. Around 50 it starts accepting label clashes to shorten wires;
+    check with `issues`.
   - Pin the boxes whose position matters first; `untangle` leaves pinned
     boxes where they are. A box gets pinned when it is dragged in the editor
     or moved by `spread` or `snap-h`/`snap-v`.
