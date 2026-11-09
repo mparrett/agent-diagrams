@@ -46,11 +46,16 @@ row or column when the target cell is taken.
 
 ## Fix the layout
 
-- `untangle` rearranges unpinned boxes to cut crossings. It only counts
-  crossings and label clashes, so it can push two boxes that belong together
-  to opposite sides of the board. Pin the boxes whose position matters first;
-  `untangle` leaves pinned boxes where they are. A box gets pinned when it is
-  dragged in the editor or moved by `spread` or `snap-h`/`snap-v`.
+- `untangle` rearranges unpinned boxes to cut crossings. Wire length counts
+  too, but by default one crossing outweighs 1000 cells of wire, so it can
+  push two boxes that belong together to opposite sides of the board. Two
+  ways to stop that:
+  - `--length-weight=N` makes length count N times as much. Try 10 to 20.
+    Much higher and it starts accepting label clashes to shorten wires; check
+    with `issues`.
+  - Pin the boxes whose position matters first; `untangle` leaves pinned
+    boxes where they are. A box gets pinned when it is dragged in the editor
+    or moved by `spread` or `snap-h`/`snap-v`.
 - `place <id> <row> <col>` puts a box in a cell and unpins it. `free-node <id>`
   only unpins it, handing it back to auto-layout. To lay out by hand, use
   `free-node` on the boxes you want to move, `place` each one, then run

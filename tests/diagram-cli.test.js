@@ -1023,6 +1023,8 @@ Deno.test("CLI: untangle saves a better board and reports the scores", async () 
     assert(r.code === 1 && r.err.includes("--budget"), r.err);
     r = await runCli(path, ["untangle", "--bugdet=5"]);
     assert(r.code === 1 && r.err.includes("unknown flag"), r.err);
+    r = await runCli(path, ["untangle", "--length-weight=0"]);
+    assert(r.code === 1 && r.err.includes("--length-weight"), r.err);
   }));
 
 Deno.test("CLI: render --preview in a batch makes its one render a preview", async () =>
