@@ -24,6 +24,7 @@
     "raster-check": "deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi --unstable-ffi raster-check.js",
     "upstream-check": "deno run --allow-read --allow-write --allow-net --allow-env --allow-run --allow-ffi --unstable-ffi bin/upstream-check.js",
     "import:deps": "deno run --allow-read --allow-write --allow-net --allow-env --allow-run --allow-ffi --unstable-ffi bin/import-depgraph.js",
+    "import:python": "deno run --allow-read --allow-write --allow-net --allow-env --allow-run --allow-ffi --unstable-ffi bin/import-python.js",
     "import:tree": "deno run --allow-read --allow-write --allow-net --allow-env --allow-ffi --unstable-ffi bin/import-filetree.js"
   }
 }
