@@ -16,3 +16,6 @@ tests/parity-deno.json
 
 # Scratch boards: served and editable, never committed. See CLAUDE.md.
 diagrams/scratch/
+
+# `render --preview` output: a 1x working copy, never committed
+*.preview.png

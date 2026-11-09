@@ -65,10 +65,13 @@ row or column when the target cell is taken.
   rendering.
 - The PNG is written as `diagram.png` next to the board's
   `diagram-state.json`. It's drawn at 2x, so looking at it costs more than
-  reading `issues` does.
+  reading `issues` does. To look between steps, run `render --preview`: it
+  writes `diagram.preview.png` at 1x, a quarter of the pixels, and leaves
+  `diagram.png` alone.
 
 Add `--no-render` to a call, or set `DIAGRAM_NO_RENDER=1`, to save without
-drawing; finish with `render`. A batch already renders only once.
+drawing; finish with `render`. A batch already renders only once; a
+`render --preview` line in it makes that render a preview.
 
 ## Generate a board instead
 

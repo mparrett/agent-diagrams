@@ -86,6 +86,9 @@ let deferRender = noRenderFlag ||
 const renderUnlessDeferred = (d) => {
   if (!deferRender) d.render();
 };
+// While a batch runs: whether a `render` line asked for its final render, and
+// whether as a preview. Null outside a batch.
+let batchRender = null;
 
 const args = rawArgs;
 const cmd = args[0];
@@ -335,7 +338,8 @@ Commands:
   expand-canvas [--left=px] [--right=px] [--up=px] [--down=px]   Grow/shrink B per side (negative trims; left/up slide content)
   fit-canvas                 Trim board bounds B to hug boxes, notes and group frames (slides the diagram to a
                              uniform margin; auto-placed boxes stay auto)
-  render
+  render [--preview]         --preview: draw at 1x into diagram.preview.png, a quarter of the pixels,
+                             for checking a board step by step; diagram.png is left as it was
   batch [file|-]             Run CLI lines from a file (or stdin) in one process and render once at the
                              end: shell quoting, # comments, trailing \\ continues a line. A failing line
                              stops the batch and is named
@@ -1719,7 +1723,17 @@ function run(args) {
     }
 
     case "render": {
-      Diagram.load(STATE).render();
+      const flags = args.slice(1);
+      rejectUnknownFlags("render", flags, ["--preview"]);
+      // In a batch, render lines wait for the batch's one render at the end,
+      // and --preview makes that render a preview; drawing mid-batch would
+      // show a half-built board and then pay for a second render.
+      if (batchRender) {
+        batchRender.asked = true;
+        batchRender.preview ||= flags.includes("--preview");
+        break;
+      }
+      Diagram.load(STATE).render({ preview: flags.includes("--preview") });
       break;
     }
 
@@ -1749,6 +1763,7 @@ function run(args) {
       const lines = parseBatch(Deno.readTextFileSync(src));
       const outer = deferRender;
       deferRender = true;
+      batchRender = { asked: false, preview: false };
       let at = null;
       const onExit = () => {
         if (at) console.error(`batch: stopped at line ${at.line}: ${at.text}`);
@@ -1772,9 +1787,16 @@ function run(args) {
       at = null;
       globalThis.removeEventListener("unload", onExit);
       deferRender = outer;
-      if (!outer) Diagram.load(STATE).render();
+      const { asked, preview } = batchRender;
+      batchRender = null;
+      // An explicit render line still renders under --no-render, as it
+      // always has outside a batch.
+      const rendered = !outer || asked;
+      if (rendered) Diagram.load(STATE).render({ preview });
       console.log(
-        `batch: ${lines.length} commands${outer ? "" : ", rendered once"}`,
+        `batch: ${lines.length} commands${
+          rendered ? `, rendered once${preview ? " (preview)" : ""}` : ""
+        }`,
       );
       break;
     }
