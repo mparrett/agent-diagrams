@@ -333,7 +333,7 @@ diagram-cli.js [--state <path> | --board <name>] <command> [args...]
   set-canvas <W>x<H> [--anchor=] [--grow]   Anchor works as in Photoshop; --grow never shrinks
   expand-canvas --by=<W>x<H> [--anchor=] / expand-canvas [--left= --right= --up= --down=]
   fit-canvas                 Trim the board to hug boxes, notes and group frames
-  render
+  render [--preview]         --preview: 1x into diagram.preview.png; diagram.png is left as it was
   batch [file|-]             run CLI lines in one process, render once (see Scripted builds)
   spread                     Force-directed spread (bakes positions into layout)
   snap-h / snap-v            Align nearly-aligned box centers (bakes into layout)

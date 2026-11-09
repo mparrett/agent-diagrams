@@ -661,6 +661,11 @@ export class Diagram {
     return join(this.stateDir, this._state.output || "diagram.png");
   }
 
+  // Where render({ preview: true }) writes: diagram.png → diagram.preview.png.
+  get previewPath() {
+    return this.outputPath.replace(/(\.png)?$/i, ".preview.png");
+  }
+
   // ─── Canvas dimensions (state-driven) ─────────────────────
   get _dims() {
     const W = this._state.width || DEFAULT_W;
@@ -2875,12 +2880,15 @@ export class Diagram {
   }
 
   // ─── Render to PNG ────────────────────────────────────────
-  render() {
+  // `preview: true` draws at 1x into a sibling `<name>.preview.png`: a quarter
+  // of the pixels, for checking a board step by step. It never overwrites the
+  // full-resolution PNG, which is what gets committed and served.
+  render({ preview = false } = {}) {
     const { canvas, W, H, scale, DPR, maxDim, routes, frames } = this
-      .renderToCanvas();
+      .renderToCanvas(preview ? { dpr: 1 } : {});
 
     // Write PNG
-    const outPath = this.outputPath;
+    const outPath = preview ? this.previewPath : this.outputPath;
     const tmpPath = `${outPath}.${Deno.pid}.${crypto.randomUUID()}.tmp`;
     const buf = canvas.encode("png");
     try {
@@ -2945,9 +2953,11 @@ export class Diagram {
   // score a layout instead of showing it.
   // `measureCache` (a Map) remembers text widths across renders that share it;
   // see memoMeasure.
-  renderToCanvas({ shadows = false, pixels = true, measureCache } = {}) {
+  renderToCanvas(
+    { shadows = false, pixels = true, measureCache, dpr } = {},
+  ) {
     const pal = this.palette = paletteFromState(this._state); // pick up any state mutations
-    const { DPR } = this._dims;
+    const DPR = dpr ?? this._dims.DPR;
 
     // Compute layout first (scratch context for text measurement), then grow the
     // canvas to encompass every box. Boxes dragged beyond the authored

@@ -2192,3 +2192,25 @@ Deno.test("an insert carries pinned boxes past it by the new line's pitch", () =
     assert(y >= 400 + 45 + 40, `pin moved to y=${y}`);
     assert(d.layout.down.x === 300, "only along the inserted axis");
   }));
+
+// PNG width and height live at bytes 16..24 of the IHDR chunk.
+function pngSize(path) {
+  const v = new DataView(Deno.readFileSync(path).buffer);
+  return [v.getUint32(16), v.getUint32(20)];
+}
+
+Deno.test("render preview writes a 1x sibling and leaves the full PNG alone", () =>
+  withTempDir((dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: [NODE_A, NODE_B], edges: [] });
+    Diagram.load(path).render();
+    const full = Deno.readFileSync(`${dir}/diagram.png`);
+    Diagram.load(path).render({ preview: true });
+    assert(
+      Deno.readFileSync(`${dir}/diagram.png`).every((b, i) => b === full[i]),
+      "diagram.png unchanged",
+    );
+    const [fw, fh] = pngSize(`${dir}/diagram.png`);
+    const [pw, ph] = pngSize(`${dir}/diagram.preview.png`);
+    assert(fw === pw * 2 && fh === ph * 2, `${fw}x${fh} vs ${pw}x${ph}`);
+  }));

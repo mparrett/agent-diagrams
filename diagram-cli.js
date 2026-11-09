@@ -335,7 +335,8 @@ Commands:
   expand-canvas [--left=px] [--right=px] [--up=px] [--down=px]   Grow/shrink B per side (negative trims; left/up slide content)
   fit-canvas                 Trim board bounds B to hug boxes, notes and group frames (slides the diagram to a
                              uniform margin; auto-placed boxes stay auto)
-  render
+  render [--preview]         --preview: draw at 1x into diagram.preview.png, a quarter of the pixels,
+                             for checking a board step by step; diagram.png is left as it was
   batch [file|-]             Run CLI lines from a file (or stdin) in one process and render once at the
                              end: shell quoting, # comments, trailing \\ continues a line. A failing line
                              stops the batch and is named
@@ -1719,7 +1720,9 @@ function run(args) {
     }
 
     case "render": {
-      Diagram.load(STATE).render();
+      const flags = args.slice(1);
+      rejectUnknownFlags("render", flags, ["--preview"]);
+      Diagram.load(STATE).render({ preview: flags.includes("--preview") });
       break;
     }
 
