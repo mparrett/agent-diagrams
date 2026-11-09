@@ -2290,10 +2290,12 @@ function downloadJSON(json) {
 
 // The loaded diagram's own title shows as a subtitle under the static brand
 // ("Diagram Tool"); the brand no longer gets hijacked by per-diagram titles.
-// The sidebar heading: the board's title, or its name when it has none.
+// The browser tab: the board's title, or its name when it has none. The board
+// picker in the top bar names it on the page.
 function setDiagramTitle(t) {
-  const el = document.getElementById("diagramTitle");
-  el.textContent = t || (BOARD === "default" ? "Diagram" : BOARD);
+  document.title = `${
+    t || (BOARD === "default" ? "Diagram" : BOARD)
+  } · agent-diagrams`;
 }
 
 // The View tool keeps every edit from starting; this catches any that slips past.
@@ -2677,6 +2679,11 @@ document.getElementById("bAutoLayoutKeep").onclick = () => {
   );
 };
 document.getElementById("bSave").onclick = savePositions;
+// Open the board's rendered PNG itself in a new tab (the canvas menu). The
+// query string defeats a cached copy from before the last render.
+function openBoardPng() {
+  window.open(`${API}/diagram.png?t=${Date.now()}`, "_blank", "noopener");
+}
 // Open the live PNG viewer for the current board in a new tab.
 document.getElementById("bViewer").onclick = () => {
   window.open(
@@ -4293,6 +4300,8 @@ function openContextMenuFor(clientX, clientY) {
     null,
     { label: "Add horizontal divider", action: () => addDividerAt("h", p) },
     { label: "Add vertical divider", action: () => addDividerAt("v", p) },
+    null,
+    { label: "Open PNG ↗", action: openBoardPng },
   ]);
 }
 
@@ -5159,14 +5168,24 @@ function refitToStage() {
   zoomToFit();
   render();
 }
-window.addEventListener("resize", () => {
+function onStageResize() {
   initCanvas();
   if (Math.abs(VIEW_W - lastFitW) > 4) {
     lastFitW = VIEW_W;
     zoomToFit();
   } // width changed → resize/rotate
   render();
-});
+}
+window.addEventListener("resize", onStageResize);
+// The top bar wraps when its contents widen (a longer zoom or size readout),
+// which resizes the stage with no window resize. Re-measure then too, or the
+// canvas keeps its old height: clipped at the bottom, or a gap under it.
+new ResizeObserver(() => {
+  const r = stage.getBoundingClientRect();
+  if (Math.round(r.width) !== VIEW_W || Math.round(r.height) !== VIEW_H) {
+    onStageResize();
+  }
+}).observe(stage);
 
 // ================================================================
 // VIEW: pan + zoom input
@@ -5214,17 +5233,20 @@ zoomPctEl.onclick = () => {
 // change, so re-measure and refit the board into the reclaimed space.
 function setNavCollapsed(collapsed) {
   document.body.classList.toggle("nav-collapsed", collapsed);
+  navToggle.title = collapsed ? "Show the sidebar" : "Hide the sidebar";
   try {
     localStorage.setItem("wb-nav-collapsed", collapsed ? "1" : "0");
   } catch { /* storage blocked — the dock choice just won't persist */ }
   refitToStage();
 }
-document.getElementById("navCollapse").onclick = () => setNavCollapsed(true);
-document.getElementById("navExpand").onclick = () => setNavCollapsed(false);
+const navToggle = document.getElementById("navToggle");
+navToggle.onclick = () =>
+  setNavCollapsed(!document.body.classList.contains("nav-collapsed"));
 // Restore last dock choice before init() takes the first stage measurement.
 try {
   if (localStorage.getItem("wb-nav-collapsed") === "1") {
     document.body.classList.add("nav-collapsed");
+    navToggle.title = "Show the sidebar";
   }
 } catch { /* storage blocked — start with the dock expanded */ }
 
@@ -5328,6 +5350,9 @@ async function init() {
   }
   if (boardList.find((b) => b.name === BOARD)?.readOnly) lockReadOnly();
   boardSel.value = BOARD;
+  // The picker truncates a long name; hovering shows all of it.
+  boardSel.title = boardSel.selectedOptions[0]?.textContent ??
+    "Open another board";
   boardSel.onchange = () => {
     location.search = boardSel.value === "default"
       ? ""
