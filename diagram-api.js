@@ -744,11 +744,10 @@ export class Diagram {
     }
   }
 
-  /**
-   * The board as save() would write it, without bumping rev: what `export`
-   * prints and what render() embeds in the PNG, so the two always agree.
-   */
-  stateSnapshot() {
+  // The board as save() writes it, stale inner pins pruned. One builder, so
+  // what export prints and render embeds can't drift from the file.
+  _persistedState() {
+    this._pruneInnerLayout();
     return {
       ...this._state,
       nodes: this.nodes,
@@ -757,6 +756,17 @@ export class Diagram {
       noteLayout: this.noteLayout,
       rowY: this.rowY,
     };
+  }
+
+  /**
+   * The board as save() would write it, minus `rev`: what `export` prints and
+   * what render() embeds in the PNG, so the two always agree. `rev` counts
+   * saves, not content; embedding it would change the PNG's bytes on every
+   * save that draws nothing new (issue #10).
+   */
+  stateSnapshot() {
+    const { rev: _rev, ...state } = this._persistedState();
+    return state;
   }
 
   /**
@@ -800,16 +810,8 @@ export class Diagram {
       }
 
       const nextRev = this._loadedRev + 1;
-      this._pruneInnerLayout();
-      const state = {
-        ...this._state,
-        nodes: this.nodes,
-        edges: this.edges,
-        layout: this.layout,
-        noteLayout: this.noteLayout,
-        rowY: this.rowY,
-        rev: nextRev,
-      };
+      // rev keeps its place in the file when the board already has one.
+      const state = { ...this._persistedState(), rev: nextRev };
       Deno.writeTextFileSync(tmpPath, JSON.stringify(state, null, 2) + "\n");
       Deno.renameSync(tmpPath, resolvedPath); // atomic
       this._state = state;

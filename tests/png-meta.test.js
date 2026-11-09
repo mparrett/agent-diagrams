@@ -168,6 +168,38 @@ Deno.test("init --from-png reproduces the board, and won't overwrite", async () 
     assert(r.code !== 0 && r.err.includes("shipped example"), r.err);
   }));
 
+Deno.test("init --from-png drops an output path that leaves the board", async () =>
+  await withTempDir(async (dir) => {
+    await renderBoard(dir);
+    const png = embedPngMeta(Deno.readFileSync(`${dir}/diagram.png`), {
+      ...BOARD,
+      output: "../escape.png",
+    });
+    Deno.writeFileSync(`${dir}/hostile.png`, png);
+    const target = `${dir}/new/diagram-state.json`;
+    Deno.mkdirSync(`${dir}/new`);
+    const r = await cli([
+      "--state",
+      target,
+      "init",
+      "--from-png",
+      `${dir}/hostile.png`,
+    ]);
+    assert(r.code === 0, r.err);
+    assert(r.err.includes('dropping "output"'), r.err);
+    const s = JSON.parse(Deno.readTextFileSync(target));
+    assert(!("output" in s), "output removed");
+  }));
+
+Deno.test("export and the embedded state leave out rev", async () =>
+  await withTempDir(async (dir) => {
+    const state = await renderBoard(dir);
+    const meta = readPngMeta(Deno.readFileSync(`${dir}/diagram.png`));
+    assert(meta && !("rev" in meta), "no rev in the PNG");
+    const r = await cli(["--state", state, "export"]);
+    assert(!("rev" in JSON.parse(r.out)), "no rev in export");
+  }));
+
 Deno.test("init --from-png on a PNG without a board writes nothing", async () =>
   await withTempDir(async (dir) => {
     await renderBoard(dir, { embedMetadata: false });

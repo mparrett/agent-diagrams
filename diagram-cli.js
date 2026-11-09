@@ -433,6 +433,20 @@ if (cmd === "init") {
   // Read the PNG before touching the filesystem, so a PNG without a board
   // leaves no empty board directory behind.
   const embedded = fromPng && readBoardFromPng(fromPng);
+  // A PNG may come from anyone, and `output` names the file the next render
+  // replaces: keep it only as a plain filename beside the board.
+  if (
+    embedded && embedded.output !== undefined &&
+    (typeof embedded.output !== "string" ||
+      !/^[^/\\]+$/.test(embedded.output) || /^\.\.?$/.test(embedded.output))
+  ) {
+    console.error(
+      `warning: dropping "output": ${
+        JSON.stringify(embedded.output)
+      } from ${fromPng} — not a plain filename; the board renders to diagram.png`,
+    );
+    delete embedded.output;
+  }
   // Shipped boards change through a PR, never by scaffolding over them.
   if (!stateArg && boardArg?.startsWith("examples/")) {
     console.error(
