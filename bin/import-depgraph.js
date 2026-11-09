@@ -16,7 +16,7 @@
  *   --granularity=package|module   (default: package)
  *   --per-row=<n>          nodes per row band before wrapping (default: 8)
  *   --max=<n>              keep only the n largest packages
- *   --width= / --height=   canvas size (default 1600x1000)
+ *   --width= / --height=   canvas size; without either, it fits the board
  *   --title=
  *   --no-untangle          keep the depth-band layout instead of untangling it
  *

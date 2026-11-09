@@ -201,15 +201,15 @@ const UNTANGLE_SECONDS = 20;
 
 /**
  * Untangle the freshly imported board (unless `--no-untangle`) and trim the
- * canvas to what was drawn. An importer's band layout is a first guess: left
+ * canvas to what was drawn (unless `--width`/`--height` set its size). An importer's band layout is a first guess: left
  * as is, the first render shows avoidable crossings and shared tracks across a
  * canvas sized for the largest case. Returns a line for the importer to print.
  */
 export function settleLayout(d, flags, { seconds = UNTANGLE_SECONDS } = {}) {
   let line = "layout: as imported (--no-untangle)";
   if (!boolFlag(flags, "no-untangle")) {
-    // Time-boxed, not just eval-boxed: a few dozen boxes finish the full
-    // budget in seconds, but one eval of a 300-box module graph takes ~5s.
+    // Time-boxed, not just eval-boxed. As of 2026-11-09, a 24-box graph ran
+    // the full budget in ~8s, but one eval of a 324-box module graph took ~5s.
     const deadline = performance.now() + seconds * 1000;
     let timedOut = false;
     const r = d.untangle({
@@ -226,6 +226,9 @@ export function settleLayout(d, flags, { seconds = UNTANGLE_SECONDS } = {}) {
         `; stopped at ${seconds}s, run \`untangle\` on the board to search longer`;
     }
   }
-  d.fitCanvasToContent();
+  // An explicit size is a request, not a starting guess: keep it.
+  if (flags.width === undefined && flags.height === undefined) {
+    d.fitCanvasToContent();
+  }
   return line;
 }

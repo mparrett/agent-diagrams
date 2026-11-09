@@ -20,7 +20,7 @@
  *   --skip=a,b,c           extra directory names to ignore
  *   --python=<path>        interpreter that parses the code (default: python3)
  *   --per-row=<n>          nodes per row band before wrapping (default: 8)
- *   --width= / --height=   canvas size (default 1600x1000)
+ *   --width= / --height=   canvas size; without either, it fits the board
  *   --title=
  *   --no-untangle          keep the depth-band layout instead of untangling it
  *
@@ -249,6 +249,8 @@ def is_stdlib(top):
 
 modules, edges, external, errors = [], {}, {}, []
 for name, (path, is_pkg, rel, script_dir) in sorted(files.items()):
+    # Known once the file is read, so a parse failure still shows its size.
+    lines = None
     try:
         with open(path, "rb") as fh:
             src = fh.read()
@@ -260,7 +262,7 @@ for name, (path, is_pkg, rel, script_dir) in sorted(files.items()):
         continue
     except (ValueError, RecursionError, OSError) as e:
         errors.append(rel + ": " + str(e))
-        modules.append({"id": name, "path": rel, "entries": [], "lines": None, "unparsed": True})
+        modules.append({"id": name, "path": rel, "entries": [], "lines": lines, "unparsed": True})
         continue
     # Nothing but an optional docstring: the file only marks a package.
     body = tree.body[1:] if tree.body and isinstance(tree.body[0], ast.Expr) and const_str(tree.body[0].value) is not None else tree.body

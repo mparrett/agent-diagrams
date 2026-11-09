@@ -241,3 +241,10 @@ Deno.test("import-python: an empty __init__.py stays when imported, or alone", a
     await Deno.remove(root, { recursive: true });
   }
 });
+
+Deno.test("import-python: an explicit --width keeps its canvas size", async () => {
+  const { state } = await importBoard(["--no-untangle", "--width=3000"]);
+  assertEquals(state.width, 3000);
+  const fitted = (await importBoard(["--no-untangle"])).state;
+  assert(fitted.width < 1600, `fit should trim: ${fitted.width}`);
+});
