@@ -57,18 +57,30 @@ Deno.test("import-python: local modules, imports and entry points", async () => 
     "myapp.__main__",
     "myapp.api",
     "myapp.api.routes",
+    "myapp.api.util",
     "myapp.broken",
     "myapp.cli",
     "myapp.core",
+    "myapp.env",
+    "myapp.legacy",
+    "scripts.helpers",
     "scripts.manage",
+    "settings",
   ]);
+  // myapp.env is a real subpackage although "env" is a skipped name;
+  // scripts.manage reaches its neighbour helpers with a bare `import helpers`;
+  // myapp.legacy's `from .. import settings` climbs past the top package, so
+  // it draws nothing.
   assertEquals([...edgeSet(state)].sort(), [
     "myapp -> myapp.core",
     "myapp.__main__ -> myapp.cli",
     "myapp.api.routes -> myapp.core",
+    "myapp.api.util -> myapp.api.routes",
+    "myapp.api.util -> myapp.env",
     "myapp.cli -> myapp.api.routes",
     "myapp.cli -> myapp.core",
     "scripts.manage -> myapp.cli",
+    "scripts.manage -> scripts.helpers",
   ]);
   // Two statements in cli.py reach core: a heavier edge, labelled with the count.
   const heavy = state.edges.find((e) =>
@@ -94,6 +106,8 @@ Deno.test("import-python: local modules, imports and entry points", async () => 
     "seed",
   ]);
   assertEquals(nodes["myapp.__main__"].details, ["__main__"]);
+  // Written the other way round: "__main__" == __name__.
+  assertEquals(nodes["scripts.helpers"].details, ["__main__"]);
   assertEquals(nodes["myapp.cli"].color, "amber");
   assertEquals(nodes["myapp.core"].color, "blue");
 
@@ -118,8 +132,10 @@ Deno.test("import-python: --external draws stdlib and third-party", async () => 
   for (const name of ["click", "fastapi", "yaml"]) {
     assertEquals(nodes[`ext:${name}`]?.color, "purple", name);
   }
-  // __future__ is a compiler directive, not a dependency.
+  // __future__ is a compiler directive, not a dependency; a script's
+  // neighbour is local, not third-party.
   assert(!nodes["ext:__future__"]);
+  assert(!nodes["ext:helpers"]);
   const edges = edgeSet(state);
   assert(edges.has("myapp.core -> ext:yaml"));
   assert(edges.has("myapp.api.routes -> ext:fastapi"));
@@ -131,6 +147,20 @@ Deno.test("import-python: a package root names modules after itself", async () =
   assert(ids.includes("myapp.api.routes"), ids.join(", "));
   assert(!ids.some((id) => id.startsWith("scripts")));
   assert(edgeSet(state).has("myapp.cli -> myapp.core"));
+});
+
+Deno.test("import-python: a subpackage root keeps its full name", async () => {
+  const { state } = await importBoard(["--external"], `${FIXTURE}/myapp/api`);
+  const ids = state.nodes.map((n) => n.id);
+  assertEquals(ids.filter((id) => !id.startsWith("ext:")).sort(), [
+    "myapp.api",
+    "myapp.api.routes",
+    "myapp.api.util",
+  ]);
+  // `from myapp.api import routes` resolves inside the root. myapp.env lies
+  // outside it, so it shows as an import of the enclosing package.
+  assert(edgeSet(state).has("myapp.api.util -> myapp.api.routes"));
+  assert(!ids.includes("ext:routes"));
 });
 
 Deno.test("import-python: --max keeps the most-connected modules", async () => {

@@ -98,16 +98,24 @@ ROUTE = {"get", "post", "put", "patch", "delete", "head", "options", "route", "a
 CLI = {"command", "group"}
 
 root = os.path.abspath(sys.argv[1])
-skip = SKIP | {s for s in (sys.argv[2] if len(sys.argv) > 2 else "").split(",") if s}
+extra_skip = {s for s in (sys.argv[2] if len(sys.argv) > 2 else "").split(",") if s}
 
 def is_pkg_dir(d):
     return os.path.isfile(os.path.join(d, "__init__.py"))
 
 # Where module names are counted from, as sys.path would see it. A root that is
-# itself a package names its modules after itself; a src/ layout is named from
-# src/, so its modules match the names other files import them by.
+# itself a package names its modules after itself, and after every enclosing
+# package (myapp/api/ is myapp.api); a src/ layout is named from src/, so its
+# modules match the names other files import them by.
 if is_pkg_dir(root):
-    bases = [(root, [os.path.basename(root)])]
+    prefix, d = [], root
+    while is_pkg_dir(d):
+        prefix.insert(0, os.path.basename(d))
+        parent = os.path.dirname(d)
+        if parent == d:
+            break
+        d = parent
+    bases = [(root, prefix)]
 else:
     bases = [(root, [])]
     src = os.path.join(root, "src")
@@ -117,11 +125,17 @@ else:
 files = {}
 for dirpath, dirnames, filenames in os.walk(root):
     # Hidden dirs and virtualenvs (marked by pyvenv.cfg) hold other people's code.
+    # The built-in names only skip plain directories: myapp/build/ with an
+    # __init__.py is a real subpackage, not build output.
     dirnames[:] = sorted(
         d for d in dirnames
-        if d not in skip and not d.startswith(".")
+        if d not in extra_skip and not d.startswith(".")
+        and not (d in SKIP and not is_pkg_dir(os.path.join(dirpath, d)))
         and not os.path.isfile(os.path.join(dirpath, d, "pyvenv.cfg"))
     )
+    # A script run from a plain directory has that directory on sys.path, so
+    # its bare imports can name its neighbours.
+    script_dir = not is_pkg_dir(dirpath)
     for f in sorted(filenames):
         if not f.endswith(".py"):
             continue
@@ -134,7 +148,7 @@ for dirpath, dirnames, filenames in os.walk(root):
         name = ".".join(prefix + parts)
         # A file no import statement could name (my-script.py) has no module name.
         if name and all(p.isidentifier() for p in prefix + parts):
-            files[name] = (full, is_pkg, os.path.relpath(full, root))
+            files[name] = (full, is_pkg, os.path.relpath(full, root), script_dir)
 
 def local(dotted):
     """Longest local module that dotted names or lies inside."""
@@ -144,6 +158,15 @@ def local(dotted):
         if cand in files:
             return cand
     return None
+
+def resolve(dotted, relative, near):
+    """Local module for an import, trying the importer's own directory second."""
+    hit = local(dotted)
+    if hit or relative or not near:
+        return hit
+    hit = local(near + "." + dotted)
+    # Only a neighbour counts; falling back to a parent package would be wrong.
+    return hit if hit and hit.startswith(near + ".") else None
 
 def const_str(node):
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
@@ -183,10 +206,12 @@ def entries_of(tree, name):
                     out.append(given or node.name.replace("_", "-"))
         elif isinstance(node, ast.If):
             t = node.test
-            if (isinstance(t, ast.Compare) and isinstance(t.left, ast.Name) and t.left.id == "__name__"
-                    and any(const_str(c) == "__main__" for c in t.comparators)
-                    and "__main__" not in out):
-                out.append("__main__")
+            if isinstance(t, ast.Compare) and len(t.comparators) == 1 and "__main__" not in out:
+                # Either way round: __name__ == "__main__" or "__main__" == __name__.
+                sides = (t.left, t.comparators[0])
+                if (any(isinstance(n, ast.Name) and n.id == "__name__" for n in sides)
+                        and any(const_str(n) == "__main__" for n in sides)):
+                    out.append("__main__")
         elif isinstance(node, ast.Call):
             f = node.func
             if isinstance(f, ast.Attribute) and f.attr == "add_parser" and node.args:
@@ -215,7 +240,7 @@ def is_stdlib(top):
     return origin.startswith(STDLIB_DIR) and "site-packages" not in origin
 
 modules, edges, external, errors = [], {}, {}, []
-for name, (path, is_pkg, rel) in sorted(files.items()):
+for name, (path, is_pkg, rel, script_dir) in sorted(files.items()):
     try:
         with open(path, "rb") as fh:
             tree = ast.parse(fh.read(), filename=rel)
@@ -229,14 +254,17 @@ for name, (path, is_pkg, rel) in sorted(files.items()):
         continue
     modules.append({"id": name, "path": rel, "entries": entries_of(tree, name)})
     package = name if is_pkg else name.rpartition(".")[0]
+    near = package if script_dir and not is_pkg else ""
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             targets = [(a.name, False) for a in node.names]
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 base = package.split(".") if package else []
-                if node.level - 1 > len(base):
-                    continue  # climbs above the top package; nothing to resolve
+                # Each level past the first drops one package; dropping the
+                # top one too is the error Python raises for climbing too far.
+                if node.level - 1 >= len(base):
+                    continue
                 base = base[: len(base) - (node.level - 1)]
                 mod = ".".join(base + ([node.module] if node.module else []))
             else:
@@ -249,10 +277,11 @@ for name, (path, is_pkg, rel) in sorted(files.items()):
         else:
             continue
         # One statement counts once per module it reaches, however many names it lists.
-        for to in {local(d) for d, _ in targets} - {None, name}:
+        resolved = [(d, relative, resolve(d, relative, near)) for d, relative in targets]
+        for to in {to for _, _, to in resolved} - {None, name}:
             edges[(name, to)] = edges.get((name, to), 0) + 1
         # An unresolved relative import is a local file we skipped, not a dependency.
-        for top in {d.split(".")[0] for d, relative in targets if not relative and not local(d)}:
+        for top in {d.split(".")[0] for d, relative, to in resolved if not relative and not to}:
             key = (name, top)
             if key not in external:
                 external[key] = ["stdlib" if is_stdlib(top) else "third-party", 0]

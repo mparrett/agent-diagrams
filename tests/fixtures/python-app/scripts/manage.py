@@ -1,5 +1,6 @@
 import argparse
 
+import helpers
 from myapp import cli
 
 
@@ -9,6 +10,7 @@ def main():
     sub.add_parser("migrate")
     sub.add_parser("seed")
     parser.parse_args()
+    print(helpers.banner())
     cli.cli()
 
 
