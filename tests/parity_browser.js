@@ -12,7 +12,7 @@
 
 import { launch } from "@astral/astral";
 
-const url = Deno.args[0] ?? "http://127.0.0.1:8000/tests/parity-page.html";
+const url = Deno.args[0] ?? "http://127.0.0.1:7787/tests/parity-page.html";
 const path = Deno.env.get("CHROME_BIN") ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 

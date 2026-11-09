@@ -21,6 +21,8 @@ Mermaid/Graphviz are great but their auto-layout is hard to nudge and the output
 
 ## Quick start
 
+**Driving it from an agent?** [docs/agents.md](docs/agents.md) is the one-page recipe, and `bin/agent-diagrams` is a one-word CLI you can link onto your PATH.
+
 ```bash
 # scaffold a starter diagram in the current directory
 deno run --allow-read --allow-write --allow-net --allow-env \
@@ -54,9 +56,9 @@ The repo ships two example boards, each a `diagram-state.json` plus its rendered
 Start the server once; then a human (in the browser) and any number of agents (file/CLI) can work the **same `diagram-state.json` at the same time**. The file stays the source of truth — there's no server-as-authority.
 
 ```bash
-just serve        # start it (tmux session 'agent-diagrams', http://localhost:8000)
+just serve        # start it (tmux session 'agent-diagrams', http://localhost:7787); exits 1 if the port is taken or startup fails
 just serve path/to/diagram-state.json   # …or drive an out-of-repo diagram
-just status       # is it up? prints the editor URL
+just status       # is it up? asks the port, so it finds a server however it was started
 just logs         # tail recent server output
 just restart      # stop + start fresh        just stop   # stop
 # without `just`:  deno task dev -- --state=path/to/diagram-state.json
@@ -64,8 +66,8 @@ just restart      # stop + start fresh        just stop   # stop
 
 Open in a browser:
 
-- **Editor** → <http://localhost:8000/whiteboard-live.html> — drag, edit, tune.
-- **Viewer** → <http://localhost:8000/whiteboard.html> — read-only PNG that live-reloads.
+- **Editor** → <http://localhost:7787/whiteboard-live.html> — drag, edit, tune.
+- **Viewer** → <http://localhost:7787/whiteboard.html> — read-only PNG that live-reloads.
 
 **Multiple whiteboards.** One server hosts many boards: the `--state` file is the
 `default` board, and every `diagram-state.json` under your **boards directory** is a
@@ -286,7 +288,7 @@ dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To ad
 ```
 diagram-cli.js [--state <path> | --board <name>] <command> [args...]
 
-  init [--empty]             Write a starter diagram-state.json (--empty: no sample nodes)
+  init [--empty]             Write a starter diagram-state.json at --state, at --board, or in the cwd
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]    (parallel edges allowed — repeat to add a 2nd a→b)
   remove-node <id>           (also removes connected edges)

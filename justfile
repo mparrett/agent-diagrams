@@ -1,6 +1,6 @@
 # agent-diagrams — task runner
 
-port    := "8000"
+port    := "7787"
 host    := "127.0.0.1"
 session := "agent-diagrams"
 
@@ -68,7 +68,10 @@ capture label="":
 diagram-status:
     deno task cli status
 
-# Serve the editor + viewer in a dedicated tmux session (idempotent).
+# Serve the editor + viewer in a dedicated tmux session. Idempotent: if an
+# agent-diagrams server already answers on the port, it says so and starts
+# nothing; if something else holds the port, or the server fails to start, it
+# exits non-zero.
 # Optional: `just serve path/to/diagram-state.json` to drive an out-of-repo diagram.
 # LAN access (write endpoints are unauthenticated — trusted networks only):
 #   just host=0.0.0.0 serve     (or: just serve-lan [state])
@@ -79,9 +82,9 @@ serve state="":
 serve-lan state="":
     @just host=0.0.0.0 serve {{state}}
 
-# Stop the serving tmux session
+# Stop the serving tmux session; fails if a server started another way still answers
 stop:
-    -tmux kill-session -t={{session}}
+    @PORT={{port}} HOST={{host}} SESSION={{session}} ./bin/serve.sh stop
 
 # Restart the server (stop, then start fresh)
 restart: stop serve
@@ -90,11 +93,10 @@ restart: stop serve
 attach:
     tmux attach -t={{session}}
 
-# Is the server running?
+# Is the server running? Asks the port, so it finds a server however it was
+# started. Exits 1 when nothing answers.
 status:
-    @tmux has-session -t={{session}} 2>/dev/null \
-        && echo "running -> http://localhost:{{port}}/whiteboard-live.html" \
-        || echo "not running"
+    @PORT={{port}} HOST={{host}} SESSION={{session}} ./bin/serve.sh status
 
 # Tail the server's recent output
 logs:

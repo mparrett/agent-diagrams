@@ -746,6 +746,44 @@ Deno.test("CLI: init --empty writes a board with no sample nodes", async () =>
     assertEquals([s.nodes.length, s.edges.length], [0, 0]);
   }));
 
+// Run the CLI from a scratch cwd with no state flag, so only --board and
+// --diagrams-dir decide where a write lands.
+async function runCliBare(cwd, args) {
+  const r = await new Deno.Command(Deno.execPath(), {
+    args: ["run", ...PERMS, CLI, ...args],
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  return { code: r.code, err: new TextDecoder().decode(r.stderr) };
+}
+
+Deno.test("CLI: init --board creates the board in the boards directory", async () =>
+  await withTempDir(async (dir) => {
+    const boards = `${dir}/boards`;
+    const cwd = `${dir}/cwd`;
+    Deno.mkdirSync(cwd);
+    const r = await runCliBare(cwd, [
+      `--diagrams-dir=${boards}`,
+      "--board",
+      "team/flow",
+      "init",
+      "--empty",
+    ]);
+    assert(r.code === 0, r.err);
+    const s = JSON.parse(
+      Deno.readTextFileSync(`${boards}/team/flow/diagram-state.json`),
+    );
+    assertEquals(s.nodes.length, 0);
+    assertEquals([...Deno.readDirSync(cwd)].length, 0, "nothing in the cwd");
+  }));
+
+Deno.test("CLI: init --board refuses a shipped example", async () =>
+  await withTempDir(async (dir) => {
+    const r = await runCliBare(dir, ["--board", "examples/basic", "init"]);
+    assert(r.code !== 0 && r.err.includes("shipped example"), r.err);
+  }));
+
 // Run the render hint `init` prints, from the directory it was printed in.
 async function initAndRunHint(cwd, initArgs) {
   const init = await new Deno.Command(Deno.execPath(), {

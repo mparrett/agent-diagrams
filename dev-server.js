@@ -33,7 +33,7 @@
  * to paths server-side ONLY — clients can never supply a file path.
  *
  * Usage: deno run --allow-read --allow-write --allow-net --allow-env=DIAGRAM_STATE \
- *          dev-server.js [--port=8000] [--host=127.0.0.1] [--state=<path>]
+ *          dev-server.js [--port=7787] [--host=127.0.0.1] [--state=<path>]
  *          [--diagrams-dir=<dir>]
  *
  * State file: --state= > DIAGRAM_STATE env > ./diagram-state.json (cwd) > example.
@@ -59,7 +59,7 @@ import { SCHEMES } from "./themes.js";
 
 const ROOT = dirname(fromFileUrl(import.meta.url));
 const PORT = Number(
-  (Deno.args.find((a) => a.startsWith("--port=")) || "--port=8000").slice(7),
+  (Deno.args.find((a) => a.startsWith("--port=")) || "--port=7787").slice(7),
 );
 // Unauthenticated write endpoints → loopback by default; opt into LAN exposure
 // explicitly with --host=0.0.0.0.
