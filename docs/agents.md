@@ -70,7 +70,8 @@ row or column when the target cell is taken.
   `diagram.png` alone.
 
 Add `--no-render` to a call, or set `DIAGRAM_NO_RENDER=1`, to save without
-drawing; finish with `render`. A batch already renders only once.
+drawing; finish with `render`. A batch already renders only once; a
+`render --preview` line in it makes that render a preview.
 
 ## Generate a board instead
 
