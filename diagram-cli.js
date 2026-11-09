@@ -26,7 +26,10 @@ import {
   LockBusy,
   resolveStatePath,
   RevConflict,
+  toStructure,
+  validateState,
 } from "./diagram-api.js";
+import { PNG_META_KEYWORD, PngMetaError, readPngMeta } from "./png-meta.js";
 import { DEFAULT_COLORS, DEFAULT_EDGE_STYLES } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 import { DEFAULT_LENGTH_WEIGHT } from "./untangle.js";
@@ -213,6 +216,7 @@ in the boards directory (--diagrams-dir=<dir> > AGENT_DIAGRAMS_DIR >
 Commands:
   init [--empty]             Write a starter diagram-state.json at --state, at --board, or in the cwd
                              (--empty: no sample nodes, for building a board from scratch)
+  init --from-png <file>     Write the board embedded in a rendered PNG as a new diagram-state.json
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]
   grow <from> <n|e|s|w> <id>[,<id>...] [--label=] [--color=] [--style=] [--chain]
@@ -361,6 +365,12 @@ Commands:
   status [--positions|--json]  rev + counts; --positions dumps solved {x,y,w,h} per node + canvas/content bbox
   list-nodes
   list-edges
+  export [--structure-only]  Print the board as JSON: the full state, or with --structure-only just
+                             what it says (title, legend, nodes, edges, groups, notes) without layout
+  read-png <file> [--structure-only]
+                             Print the board embedded in a rendered PNG, as export would. render embeds
+                             the full state unless the board sets "embedMetadata": false. Exits 1 when
+                             the PNG has none (some hosts re-encode images and strip it; use export)
 
 Built-in colors: ${BUILTIN_COLORS.join(", ")}
 Built-in styles: ${BUILTIN_STYLES.join(", ")}
@@ -372,11 +382,57 @@ Built-in styles: ${BUILTIN_STYLES.join(", ")}
 
 if (!cmd) usage();
 
+// The board embedded in a rendered PNG (see png-meta.js), or exit 1 saying why
+// there is none: a PNG passed through a host that re-encodes images loses it.
+function readBoardFromPng(file) {
+  let meta;
+  try {
+    meta = readPngMeta(Deno.readFileSync(file));
+  } catch (e) {
+    if (!(e instanceof PngMetaError) && !(e instanceof Deno.errors.NotFound)) {
+      throw e;
+    }
+    console.error(`Error: ${file}: ${e.message}`);
+    Deno.exit(1);
+  }
+  if (meta == null) {
+    console.error(
+      `Error: ${file} carries no ${PNG_META_KEYWORD} board. It was rendered ` +
+        `before boards were embedded, from a board with "embedMetadata": ` +
+        `false, or re-encoded by a host that strips PNG metadata — use ` +
+        `\`export\` on the board's state file instead.`,
+    );
+    Deno.exit(1);
+  }
+  return validateState(meta, file);
+}
+
 if (cmd === "init") {
   // init scaffolds in the cwd (or at --state / --board) — it never targets the bundled
   // example board the way other commands' zero-arg default can.
   const flags = args.slice(1);
+  let fromPng;
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i].startsWith("--from-png=")) {
+      fromPng = flags[i].slice(11);
+      flags.splice(i--, 1);
+    } else if (flags[i] === "--from-png") {
+      fromPng = flags[i + 1]?.startsWith("--") ? "" : flags[i + 1] ?? "";
+      flags.splice(i--, fromPng ? 2 : 1);
+    }
+    if (fromPng === "") {
+      console.error("Error: init --from-png requires a PNG file");
+      Deno.exit(1);
+    }
+  }
   rejectUnknownFlags("init", flags, ["--empty"]);
+  if (fromPng && flags.includes("--empty")) {
+    console.error("Error: init takes --empty or --from-png, not both");
+    Deno.exit(1);
+  }
+  // Read the PNG before touching the filesystem, so a PNG without a board
+  // leaves no empty board directory behind.
+  const embedded = fromPng && readBoardFromPng(fromPng);
   // Shipped boards change through a PR, never by scaffolding over them.
   if (!stateArg && boardArg?.startsWith("examples/")) {
     console.error(
@@ -397,9 +453,10 @@ if (cmd === "init") {
     console.error(`Error: ${target} already exists — refusing to overwrite`);
     Deno.exit(1);
   } catch { /* not found — proceed */ }
-  const starter = flags.includes("--empty")
-    ? { ...STARTER_STATE, nodes: [], edges: [] }
-    : STARTER_STATE;
+  const starter = embedded ||
+    (flags.includes("--empty")
+      ? { ...STARTER_STATE, nodes: [], edges: [] }
+      : STARTER_STATE);
   Deno.writeTextFileSync(target, JSON.stringify(starter, null, 2) + "\n");
   // Print a render command that actually works from where the user is standing:
   // in the tool repo the `deno task` alias exists; from a foreign cwd it doesn't.
@@ -410,7 +467,11 @@ if (cmd === "init") {
     ? "deno task render"
     : `deno run ${RUN_FLAGS} ${join(toolDir, "render-diagram.js")}`) +
     (needsStateFlag ? ` --state=${target}` : "");
-  console.log(`Wrote starter ${target}\nEdit it, then render:\n  ${renderCmd}`);
+  console.log(
+    `Wrote ${
+      embedded ? `board from ${fromPng} to` : "starter"
+    } ${target}\nEdit it, then render:\n  ${renderCmd}`,
+  );
   Deno.exit(0);
 }
 
@@ -1914,6 +1975,34 @@ function run(args) {
           Object.keys(d.layout).length
         } layout override(s)`,
       );
+      break;
+    }
+
+    case "export": {
+      const flags = args.slice(1);
+      rejectUnknownFlags("export", flags, ["--structure-only"]);
+      const state = Diagram.load(STATE).stateSnapshot();
+      console.log(JSON.stringify(
+        flags.includes("--structure-only") ? toStructure(state) : state,
+        null,
+        2,
+      ));
+      break;
+    }
+
+    case "read-png": {
+      const [, file, ...flags] = args;
+      if (!file || file.startsWith("--")) {
+        console.error("Error: read-png requires a PNG file");
+        Deno.exit(1);
+      }
+      rejectUnknownFlags("read-png", flags, ["--structure-only"]);
+      const state = readBoardFromPng(file);
+      console.log(JSON.stringify(
+        flags.includes("--structure-only") ? toStructure(state) : state,
+        null,
+        2,
+      ));
       break;
     }
 

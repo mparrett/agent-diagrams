@@ -49,6 +49,7 @@ import {
   isBandDivider,
   isColorToken,
   legendEntries,
+  legendTokens,
   makePalette,
   measureNote,
   NODE_ICONS,
@@ -63,6 +64,7 @@ export { legendSwatchXs } from "./diagram-core.js";
 import { SCHEMES } from "./themes.js";
 import { fieldFn, flowPlace, flowSpine } from "./flow-field.js";
 import { scoreRender, untangle } from "./untangle.js";
+import { embedPngMeta } from "./png-meta.js";
 
 /**
  * Resolve the state-file path: explicit arg > DIAGRAM_STATE env > zero-config default.
@@ -596,6 +598,40 @@ export function validateState(state, path = "diagram-state.json") {
 // ═══════════════════════════════════════════════════════════════
 // DIAGRAM CLASS
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * What a board says, without how it is laid out: the `export --structure-only`
+ * and `read-png --structure-only` shape. The legend keeps palette names, so a
+ * node's `"color": "amber"` can be looked up in it. Versioned by `schema`.
+ */
+export function toStructure(state) {
+  const pick = (obj, keys) =>
+    Object.fromEntries(
+      keys.filter((k) => obj[k] !== undefined).map((k) => [k, obj[k]]),
+    );
+  const nodes = (state.nodes || []).filter(Boolean);
+  return {
+    schema: 1,
+    ...pick(state, ["title", "footer"]),
+    legend: legendTokens(state, nodes),
+    nodes: nodes.map((n) =>
+      pick(n, ["id", "label", "color", "shape", "details"])
+    ),
+    edges: (state.edges || []).filter(Boolean).map((e) =>
+      pick(e, ["from", "to", "style", "label"])
+    ),
+    groups: (state.groups || []).filter(Boolean).map((g) =>
+      pick(g, ["id", "label", "nodes"])
+    ),
+    notes: (state.notes || []).filter(Boolean).map((nt) => ({
+      ...pick(nt, ["title"]),
+      lines: (Array.isArray(nt.text) ? nt.text : [nt.text]).filter((l) =>
+        l != null
+      ),
+    })),
+  };
+}
+
 // Untangle renders the same boxes and labels hundreds of times, and measuring
 // their text was half of each render. Widths depend only on the font and the
 // text, so renders that share `cache` measure each pair once. Only for one
@@ -706,6 +742,21 @@ export class Diagram {
       if (e instanceof Deno.errors.NotFound) return 0;
       throw e;
     }
+  }
+
+  /**
+   * The board as save() would write it, without bumping rev: what `export`
+   * prints and what render() embeds in the PNG, so the two always agree.
+   */
+  stateSnapshot() {
+    return {
+      ...this._state,
+      nodes: this.nodes,
+      edges: this.edges,
+      layout: this.layout,
+      noteLayout: this.noteLayout,
+      rowY: this.rowY,
+    };
   }
 
   /**
@@ -2910,7 +2961,11 @@ export class Diagram {
       } catch { /* no preview, or no state file yet */ }
     }
     const tmpPath = `${outPath}.${Deno.pid}.${crypto.randomUUID()}.tmp`;
-    const buf = canvas.encode("png");
+    // The full state rides along so the PNG alone can be read or turned back
+    // into a board; `"embedMetadata": false` keeps details and notes out of it.
+    const buf = this._state.embedMetadata === false
+      ? canvas.encode("png")
+      : embedPngMeta(canvas.encode("png"), this.stateSnapshot());
     try {
       Deno.writeFileSync(tmpPath, buf);
       Deno.renameSync(tmpPath, outPath);
