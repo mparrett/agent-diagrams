@@ -1362,7 +1362,17 @@ function run(args) {
         } else if (f.startsWith("--seed=")) {
           opts.seed = int("--seed", f.slice(7));
         } else if (f.startsWith("--length-weight=")) {
-          opts.lengthWeight = int("--length-weight", f.slice(16), { min: 1 });
+          // A weight, not a count: 0.5 de-emphasizes length, 2.5 sits
+          // between the steps where label clashes start to be accepted.
+          const raw = f.slice(16);
+          const w = Number(raw);
+          if (raw.trim() === "" || !Number.isFinite(w) || w <= 0) {
+            console.error(
+              `Error: --length-weight must be a positive number, got "${raw}"`,
+            );
+            Deno.exit(1);
+          }
+          opts.lengthWeight = w;
         }
       }
       const d = Diagram.load(STATE);

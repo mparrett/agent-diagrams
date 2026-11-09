@@ -1971,7 +1971,8 @@ export class Diagram {
         layout: structuredClone(this.layout),
         pinned: [...(this._state.pinned || [])],
       });
-      const current = scoreRender(res, dividerLabelRects);
+      // The same weight as the search, or the two costs aren't comparable.
+      const current = scoreRender(res, dividerLabelRects, { lengthWeight });
       if (r.after.cost >= current.cost) {
         return { ...r, before: current, after: current, moved: [] };
       }
