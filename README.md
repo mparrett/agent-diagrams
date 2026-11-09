@@ -140,6 +140,7 @@ See [Collaboration & concurrency](#collaboration--concurrency) for the safety mo
                                            //   = explicit. Name palette colors so the swatches follow
                                            //   the theme (hex works but does not). See Colors below.
   "output":  "diagram.png",                // optional output filename
+  "embedMetadata": true,                   // optional: false leaves the board out of the PNG (see read-png)
   "startMarkers": true,                    // optional: false draws wires from the box edge, no start marker
   "connectorAnchor": "align",              // optional: "align" (default — straight runs) or
                                            //   "center" (fan connectors symmetric about each side's center)
@@ -289,6 +290,7 @@ dropdown (persists), run `set-theme <name>`, or set `theme` in the file. **To ad
 diagram-cli.js [--state <path> | --board <name>] <command> [args...]
 
   init [--empty]             Write a starter diagram-state.json at --state, at --board, or in the cwd
+  init --from-png <file>     Write the board embedded in a rendered PNG as a new board
   add-node <id> <label> <color> <row> <col> [details...]
   add-edge <from> <to> <style> [label]    (parallel edges allowed — repeat to add a 2nd a→b)
   remove-node <id>           (also removes connected edges)
@@ -342,7 +344,11 @@ diagram-cli.js [--state <path> | --board <name>] <command> [args...]
   status [--positions|--json]  rev + counts; --positions/--json dumps the solved
                                {x,y,w,h} per node, note and group frame, plus canvas + content bounding box
   list-nodes / list-edges / list-groups
+  export [--structure-only]  print the board as JSON; --structure-only keeps what it says, drops layout
+  read-png <file> [--structure-only]   the same, from the board embedded in a rendered PNG; exit 1 if none
 ```
+
+**The PNG carries its board.** `render` (and `render --preview`) embeds the board's full state, less its save counter `rev`, in an `iTXt` chunk with the keyword `agent-diagrams`, compressed: about 0.6 KB on `diagrams/basic` (as of 2026-11-09). So a PNG pasted into a PR or a chat on its own can still be read or edited: `read-png diagram.png --structure-only` prints the title, legend, nodes, edges, groups and notes (`"schema": 1`), without the layout fields; `read-png` without the flag prints the full state, and `init --from-png diagram.png` makes it an editable board again. The output of `read-png` matches `export` on the same board. Set `"embedMetadata": false` on a board to keep its details and notes out of the image. Some hosts re-encode uploaded images and strip extra chunks — Slack does; GitHub generally serves attachments unchanged — which is why `export` works from the state file too.
 
 `issues [--json]` reports layout defects a person would otherwise find by opening the PNG: two differently styled (or unrelated) wires sharing a track, wires one cell apart on a side with room to spread, edge labels on a box, on each other or off the board, group labels wider than their frame, boxes inside a frame they don't belong to, and failed routes. Each issue names the ids involved, and the command exits 1 when there are any, so a build script can stop on them. Wires that share an endpoint and look alike count as a trunk and aren't reported.
 

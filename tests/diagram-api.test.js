@@ -64,7 +64,9 @@ function assertThrowsWith(fn, needle, what) {
 function renderHash(state) {
   return withTempDir((dir) => {
     const path = `${dir}/diagram-state.json`;
-    writeState(path, state);
+    // The hash stands for what was drawn; the embedded state would make two
+    // boards that draw alike (a token and its array) hash differently.
+    writeState(path, { ...state, embedMetadata: false });
     Diagram.load(path).render();
     const png = Deno.readFileSync(`${dir}/diagram.png`);
     let h = 0n;

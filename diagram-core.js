@@ -4447,12 +4447,24 @@ export function legendSwatchXs(labelWidths, x0 = 20) {
  * used when an entry draws an outlined (dashed) swatch.
  */
 export function legendEntries(state, nodes, pal) {
+  const explicit = Array.isArray(state.legend);
+  return legendTokens(state, nodes).map((e) => {
+    if (explicit && !isColorToken(pal, e.color)) return e;
+    const c = resolveColorToken(pal, e.color);
+    return { ...e, color: c.border, bg: c.bg };
+  });
+}
+
+/**
+ * legendEntries before colors are resolved: each entry keeps the color name
+ * the board uses (`amber`, `error`), which is what a reader matches against
+ * node colors. Shared so the drawn legend and the exported one agree.
+ */
+export function legendTokens(state, nodes) {
   if (Array.isArray(state.legend)) {
-    return state.legend.filter((e) => e && e.label != null).map((e) => {
-      if (!isColorToken(pal, e.color)) return { ...e };
-      const c = resolveColorToken(pal, e.color);
-      return { ...e, color: c.border, bg: c.bg };
-    });
+    return state.legend.filter((e) => e && e.label != null).map((e) => ({
+      ...e,
+    }));
   }
   if (state.legend === false) return [];
   const used = [];
@@ -4461,10 +4473,7 @@ export function legendEntries(state, nodes, pal) {
   for (const n of nodes) {
     if (n.color && !used.includes(n.color)) used.push(n.color);
   }
-  return used.map((c) => {
-    const { border, bg } = resolveColorToken(pal, c);
-    return { color: border, bg, label: c };
-  });
+  return used.map((c) => ({ color: c, label: c }));
 }
 
 // Swatch dash per token, sized for a 12px swatch: the box-outline patterns
