@@ -746,6 +746,23 @@ Deno.test("CLI: init --empty writes a board with no sample nodes", async () =>
     assertEquals([s.nodes.length, s.edges.length], [0, 0]);
   }));
 
+Deno.test("CLI: init --state creates a missing directory", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/new/nested/diagram-state.json`;
+    const r = await runCli(path, ["init", "--empty"]);
+    assertEquals(r.code, 0, r.err);
+    Deno.statSync(path);
+  }));
+
+Deno.test("CLI: init --state reports a directory it cannot create", async () =>
+  await withTempDir(async (dir) => {
+    // A file where the directory would go.
+    Deno.writeTextFileSync(`${dir}/taken`, "");
+    const r = await runCli(`${dir}/taken/diagram-state.json`, ["init"]);
+    assertEquals(r.code, 1);
+    assert(r.err.startsWith("Error: cannot create"), r.err);
+  }));
+
 // Run the CLI from a scratch cwd with no state flag, so only --board and
 // --diagrams-dir decide where a write lands.
 async function runCliBare(cwd, args) {

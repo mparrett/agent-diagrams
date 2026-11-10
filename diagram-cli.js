@@ -519,9 +519,14 @@ if (cmd === "init") {
     Deno.cwd(),
     stateArg ?? boardPath ?? "diagram-state.json",
   );
-  // A new --board name is a new directory under the boards directory.
-  if (!stateArg && boardPath) {
+  // A new --board name is a new directory under the boards directory, and a
+  // --state path may name one too; without this, init died with an uncaught
+  // NotFound. Other commands still need the file to exist.
+  try {
     Deno.mkdirSync(dirname(target), { recursive: true });
+  } catch (e) {
+    console.error(`Error: cannot create ${dirname(target)}: ${e.message}`);
+    Deno.exit(1);
   }
   try {
     Deno.statSync(target);
