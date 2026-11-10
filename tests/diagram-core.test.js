@@ -2361,6 +2361,7 @@ Deno.test("a cylinder keeps a detail wrap that a plain box keeps", () => {
   for (const extra of [{ shape: "cylinder" }, { icon: "cylinder" }]) {
     const s = size(extra);
     assert(s.w === box.w, `${JSON.stringify(extra)}: ${s.w} vs box ${box.w}`);
+    assertEquals(s.detailLines.length, 2, `${JSON.stringify(extra)} wraps`);
   }
 });
 
