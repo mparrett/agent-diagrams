@@ -1057,6 +1057,25 @@ Deno.test("align mode drops each source straight into a wide target below", () =
   }
 });
 
+Deno.test("a lone source leaves its side center unless its target overlaps it", () => {
+  // src's S side has 7 slots (center index 3). A target off to the side has
+  // no straight run to keep, so the wire leaves the center, not the corner
+  // nearest the target; an overlapping target keeps the aligned cell.
+  const exitCol = (target) => {
+    const boxes = [{ id: "src", col: 0, row: 0, w: 7, h: 3 }, {
+      id: "dst",
+      row: 10,
+      w: 5,
+      h: 3,
+      ...target,
+    }];
+    const edges = [{ from: "src", to: "dst", fromEdge: "S", toEdge: "N" }];
+    return routeOnce(boxes, edges).routes[0].path[0].x;
+  };
+  assertEquals(exitCol({ col: 14 }), 3, "no overlap: side center");
+  assertEquals(exitCol({ col: 4, w: 7 }), 5, "overlap 4..6: its midpoint");
+});
+
 Deno.test("explicit fromConn/toConn pin endpoints to the exact slot cell", () => {
   // a's E side has h=3 slots (idx 0..2) at gy = row+idx, gx = col+w (one cell out).
   // b's W side likewise at gx = col-1. Pin source slot 0 (top) and target slot 2

@@ -2334,6 +2334,16 @@ export function edgeSides(edgeDefs, boxes, direction) {
 // identically from either end, so both connectors land on the same coordinate
 // and the wire runs straight; with no overlap it clamps toward `other`, leaving
 // only the single unavoidable jog.
+// Whether `other` shares any cell of `box`'s span along this side's axis, i.e.
+// whether a straight run between them is possible at all.
+function sideOverlaps(side, box, other) {
+  const horiz = side === "N" || side === "S";
+  const bLo = horiz ? box.col : box.row;
+  const oLo = horiz ? other.col : other.row;
+  return Math.max(bLo, oLo) <
+    Math.min(bLo + (horiz ? box.w : box.h), oLo + (horiz ? other.w : other.h));
+}
+
 function alignedIdx(side, box, other) {
   const horiz = side === "N" || side === "S";
   const bLo = horiz ? box.col : box.row;
@@ -2420,13 +2430,14 @@ function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
     // Indices are emitted directly (resolveIdx passes numbers through);
     // explicit pins win. Barycentric order is preserved in both modes.
     const center = Math.floor((n - 1) / 2); // side-center connector index
-    // A lone destination connector takes the side center — the clean "first
-    // connect" look — instead of the overlap-aligned cell. Lone *source*
-    // connectors keep their overlap alignment, so straight runs survive there.
-    const loneDest = total === 1 && autos.length === 1 &&
-      autos[0].role === "tgt";
+    // A lone connector takes the side center, the clean "first connect" look.
+    // A lone *source* keeps its overlap-aligned cell when its target overlaps
+    // the side, so a straight run survives; with no overlap there is no
+    // straight run to keep, and alignment would only clamp it to a corner.
+    const lone = total === 1 && autos.length === 1 &&
+      (autos[0].role === "tgt" || !sideOverlaps(side, box, autos[0].other));
     let slots;
-    if (centerMode || loneDest) {
+    if (centerMode || lone) {
       // A fan symmetric about the side center: a fractional base
       // ((total-1)/2) lands a lone edge dead-center and lets even counts
       // straddle it instead of left-biasing.
