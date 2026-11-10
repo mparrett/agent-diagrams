@@ -239,8 +239,8 @@ function ensureFonts() {
 // ═══════════════════════════════════════════════════════════════
 // DEFAULTS (overridable per-diagram via state JSON)
 // ═══════════════════════════════════════════════════════════════
-const DEFAULT_W = 1500;
-const DEFAULT_H = 900;
+export const DEFAULT_W = 1500;
+export const DEFAULT_H = 900;
 const DEFAULT_DPR = 2;
 const DEFAULT_MAX_DIM = 4096; // cap the PNG's longest *pixel* side; uniform downscale keeps vector content crisp
 

@@ -27,6 +27,7 @@
  *   - the repo's own diagrams/ tree, as "examples/<subpath>", READ-ONLY: writes
  *     are refused and the server never re-renders their PNGs. POST
  *     /d/<name>/copy copies any board into the boards directory to edit it.
+ *     POST /new { name } creates an empty board there.
  * Board-scoped routes: /d/<name>/{diagram-state.json,diagram.png,layout,node,
  * edge,theme,costs,capture}; GET /diagrams lists boards. Unprefixed routes
  * keep operating on the default board (agents/back-compat). Names are mapped
@@ -47,6 +48,8 @@ import { basename, dirname, fromFileUrl, join } from "@std/path";
 import {
   boardsDir,
   captureArtifacts,
+  DEFAULT_H,
+  DEFAULT_W,
   Diagram,
   EXAMPLE_STATE,
   EXAMPLES_PREFIX,
@@ -623,16 +626,19 @@ async function handleWrite(req, op, board) {
   }
 }
 
-// Copy a board into the boards directory: { name? } → { name }. Without a name
-// it takes the source directory's, numbered if that is taken; a name given
-// explicitly that is taken is a conflict instead.
-async function copyBoard(req, board) {
+async function requestedName(req) {
   let body = {};
   try {
     body = (await req.json()) ?? {};
   } catch { /* empty body ok */ }
-  const asked = typeof body === "object" ? body.name : undefined;
-  const base = asked ?? basename(board.stateDir);
+  return typeof body === "object" ? body.name : undefined;
+}
+
+// Write a board into the boards directory under `asked`, or under `fallback`
+// with a -2, -3… suffix when that is taken. A name the caller asked for is never
+// renamed: a taken one is a 409, so nobody lands on a board they didn't name.
+function createBoard(asked, fallback, stateText) {
+  const base = asked ?? fallback;
   if (
     typeof base !== "string" || !/^[\w.-]+(\/[\w.-]+)*$/.test(base) ||
     base.split("/").some((seg) => seg.startsWith(".")) ||
@@ -657,13 +663,41 @@ async function copyBoard(req, board) {
     const dir = join(BOARDS_DIR, name);
     Deno.mkdirSync(dir, { recursive: true });
     const path = join(dir, "diagram-state.json");
-    Deno.writeTextFileSync(path, Deno.readTextFileSync(board.statePath));
+    Deno.writeTextFileSync(path, stateText);
     Diagram.load(path).render();
     scanBoards();
     return jsonResp(200, { name });
   } catch (e) {
     return jsonResp(500, { error: String(e?.message ?? e) });
   }
+}
+
+// Copy a board into the boards directory: { name? } → { name }. Without a name
+// it takes the source directory's, numbered if that is taken; a name given
+// explicitly that is taken is a conflict instead.
+async function copyBoard(req, board) {
+  return createBoard(
+    await requestedName(req),
+    basename(board.stateDir),
+    Deno.readTextFileSync(board.statePath),
+  );
+}
+
+// An empty board, the editor's "New board". The name is required: unlike a
+// copy there is nothing to name it after.
+async function newBoard(req) {
+  const asked = await requestedName(req);
+  if (asked === undefined) {
+    return jsonResp(400, { error: "a new board needs a name" });
+  }
+  const state = {
+    title: String(asked).split("/").pop(),
+    width: DEFAULT_W,
+    height: DEFAULT_H,
+    nodes: [],
+    edges: [],
+  };
+  return createBoard(asked, undefined, JSON.stringify(state, null, 2) + "\n");
 }
 
 // ─── HTTP handler ────────────────────────────────────────────────
@@ -673,6 +707,7 @@ async function handler(req) {
   if (req.method === "GET" && url.pathname === "/diagrams") {
     return jsonResp(200, listBoards());
   }
+  if (req.method === "POST" && url.pathname === "/new") return newBoard(req);
 
   // Resolve the board: /d/<name>/<tail> is board-scoped (<name> may contain
   // slashes — nested dirs under diagrams/ — the tail is always one segment);

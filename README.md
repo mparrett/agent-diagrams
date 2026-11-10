@@ -82,7 +82,9 @@ server refuses writes to them and never re-renders their PNGs, and the editor op
 them in View with a **Copy to my boards** button. The zero-config default board (the
 bundled example, when no `--state` is given) is read-only the same way; name it with
 `--state` to edit it on purpose, e.g. for a PR. `POST /d/<name>/copy` (optional
-`{ "name": … }`) copies any board into the boards directory.
+`{ "name": … }`) copies any board into the boards directory. **+ New** in the
+editor's top bar asks for a name and opens an empty board there (`POST /new`
+with `{ "name": … }`; a taken name is a 409).
 
 Symlinked directories are followed, so boards kept in another repo can be linked in
 (`ln -s ~/elsewhere/boards ~/.local/share/agent-diagrams/elsewhere`); restart the

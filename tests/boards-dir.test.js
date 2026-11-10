@@ -169,6 +169,29 @@ Deno.test("the server keeps the repo's boards read-only and copies them out", as
       "a null body is an empty one",
     );
     assertEquals((await list())["adv-bands"], false, "the copy is writable");
+
+    const made = await post("/new", { name: "team/fresh" });
+    assertEquals(made.body, { name: "team/fresh" });
+    const fresh = JSON.parse(
+      Deno.readTextFileSync(join(dir, "team", "fresh", "diagram-state.json")),
+    );
+    assertEquals(
+      [fresh.title, fresh.nodes, fresh.edges],
+      ["fresh", [], []],
+      "an empty board titled after its name",
+    );
+    assertEquals((await list())["team/fresh"], false, "listed and writable");
+    assertEquals(
+      (await post("/new", { name: "team/fresh" })).status,
+      409,
+      "a new board never lands on an existing one",
+    );
+    assertEquals((await post("/new")).status, 400, "a new board needs a name");
+    assertEquals(
+      (await post("/new", { name: "examples/x" })).status,
+      400,
+      "nor can it shadow the examples",
+    );
     const cli = await new Deno.Command(Deno.execPath(), {
       args: [
         "run",
