@@ -367,6 +367,10 @@ export const BOX_W_LADDER_CELLS = [Math.ceil(MIN_BOX_W / CELL), 12, 16, 20, 24];
  * every time, because a short box pays the MIN_BOX_H floor while width
  * multiplies it — so unconstrained "smallest area" turns every box into a tall
  * thin column. The ceiling stops the opposite, a box so wide it reads as a bar.
+ *
+ * It is measured on the text block, not the drawn box (textAspect): a
+ * cylinder's caps or an icon make a shaped box taller than this allows, on
+ * purpose, rather than widening it to compensate.
  */
 export const BOX_ASPECT_MIN = BOX_ASPECT_W / BOX_ASPECT_H;
 export const BOX_ASPECT_MAX = 4.5;
@@ -950,7 +954,10 @@ function sizeAt(ctx, node, targetPx, font, sizes) {
     MIN_BOX_H,
     node.h > 0 ? node.h * CELL : 0,
   );
-  return { w, h, labelLines, detailLines };
+  // The height a plain box holding this text would take: what the aspect
+  // band measures (see textAspect).
+  const textH = Math.max(h - ins.top - ins.bottom, MIN_BOX_H);
+  return { w, h, textH, labelLines, detailLines };
 }
 
 /**
@@ -960,9 +967,8 @@ function sizeAt(ctx, node, targetPx, font, sizes) {
  * the narrowest rung (105x79 is 1.33, just under the 4:3 floor), so a database
  * came out 180px wide where the same text in a plain box is 105px.
  */
-function textAspect(node, s, sizes) {
-  const ins = shapeInsets(node, sizes);
-  return s.w / Math.max(s.h - ins.top - ins.bottom, MIN_BOX_H);
+function textAspect(s) {
+  return s.w / s.textH;
 }
 
 /**
@@ -982,7 +988,7 @@ export function boxCandidates(
     const target = cells * CELL;
     if (target > cap) continue;
     const s = sizeAt(ctx, node, target, font, sizes);
-    const aspect = textAspect(node, s, sizes);
+    const aspect = textAspect(s);
     out.push({
       ...s,
       target,
@@ -1398,7 +1404,7 @@ export function computeLayout(ctx, state, canvasW) {
           // Nor worth leaving the aspect band the chooser just enforced: a
           // narrower rung is taller *and* smaller in area, so the tolerance
           // test alone waves through the tall thin columns the band rejects.
-          const aspect = textAspect(node, alt, SIZES);
+          const aspect = textAspect(alt);
           if (aspect < BOX_ASPECT_MIN || aspect > BOX_ASPECT_MAX) continue;
           if (alt.w * alt.h <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
             pixDims.set(node.id, alt);
