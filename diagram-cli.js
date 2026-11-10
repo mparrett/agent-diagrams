@@ -51,7 +51,8 @@ for (let i = 0; i < rawArgs.length; i++) {
     rawArgs.splice(i--, 1);
   } else if (a === "--board") {
     boardArg = rawArgs[i + 1];
-    if (!boardArg) {
+    // A flag in the value's place (`--board --help`) means the name is missing.
+    if (!boardArg || boardArg.startsWith("-")) {
       console.error("Error: --board requires a name");
       Deno.exit(1);
     }
@@ -64,13 +65,22 @@ for (let i = 0; i < rawArgs.length; i++) {
     rawArgs.splice(i--, 1);
   } else if (a === "--state" || a === "-s") {
     stateArg = rawArgs[i + 1];
-    if (!stateArg) {
+    if (!stateArg || stateArg.startsWith("-")) {
       console.error("Error: --state requires a path");
       Deno.exit(1);
     }
     rawArgs.splice(i--, 2);
   }
 }
+// Help is answered before anything else reads the arguments, so
+// `read-png --help` never goes looking for a file named --help.
+try {
+  if (answerHelp(rawArgs)) Deno.exit(0);
+} catch (e) {
+  console.error(e.message);
+  usage();
+}
+
 let boardPath;
 try {
   boardPath = boardArg && boardStatePath(boardArg, boardsDir(dirArg));
@@ -203,9 +213,8 @@ const STARTER_STATE = {
   rev: 0,
 };
 
-function usage() {
-  console.error(
-    `Usage: diagram-cli.js [--state <path> | --board <name>] [--no-render] <command> [args...]
+function usageText() {
+  return `Usage: diagram-cli.js [--state <path> | --board <name>] [--no-render] <command> [args...]
 
 State file: --state <path> (any command) > --board <name> > DIAGRAM_STATE env >
 ./diagram-state.json in the cwd (so the CLI works from any project) > the bundled
@@ -297,8 +306,8 @@ Commands:
   set-title [text...]        Caption drawn top-left; no argument clears it
   set-footer [text...]       Caption drawn under the legend; no argument clears it
   set-theme <name|reset>     Color scheme (${
-      Object.keys(SCHEMES).join(", ")
-    }); reset = built-in palette
+    Object.keys(SCHEMES).join(", ")
+  }); reset = built-in palette
   set-legend auto|off|<color>[:<dash>]=<label>...
                              auto = one swatch per color in use, labeled with its name; off hides it;
                              entries take palette names, so they follow the theme
@@ -375,9 +384,61 @@ Commands:
 Built-in colors: ${BUILTIN_COLORS.join(", ")}
 Built-in styles: ${BUILTIN_STYLES.join(", ")}
 (Extend either via the "colors" / "edgeStyles" keys in diagram-state.json —
- custom names become valid for that diagram.)`,
-  );
-  Deno.exit(1);
+ custom names become valid for that diagram.)`;
+}
+
+// Usage to stderr with exit 1 after a mistake; to stdout with exit 0 when asked.
+function usage(code = 1) {
+  (code ? console.error : console.log)(usageText());
+  Deno.exit(code);
+}
+
+// One command's lines from the usage block, so help has a single source. An
+// entry is a line starting in column 2 plus its deeper-indented continuation
+// lines; it belongs to every command its synopsis names, at the start or after
+// " / " ("insert-row <at> / insert-col <at>", "remove-group <id> / list-groups").
+function commandHelp(name) {
+  const lines = usageText().split("\n");
+  const out = [];
+  let take = false;
+  for (const line of lines.slice(lines.indexOf("Commands:") + 1)) {
+    if (!line.startsWith("  ")) {
+      take = false;
+    } else if (line.startsWith("   ")) {
+      if (take) out.push(line);
+    } else {
+      const synopsis = line.trim().split(/\s{2,}/)[0];
+      take = synopsis.split(" / ").some((part) => part.split(" ")[0] === name);
+      if (take) out.push(line);
+    }
+  }
+  return out.length ? out.join("\n") : null;
+}
+
+// Print help when argv asks for it and return true; otherwise false. Asking
+// means `help`, `--help` or `-h` alone, `help <command>`, or `<command>
+// --help` / `-h` as the command's only argument: further along, `-h` is just as
+// likely a label or a note line (`set-footer run with -h for options`).
+function answerHelp(argv) {
+  const HELP = ["--help", "-h", "help"];
+  const [first, second] = argv;
+  let name;
+  if (HELP.includes(first) && argv.length <= 2) {
+    name = second;
+  } else if (argv.length === 2 && (second === "--help" || second === "-h")) {
+    name = first;
+  } else {
+    return false;
+  }
+  if (name === undefined || HELP.includes(name)) {
+    console.log(usageText());
+    return true;
+  }
+  const text = commandHelp(name);
+  // Thrown, not exited: inside a batch the error names the line.
+  if (!text) throw new Error(`Unknown command: ${name}`);
+  console.log(text);
+  return true;
 }
 
 if (!cmd) usage();
@@ -535,6 +596,7 @@ function parseBatch(text) {
 }
 
 function run(args) {
+  if (answerHelp(args)) return;
   const cmd = args[0];
   // Mutate through CAS-retry: loads fresh, applies the op, saves with rev guard,
   // retrying (reload + re-apply) on a concurrent write. Returns the saved Diagram.

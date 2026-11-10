@@ -14,6 +14,9 @@ ln -s "$PWD/bin/agent-diagrams" ~/.local/bin/agent-diagrams   # once, from the r
 needs, so a permission allowlist only needs one rule: `agent-diagrams *`.
 Without the link, run `deno task cli …` from the repo.
 
+`agent-diagrams --help` lists every command, and `agent-diagrams <command>
+--help` (or `help <command>`) prints just that one's usage.
+
 The dev server is optional. Run `just status` to see whether one is up (it
 checks the port itself), and `just serve` to start one on
 <http://localhost:7787>. Both exit non-zero when something is wrong. You don't
