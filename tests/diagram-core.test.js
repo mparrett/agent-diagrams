@@ -1069,11 +1069,20 @@ Deno.test("a lone source leaves its side center unless its target overlaps it", 
       h: 3,
       ...target,
     }];
-    const edges = [{ from: "src", to: "dst", fromEdge: "S", toEdge: "N" }];
+    const edges = [{
+      from: "src",
+      to: "dst",
+      fromEdge: "S",
+      toEdge: target.toEdge ?? "N",
+    }];
     return routeOnce(boxes, edges).routes[0].path[0].x;
   };
   assertEquals(exitCol({ col: 14 }), 3, "no overlap: side center");
   assertEquals(exitCol({ col: 4, w: 7 }), 5, "overlap 4..6: its midpoint");
+  // An L-route (S into a W side down-right) has no straight run either, so it
+  // centers too: a single wire starting centered is the intended look, at the
+  // cost of a longer horizontal leg than the corner exit gave.
+  assertEquals(exitCol({ col: 14, toEdge: "W" }), 3, "L-route: side center");
 });
 
 Deno.test("explicit fromConn/toConn pin endpoints to the exact slot cell", () => {

@@ -2329,30 +2329,37 @@ export function edgeSides(edgeDefs, boxes, direction) {
   });
 }
 
-// Cell index on `box`'s `side` that lines up with `other` along the shared axis
-// (x for N/S, y for E/W). Prefers the two boxes' overlap band — computed
-// identically from either end, so both connectors land on the same coordinate
-// and the wire runs straight; with no overlap it clamps toward `other`, leaving
-// only the single unavoidable jog.
-// Whether `other` shares any cell of `box`'s span along this side's axis, i.e.
-// whether a straight run between them is possible at all.
-function sideOverlaps(side, box, other) {
-  const horiz = side === "N" || side === "S";
-  const bLo = horiz ? box.col : box.row;
-  const oLo = horiz ? other.col : other.row;
-  return Math.max(bLo, oLo) <
-    Math.min(bLo + (horiz ? box.w : box.h), oLo + (horiz ? other.w : other.h));
-}
-
-function alignedIdx(side, box, other) {
+// `box` and `other` along `side`'s axis (x for N/S, y for E/W): box's start
+// and span, and the inclusive cell band they share, empty when lo > hi.
+function sideSpans(side, box, other) {
   const horiz = side === "N" || side === "S";
   const bLo = horiz ? box.col : box.row;
   const bSpan = horiz ? box.w : box.h;
   const oLo = horiz ? other.col : other.row;
   const oSpan = horiz ? other.w : other.h;
-  const lo = Math.max(bLo, oLo);
-  const hi = Math.min(bLo + bSpan - 1, oLo + oSpan - 1);
-  const coord = lo <= hi ? (lo + hi) / 2 : oLo + (oSpan - 1) / 2;
+  return {
+    bLo,
+    bSpan,
+    oMid: oLo + (oSpan - 1) / 2,
+    lo: Math.max(bLo, oLo),
+    hi: Math.min(bLo + bSpan - 1, oLo + oSpan - 1),
+  };
+}
+
+// Whether a straight run between the two boxes is possible at all.
+function sideOverlaps(side, box, other) {
+  const { lo, hi } = sideSpans(side, box, other);
+  return lo <= hi;
+}
+
+// Cell index on `box`'s `side` that lines up with `other` along the shared axis
+// (x for N/S, y for E/W). Prefers the two boxes' overlap band — computed
+// identically from either end, so both connectors land on the same coordinate
+// and the wire runs straight; with no overlap it clamps toward `other`, leaving
+// only the single unavoidable jog.
+function alignedIdx(side, box, other) {
+  const { bLo, bSpan, oMid, lo, hi } = sideSpans(side, box, other);
+  const coord = lo <= hi ? (lo + hi) / 2 : oMid;
   return Math.max(0, Math.min(bSpan - 1, Math.round(coord - bLo)));
 }
 
