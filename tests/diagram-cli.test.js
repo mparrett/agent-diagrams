@@ -1116,3 +1116,54 @@ Deno.test("cli: help for an unknown command fails", () =>
     assertEquals(r.code, 1);
     assert(r.err.includes("Unknown command: no-such"), r.err);
   }));
+
+Deno.test("cli: -h among a command's other arguments is text, not help", () =>
+  withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    writeState(path, { nodes: NODES, edges: [] });
+    const r = await runCli(path, [
+      "--no-render",
+      "set-footer",
+      "run",
+      "with",
+      "-h",
+    ]);
+    assertEquals(r.code, 0, r.err);
+    const st = JSON.parse(Deno.readTextFileSync(path));
+    assertEquals(st.footer, "run with -h");
+  }));
+
+Deno.test("cli: a batch answers help lines and keeps going", () =>
+  withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    const script = `${dir}/build.batch`;
+    writeState(path, { nodes: NODES, edges: [] });
+    Deno.writeTextFileSync(
+      script,
+      "help untangle\nread-png --help\nset-title after\n",
+    );
+    const r = await runCli(path, ["--no-render", "batch", script]);
+    assertEquals(r.code, 0, r.err);
+    assert(r.out.includes("--length-weight"), r.out);
+    assert(r.out.includes("read-png <file>"), r.out);
+    assertEquals(JSON.parse(Deno.readTextFileSync(path)).title, "after");
+
+    Deno.writeTextFileSync(script, "set-title ok\nhelp no-such\n");
+    const bad = await runCli(path, ["--no-render", "batch", script]);
+    assert(bad.code !== 0, "an unknown command fails the batch");
+    assert(bad.err.includes("line 2"), `names the line: ${bad.err}`);
+  }));
+
+Deno.test("cli: --board or --state followed by a flag is a missing value", () =>
+  withTempDir(async (dir) => {
+    for (const flag of ["--board", "--state"]) {
+      const { code, stderr } = await new Deno.Command(Deno.execPath(), {
+        args: ["run", ...PERMS, CLI, flag, "--help"],
+        stdout: "piped",
+        stderr: "piped",
+        cwd: dir,
+      }).output();
+      assertEquals(code, 1, flag);
+      assert(new TextDecoder().decode(stderr).includes("requires a"), flag);
+    }
+  }));
