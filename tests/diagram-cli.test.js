@@ -1049,3 +1049,70 @@ Deno.test("CLI: render --preview in a batch makes its one render a preview", asy
     assert(!full, "no full render");
     Deno.statSync(`${dir}/diagram.preview.png`);
   }));
+
+// Every command the CLI dispatches, read from its source: the switch's case
+// labels plus init, which is handled before the switch.
+function dispatchedCommands() {
+  const src = Deno.readTextFileSync(CLI);
+  const cases = [...src.matchAll(/^ {4}case "([a-z-]+)":/gm)].map((m) => m[1]);
+  return ["init", ...new Set(cases)];
+}
+
+Deno.test("cli: every command answers --help with its usage and exit 0", () =>
+  withTempDir(async (dir) => {
+    // A state path that doesn't exist: help must not need or create a board.
+    const state = `${dir}/never/diagram-state.json`;
+    const commands = dispatchedCommands();
+    assert(commands.length > 40, `found only ${commands.length} commands`);
+    const failures = [];
+    // A few at a time: each is a separate deno process.
+    for (let i = 0; i < commands.length; i += 8) {
+      await Promise.all(
+        commands.slice(i, i + 8).map(async (cmd) => {
+          const r = await runCli(state, [cmd, "--help"]);
+          if (r.code !== 0 || !r.out.includes(cmd) || r.err) {
+            failures.push(`${cmd}: exit ${r.code} ${r.err.split("\n")[0]}`);
+          }
+        }),
+      );
+    }
+    assertEquals(failures, []);
+    let missing = false;
+    try {
+      Deno.statSync(state);
+    } catch {
+      missing = true;
+    }
+    assert(missing, "help created a state file");
+  }));
+
+Deno.test("cli: --help, -h and help print usage without an error", () =>
+  withTempDir(async (dir) => {
+    const state = `${dir}/diagram-state.json`;
+    for (const args of [["--help"], ["-h"], ["help"]]) {
+      const r = await runCli(state, args);
+      assertEquals(r.code, 0, `${args}: ${r.err}`);
+      assert(r.out.startsWith("Usage:"), `${args}: ${r.out.slice(0, 80)}`);
+      assert(!r.err.includes("Unknown command"), r.err);
+    }
+  }));
+
+Deno.test("cli: help <command> matches <command> --help", () =>
+  withTempDir(async (dir) => {
+    const state = `${dir}/diagram-state.json`;
+    const a = await runCli(state, ["help", "untangle"]);
+    const b = await runCli(state, ["untangle", "-h"]);
+    assertEquals(a.code, 0, a.err);
+    assertEquals(a.out, b.out);
+    assert(a.out.includes("--length-weight"), a.out);
+    // A line naming two commands answers for both.
+    const col = await runCli(state, ["insert-col", "--help"]);
+    assert(col.out.includes("insert-row"), col.out);
+  }));
+
+Deno.test("cli: help for an unknown command fails", () =>
+  withTempDir(async (dir) => {
+    const r = await runCli(`${dir}/diagram-state.json`, ["help", "no-such"]);
+    assertEquals(r.code, 1);
+    assert(r.err.includes("Unknown command: no-such"), r.err);
+  }));

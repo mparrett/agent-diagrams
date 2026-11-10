@@ -71,6 +71,28 @@ for (let i = 0; i < rawArgs.length; i++) {
     rawArgs.splice(i--, 2);
   }
 }
+// Help is answered before anything else reads the arguments, so
+// `read-png --help` never goes looking for a file named --help.
+{
+  const HELP = ["--help", "-h", "help"];
+  const [first, second] = rawArgs;
+  const name = HELP.includes(first)
+    ? (second && !HELP.includes(second) ? second : null)
+    : rawArgs.slice(1).some((a) => a === "--help" || a === "-h")
+    ? first
+    : undefined;
+  if (name === null) usage(0);
+  if (name !== undefined) {
+    const text = commandHelp(name);
+    if (!text) {
+      console.error(`Unknown command: ${name}`);
+      usage();
+    }
+    console.log(text);
+    Deno.exit(0);
+  }
+}
+
 let boardPath;
 try {
   boardPath = boardArg && boardStatePath(boardArg, boardsDir(dirArg));
@@ -203,9 +225,8 @@ const STARTER_STATE = {
   rev: 0,
 };
 
-function usage() {
-  console.error(
-    `Usage: diagram-cli.js [--state <path> | --board <name>] [--no-render] <command> [args...]
+function usageText() {
+  return `Usage: diagram-cli.js [--state <path> | --board <name>] [--no-render] <command> [args...]
 
 State file: --state <path> (any command) > --board <name> > DIAGRAM_STATE env >
 ./diagram-state.json in the cwd (so the CLI works from any project) > the bundled
@@ -297,8 +318,8 @@ Commands:
   set-title [text...]        Caption drawn top-left; no argument clears it
   set-footer [text...]       Caption drawn under the legend; no argument clears it
   set-theme <name|reset>     Color scheme (${
-      Object.keys(SCHEMES).join(", ")
-    }); reset = built-in palette
+    Object.keys(SCHEMES).join(", ")
+  }); reset = built-in palette
   set-legend auto|off|<color>[:<dash>]=<label>...
                              auto = one swatch per color in use, labeled with its name; off hides it;
                              entries take palette names, so they follow the theme
@@ -375,9 +396,35 @@ Commands:
 Built-in colors: ${BUILTIN_COLORS.join(", ")}
 Built-in styles: ${BUILTIN_STYLES.join(", ")}
 (Extend either via the "colors" / "edgeStyles" keys in diagram-state.json —
- custom names become valid for that diagram.)`,
-  );
-  Deno.exit(1);
+ custom names become valid for that diagram.)`;
+}
+
+// Usage to stderr with exit 1 after a mistake; to stdout with exit 0 when asked.
+function usage(code = 1) {
+  (code ? console.error : console.log)(usageText());
+  Deno.exit(code);
+}
+
+// One command's lines from the usage block, so help has a single source. An
+// entry is a line starting in column 2 plus its deeper-indented continuation
+// lines; it belongs to every command its synopsis names, at the start or after
+// " / " ("insert-row <at> / insert-col <at>", "remove-group <id> / list-groups").
+function commandHelp(name) {
+  const lines = usageText().split("\n");
+  const out = [];
+  let take = false;
+  for (const line of lines.slice(lines.indexOf("Commands:") + 1)) {
+    if (!line.startsWith("  ")) {
+      take = false;
+    } else if (line.startsWith("   ")) {
+      if (take) out.push(line);
+    } else {
+      const synopsis = line.trim().split(/\s{2,}/)[0];
+      take = synopsis.split(" / ").some((part) => part.split(" ")[0] === name);
+      if (take) out.push(line);
+    }
+  }
+  return out.length ? out.join("\n") : null;
 }
 
 if (!cmd) usage();
