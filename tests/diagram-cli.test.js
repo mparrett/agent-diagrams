@@ -746,6 +746,47 @@ Deno.test("CLI: init --empty writes a board with no sample nodes", async () =>
     assertEquals([s.nodes.length, s.edges.length], [0, 0]);
   }));
 
+Deno.test("CLI: init --state creates a missing directory", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/new/nested/diagram-state.json`;
+    const r = await runCli(path, ["init", "--empty"]);
+    assertEquals(r.code, 0, r.err);
+    Deno.statSync(path);
+  }));
+
+Deno.test("CLI: init --state reports a directory it cannot create", async () =>
+  await withTempDir(async (dir) => {
+    // A file where the directory would go.
+    Deno.writeTextFileSync(`${dir}/taken`, "");
+    const r = await runCli(`${dir}/taken/diagram-state.json`, ["init"]);
+    assertEquals(r.code, 1);
+    assert(r.err.startsWith("Error: cannot create"), r.err);
+  }));
+
+Deno.test("CLI: init refuses to overwrite an existing board", async () =>
+  await withTempDir(async (dir) => {
+    const path = `${dir}/diagram-state.json`;
+    Deno.writeTextFileSync(path, "keep");
+    const r = await runCli(path, ["init"]);
+    assertEquals(r.code, 1);
+    assert(r.err.includes("already exists"), r.err);
+    assertEquals(Deno.readTextFileSync(path), "keep");
+  }));
+
+Deno.test("CLI: init honours DIAGRAM_STATE", async () =>
+  await withTempDir(async (dir) => {
+    const r = await new Deno.Command(Deno.execPath(), {
+      args: ["run", ...PERMS, CLI, "init", "--empty"],
+      cwd: dir,
+      env: { DIAGRAM_STATE: "boards/x/diagram-state.json" },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(r.code, 0, new TextDecoder().decode(r.stderr));
+    Deno.statSync(`${dir}/boards/x/diagram-state.json`);
+    assertEquals([...Deno.readDirSync(dir)].map((e) => e.name), ["boards"]);
+  }));
+
 // Run the CLI from a scratch cwd with no state flag, so only --board and
 // --diagrams-dir decide where a write lands.
 async function runCliBare(cwd, args) {

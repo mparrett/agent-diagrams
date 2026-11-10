@@ -78,7 +78,10 @@ import { embedPngMeta } from "./png-meta.js";
  */
 export const EXAMPLE_STATE = "diagrams/basic/diagram-state.json";
 
-export function resolveStatePath(explicit) {
+// `creating` is for init, which names the file it is about to write: it skips
+// the bundled-example fallback, since scaffolding over the example is never
+// what an unflagged init means.
+export function resolveStatePath(explicit, { creating = false } = {}) {
   let p = explicit;
   if (!p) {
     try {
@@ -87,6 +90,7 @@ export function resolveStatePath(explicit) {
   }
   if (p) return resolve(Deno.cwd(), p);
   const cwdState = resolve(Deno.cwd(), "diagram-state.json");
+  if (creating) return cwdState;
   try {
     Deno.statSync(cwdState);
     return cwdState; // local diagram wins (out-of-repo authoring via `init`)
