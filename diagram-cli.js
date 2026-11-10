@@ -515,10 +515,8 @@ if (cmd === "init") {
     );
     Deno.exit(1);
   }
-  const target = resolve(
-    Deno.cwd(),
-    stateArg ?? boardPath ?? "diagram-state.json",
-  );
+  // Same precedence as every other command, DIAGRAM_STATE included.
+  const target = resolveStatePath(stateArg ?? boardPath, { creating: true });
   // A new --board name is a new directory under the boards directory, and a
   // --state path may name one too; without this, init died with an uncaught
   // NotFound. Other commands still need the file to exist.
@@ -528,16 +526,24 @@ if (cmd === "init") {
     console.error(`Error: cannot create ${dirname(target)}: ${e.message}`);
     Deno.exit(1);
   }
-  try {
-    Deno.statSync(target);
-    console.error(`Error: ${target} already exists — refusing to overwrite`);
-    Deno.exit(1);
-  } catch { /* not found — proceed */ }
   const starter = embedded ||
     (flags.includes("--empty")
       ? { ...STARTER_STATE, nodes: [], edges: [] }
       : STARTER_STATE);
-  Deno.writeTextFileSync(target, JSON.stringify(starter, null, 2) + "\n");
+  // createNew makes the existence check and the write one step, so two
+  // concurrent inits cannot both pass a check and overwrite each other.
+  try {
+    Deno.writeTextFileSync(target, JSON.stringify(starter, null, 2) + "\n", {
+      createNew: true,
+    });
+  } catch (e) {
+    console.error(
+      e instanceof Deno.errors.AlreadyExists
+        ? `Error: ${target} already exists — refusing to overwrite`
+        : `Error: cannot write ${target}: ${e.message}`,
+    );
+    Deno.exit(1);
+  }
   // Print a render command that actually works from where the user is standing:
   // in the tool repo the `deno task` alias exists; from a foreign cwd it doesn't.
   const toolDir = dirname(fromFileUrl(import.meta.url));
