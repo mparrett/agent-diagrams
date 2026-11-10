@@ -2,6 +2,7 @@ import { assert } from "@std/assert";
 import {
   boardExtent,
   boardExtentForContent,
+  BOX_W_LADDER_CELLS,
   buildGrid,
   CELL,
   computeBridgeBreaks,
@@ -2317,6 +2318,29 @@ Deno.test("shapes size their boxes for caps and the person icon", () => {
   );
   assert(person.h > box.h, `person ${person.h} vs box ${box.h}`);
   assert(cyl.w === box.w, "a shape does not change the width");
+});
+
+Deno.test("a cylinder or icon keeps a short box on the narrowest rung", () => {
+  // Short text sits right at the aspect floor; the caps or icon's extra
+  // height used to push the box off the 105px rung to 180px.
+  const ctx = measureContext();
+  const size = (extra) =>
+    nodeBoxSize(ctx, { id: "db", label: "DB", details: ["a", "b"], ...extra });
+  const box = size({});
+  // The plain box must sit on the bottom rung, or this compares two boxes the
+  // chooser widened for some other reason.
+  assertEquals(box.w, BOX_W_LADDER_CELLS[0] * CELL);
+  for (
+    const extra of [
+      { shape: "cylinder" },
+      { icon: "cylinder" },
+      { shape: "person" },
+    ]
+  ) {
+    const s = size(extra);
+    assert(s.w === box.w, `${JSON.stringify(extra)}: ${s.w} vs box ${box.w}`);
+    assert(s.h > box.h, `${JSON.stringify(extra)} is still taller`);
+  }
 });
 
 Deno.test("wires reach a cylinder's cap and a person's figure", () => {
