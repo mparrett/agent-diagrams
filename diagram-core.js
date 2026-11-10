@@ -2329,20 +2329,37 @@ export function edgeSides(edgeDefs, boxes, direction) {
   });
 }
 
+// `box` and `other` along `side`'s axis (x for N/S, y for E/W): box's start
+// and span, and the inclusive cell band they share, empty when lo > hi.
+function sideSpans(side, box, other) {
+  const horiz = side === "N" || side === "S";
+  const bLo = horiz ? box.col : box.row;
+  const bSpan = horiz ? box.w : box.h;
+  const oLo = horiz ? other.col : other.row;
+  const oSpan = horiz ? other.w : other.h;
+  return {
+    bLo,
+    bSpan,
+    oMid: oLo + (oSpan - 1) / 2,
+    lo: Math.max(bLo, oLo),
+    hi: Math.min(bLo + bSpan - 1, oLo + oSpan - 1),
+  };
+}
+
+// Whether a straight run between the two boxes is possible at all.
+function sideOverlaps(side, box, other) {
+  const { lo, hi } = sideSpans(side, box, other);
+  return lo <= hi;
+}
+
 // Cell index on `box`'s `side` that lines up with `other` along the shared axis
 // (x for N/S, y for E/W). Prefers the two boxes' overlap band — computed
 // identically from either end, so both connectors land on the same coordinate
 // and the wire runs straight; with no overlap it clamps toward `other`, leaving
 // only the single unavoidable jog.
 function alignedIdx(side, box, other) {
-  const horiz = side === "N" || side === "S";
-  const bLo = horiz ? box.col : box.row;
-  const bSpan = horiz ? box.w : box.h;
-  const oLo = horiz ? other.col : other.row;
-  const oSpan = horiz ? other.w : other.h;
-  const lo = Math.max(bLo, oLo);
-  const hi = Math.min(bLo + bSpan - 1, oLo + oSpan - 1);
-  const coord = lo <= hi ? (lo + hi) / 2 : oLo + (oSpan - 1) / 2;
+  const { bLo, bSpan, oMid, lo, hi } = sideSpans(side, box, other);
+  const coord = lo <= hi ? (lo + hi) / 2 : oMid;
   return Math.max(0, Math.min(bSpan - 1, Math.round(coord - bLo)));
 }
 
@@ -2420,13 +2437,14 @@ function allocateConnectors(edgeDefs, _boxes, boxById, opts = {}) {
     // Indices are emitted directly (resolveIdx passes numbers through);
     // explicit pins win. Barycentric order is preserved in both modes.
     const center = Math.floor((n - 1) / 2); // side-center connector index
-    // A lone destination connector takes the side center — the clean "first
-    // connect" look — instead of the overlap-aligned cell. Lone *source*
-    // connectors keep their overlap alignment, so straight runs survive there.
-    const loneDest = total === 1 && autos.length === 1 &&
-      autos[0].role === "tgt";
+    // A lone connector takes the side center, the clean "first connect" look.
+    // A lone *source* keeps its overlap-aligned cell when its target overlaps
+    // the side, so a straight run survives; with no overlap there is no
+    // straight run to keep, and alignment would only clamp it to a corner.
+    const lone = total === 1 && autos.length === 1 &&
+      (autos[0].role === "tgt" || !sideOverlaps(side, box, autos[0].other));
     let slots;
-    if (centerMode || loneDest) {
+    if (centerMode || lone) {
       // A fan symmetric about the side center: a fractional base
       // ((total-1)/2) lands a lone edge dead-center and lets even counts
       // straddle it instead of left-biasing.
