@@ -2319,6 +2319,25 @@ Deno.test("shapes size their boxes for caps and the person icon", () => {
   assert(cyl.w === box.w, "a shape does not change the width");
 });
 
+Deno.test("a cylinder or icon keeps a short box on the narrowest rung", () => {
+  // Short text sits right at the aspect floor; the caps or icon's extra
+  // height used to push the box off the 105px rung to 180px.
+  const ctx = measureContext();
+  const size = (extra) =>
+    nodeBoxSize(ctx, {
+      id: "db",
+      label: "Postgres",
+      details: ["orders, users"],
+      ...extra,
+    });
+  const box = size({});
+  for (const extra of [{ shape: "cylinder" }, { icon: "cylinder" }]) {
+    const s = size(extra);
+    assert(s.w === box.w, `${JSON.stringify(extra)}: ${s.w} vs box ${box.w}`);
+    assert(s.h > box.h, `${JSON.stringify(extra)} is still taller`);
+  }
+});
+
 Deno.test("wires reach a cylinder's cap and a person's figure", () => {
   const target = { id: "t", col: 10, row: 10, w: 12, h: 6 };
   const start = (shape, x) => {

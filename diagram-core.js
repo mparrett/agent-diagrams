@@ -954,6 +954,18 @@ function sizeAt(ctx, node, targetPx, font, sizes) {
 }
 
 /**
+ * A sized box's aspect for the aspect band, measured on its text block: the
+ * height a plain box with the same text would have. A cylinder's caps and an
+ * icon add height that isn't text; counted in, they pushed every such box off
+ * the narrowest rung (105x79 is 1.33, just under the 4:3 floor), so a database
+ * came out 180px wide where the same text in a plain box is 105px.
+ */
+function textAspect(node, s, sizes) {
+  const ins = shapeInsets(node, sizes);
+  return s.w / Math.max(s.h - ins.top - ins.bottom, MIN_BOX_H);
+}
+
+/**
  * Every ladder rung this node could take, scored. Empty when the ladder is
  * disabled (maxNodeW: 0), which is the caller's signal to grow unbounded.
  */
@@ -970,7 +982,7 @@ export function boxCandidates(
     const target = cells * CELL;
     if (target > cap) continue;
     const s = sizeAt(ctx, node, target, font, sizes);
-    const aspect = s.w / s.h;
+    const aspect = textAspect(node, s, sizes);
     out.push({
       ...s,
       target,
@@ -1386,7 +1398,7 @@ export function computeLayout(ctx, state, canvasW) {
           // Nor worth leaving the aspect band the chooser just enforced: a
           // narrower rung is taller *and* smaller in area, so the tolerance
           // test alone waves through the tall thin columns the band rejects.
-          const aspect = alt.w / alt.h;
+          const aspect = textAspect(node, alt, SIZES);
           if (aspect < BOX_ASPECT_MIN || aspect > BOX_ASPECT_MAX) continue;
           if (alt.w * alt.h <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
             pixDims.set(node.id, alt);
