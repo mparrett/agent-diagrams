@@ -18,13 +18,33 @@ const GOOGLE_CHROME =
 /** Playwright's browser cache, per its own defaults. */
 function playwrightCache() {
   const override = Deno.env.get("PLAYWRIGHT_BROWSERS_PATH");
-  if (override && override !== "0") return override;
+  // "0" keeps browsers inside each project's node_modules: no shared cache.
+  if (override === "0") return null;
+  if (override) return override;
   const home = Deno.env.get("HOME");
-  if (!home) return null;
-  return Deno.build.os === "darwin"
-    ? join(home, "Library", "Caches", "ms-playwright")
-    : join(home, ".cache", "ms-playwright");
+  if (Deno.build.os === "darwin") {
+    return home ? join(home, "Library", "Caches", "ms-playwright") : null;
+  }
+  const xdg = Deno.env.get("XDG_CACHE_HOME") ||
+    (home ? join(home, ".cache") : null);
+  return xdg ? join(xdg, "ms-playwright") : null;
 }
+
+// Binary paths inside one revision directory: the current layout, then the
+// one older Playwright releases used (chrome-mac/, chrome-linux/).
+const SHELL_LAYOUTS = [
+  [/^chrome-headless-shell-/, "chrome-headless-shell"],
+  [/^chrome-(mac|linux)$/, "headless_shell"],
+];
+
+const exists = (path) => {
+  try {
+    Deno.statSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /** Newest chrome-headless-shell in the Playwright cache, or null. */
 export function headlessShell(cache = playwrightCache()) {
@@ -42,6 +62,9 @@ export function headlessShell(cache = playwrightCache()) {
     .sort((a, b) => Number(b[1]) - Number(a[1]));
   for (const [dirName] of revs) {
     const dir = join(cache, dirName);
+    // Playwright writes this marker last; without it the unpack was cut short
+    // and the binary may be there while its resources are not.
+    if (!exists(join(dir, "INSTALLATION_COMPLETE"))) continue;
     let platforms;
     try {
       platforms = [...Deno.readDirSync(dir)];
@@ -49,12 +72,10 @@ export function headlessShell(cache = playwrightCache()) {
       continue;
     }
     for (const p of platforms) {
-      if (!p.name.startsWith("chrome-headless-shell-")) continue;
-      const bin = join(dir, p.name, "chrome-headless-shell");
-      try {
-        if (Deno.statSync(bin).isFile) return bin;
-      } catch {
-        // an interrupted install; try the next one
+      for (const [pattern, name] of SHELL_LAYOUTS) {
+        if (!pattern.test(p.name)) continue;
+        const bin = join(dir, p.name, name);
+        if (exists(bin)) return bin;
       }
     }
   }
