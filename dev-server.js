@@ -48,6 +48,8 @@ import { basename, dirname, fromFileUrl, join } from "@std/path";
 import {
   boardsDir,
   captureArtifacts,
+  DEFAULT_H,
+  DEFAULT_W,
   Diagram,
   EXAMPLE_STATE,
   EXAMPLES_PREFIX,
@@ -624,9 +626,6 @@ async function handleWrite(req, op, board) {
   }
 }
 
-// Copy a board into the boards directory: { name? } → { name }. Without a name
-// it takes the source directory's, numbered if that is taken; a name given
-// explicitly that is taken is a conflict instead.
 async function requestedName(req) {
   let body = {};
   try {
@@ -673,6 +672,9 @@ function createBoard(asked, fallback, stateText) {
   }
 }
 
+// Copy a board into the boards directory: { name? } → { name }. Without a name
+// it takes the source directory's, numbered if that is taken; a name given
+// explicitly that is taken is a conflict instead.
 async function copyBoard(req, board) {
   return createBoard(
     await requestedName(req),
@@ -690,8 +692,8 @@ async function newBoard(req) {
   }
   const state = {
     title: String(asked).split("/").pop(),
-    width: 1500,
-    height: 900,
+    width: DEFAULT_W,
+    height: DEFAULT_H,
     nodes: [],
     edges: [],
   };

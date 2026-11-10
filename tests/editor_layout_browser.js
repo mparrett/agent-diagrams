@@ -624,12 +624,18 @@ try {
   // Stub the name prompt; the native dialog isn't what is under test.
   await page.evaluate(`window.prompt = () => "drafts/blank";
     document.getElementById("bNewBoard").click()`);
-  await wait(2500);
+  // Poll rather than sleep: the POST, its render and the reload take as long
+  // as the runner makes them.
+  let opened = false;
+  for (let t = 0; t < 40 && !opened; t++) {
+    await wait(250);
+    opened = await page.evaluate(
+      `location.search === "?d=drafts/blank" && !document.getElementById("bDrag").disabled`,
+    ).catch(() => false); // mid-navigation
+  }
   check(
     "+ New opens an empty writable board",
-    await page.evaluate(
-      `location.search === "?d=drafts/blank" && !document.getElementById("bDrag").disabled`,
-    ) &&
+    opened &&
       JSON.parse(
           Deno.readTextFileSync(
             `${dir}/boards/drafts/blank/diagram-state.json`,
