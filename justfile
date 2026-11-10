@@ -29,13 +29,15 @@ render:
     deno task render
 
 # Editor↔renderer measurement-parity check. Needs the dev server running
-# (`just serve`) and a Chrome (override binary with CHROME_BIN=...).
+# (`just serve`) and a browser: Playwright's chrome-headless-shell if
+# installed, else Google Chrome (CHROME_BIN=... overrides; see tests/chrome-bin.js).
 parity:
     deno task parity:gen
     deno task parity:browser
 
 # Editor saves only what a person placed, and shows what the renderer computes.
-# Starts its own server on a temporary board. Needs a Chrome (CHROME_BIN=...).
+# Starts its own server on a temporary board. Needs a browser, picked
+# the same way as for `parity` (see tests/chrome-bin.js).
 editor-check:
     deno run -A --unstable-ffi tests/editor_layout_browser.js
 
