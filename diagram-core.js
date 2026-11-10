@@ -957,7 +957,12 @@ function sizeAt(ctx, node, targetPx, font, sizes) {
   // The height a plain box holding this text would take: what the aspect
   // band measures (see textAspect).
   const textH = Math.max(h - ins.top - ins.bottom, MIN_BOX_H);
-  return { w, h, textH, labelLines, detailLines };
+  // What a width choice is charged for: that plain box plus the shape's caps
+  // or icon as a fixed band. Equal to h for a plain box. Charging the drawn h
+  // instead let the card minimum absorb a detail wrap for a plain box but not
+  // for a cylinder, whose caps already lift it past that minimum.
+  const costH = textH + ins.top + ins.bottom;
+  return { w, h, textH, costH, labelLines, detailLines };
 }
 
 /**
@@ -992,7 +997,7 @@ export function boxCandidates(
     out.push({
       ...s,
       target,
-      area: s.w * s.h,
+      area: s.w * s.costH,
       aspect,
       clipped: isClipped(node, s),
       // Lines added by wrapping details (each authored line can wrap to 3).
@@ -1056,8 +1061,11 @@ function bestCandidate(cands, wrapSlack = DEFAULT_WRAP_SLACK) {
   // with the fewest title lines, then the fewest wrapped detail lines, then
   // the smallest. Area is compared in drawn cells, which is what the board
   // spends: content pixels made "Message history" look 1.69x dearer on one
-  // line when its drawn box is 1.43x.
-  const cells = (c) => Math.ceil(c.w / CELL) * Math.ceil(c.h / CELL);
+  // line when its drawn box is 1.43x. The height is costH (see sizeAt), so a
+  // cylinder is weighed like a plain box with the same text plus its caps:
+  // weighing its drawn height, a detail wrap the plain box absorbs for free
+  // cost it a cell row, and it paid 180px to avoid a wrap the plain box keeps.
+  const cells = (c) => Math.ceil(c.w / CELL) * Math.ceil(c.costH / CELL);
   const pick = (pool) => {
     const best = smallest(pool);
     const limit = cells(best) * wrapSlack;
@@ -1356,13 +1364,13 @@ export function computeLayout(ctx, state, canvasW) {
     // nodeBoxSize is the single source of truth (explicit-width title wrap +
     // card floor); the editor's live resize calls it too, so a dragged box
     // matches what re-rendering produces.
-    const { w, h, labelLines, detailLines } = nodeBoxSize(
+    const { w, h, textH, costH, labelLines, detailLines } = nodeBoxSize(
       ctx,
       node,
       FONT,
       SIZES,
     );
-    pixDims.set(node.id, { w, h, labelLines, detailLines });
+    pixDims.set(node.id, { w, h, textH, costH, labelLines, detailLines });
   }
 
   // Uniformity pass. Choosing each box's width independently minimises area per
@@ -1385,7 +1393,7 @@ export function computeLayout(ctx, state, canvasW) {
         .map(([w]) => w);
       for (const node of auto) {
         const cur = pixDims.get(node.id);
-        const curArea = cur.w * cur.h;
+        const curArea = cur.w * cur.costH;
         const curRank = ranked.indexOf(cur.w);
         const curClipped = isClipped(node, cur);
         const curCount = popularity.get(cur.w) || 0;
@@ -1406,7 +1414,7 @@ export function computeLayout(ctx, state, canvasW) {
           // test alone waves through the tall thin columns the band rejects.
           const aspect = textAspect(alt);
           if (aspect < BOX_ASPECT_MIN || aspect > BOX_ASPECT_MAX) continue;
-          if (alt.w * alt.h <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
+          if (alt.w * alt.costH <= curArea * (1 + BOX_UNIFORMITY_TOLERANCE)) {
             pixDims.set(node.id, alt);
             break;
           }

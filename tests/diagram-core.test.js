@@ -2343,6 +2343,28 @@ Deno.test("a cylinder or icon keeps a short box on the narrowest rung", () => {
   }
 });
 
+Deno.test("a cylinder keeps a detail wrap that a plain box keeps", () => {
+  // The detail wraps at 105px. A plain box absorbs the extra line inside the
+  // card minimum; a cylinder's caps already lift it past that, so the wrap
+  // cost it a cell row and the chooser took 180px to avoid it.
+  const ctx = measureContext();
+  const size = (extra) =>
+    nodeBoxSize(ctx, {
+      id: "db",
+      label: "DB",
+      details: ["orders, users"],
+      ...extra,
+    });
+  const box = size({});
+  assertEquals(box.w, BOX_W_LADDER_CELLS[0] * CELL);
+  assertEquals(box.detailLines.length, 2, "the plain box wraps its detail");
+  for (const extra of [{ shape: "cylinder" }, { icon: "cylinder" }]) {
+    const s = size(extra);
+    assert(s.w === box.w, `${JSON.stringify(extra)}: ${s.w} vs box ${box.w}`);
+    assertEquals(s.detailLines.length, 2, `${JSON.stringify(extra)} wraps`);
+  }
+});
+
 Deno.test("wires reach a cylinder's cap and a person's figure", () => {
   const target = { id: "t", col: 10, row: 10, w: 12, h: 6 };
   const start = (shape, x) => {
