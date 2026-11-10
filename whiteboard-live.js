@@ -2434,6 +2434,21 @@ document.getElementById("bCopyBoard").onclick = async () => {
     setStatus("copy failed: " + e.message);
   }
 };
+document.getElementById("bNewBoard").onclick = async () => {
+  const name = prompt("Name for the new board (use / for folders):");
+  if (!name?.trim()) return;
+  try {
+    const r = await fetch("/new", {
+      method: "POST",
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+    location.search = "?d=" + j.name;
+  } catch (e) {
+    setStatus("new board failed: " + e.message);
+  }
+};
 // NOTE: there used to be a "Reset" button here, documented as "drops all manual
 // positions back to auto-layout". It restored b._origCol/_origRow — but
 // computeLayout sets _origCol from the *solved* position, which for any node

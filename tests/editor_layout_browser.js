@@ -620,6 +620,22 @@ try {
       `location.search === "?d=basic" && !document.getElementById("bDrag").disabled`,
     ) && Deno.statSync(`${dir}/boards/basic/diagram-state.json`).isFile,
   );
+  // + New asks for a name and opens an empty, writable board under it.
+  // Stub the name prompt; the native dialog isn't what is under test.
+  await page.evaluate(`window.prompt = () => "drafts/blank";
+    document.getElementById("bNewBoard").click()`);
+  await wait(2500);
+  check(
+    "+ New opens an empty writable board",
+    await page.evaluate(
+      `location.search === "?d=drafts/blank" && !document.getElementById("bDrag").disabled`,
+    ) &&
+      JSON.parse(
+          Deno.readTextFileSync(
+            `${dir}/boards/drafts/blank/diagram-state.json`,
+          ),
+        ).nodes.length === 0,
+  );
 } finally {
   await browser.close();
   server.kill();
