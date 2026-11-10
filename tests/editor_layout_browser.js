@@ -7,14 +7,14 @@
 // Run:  just editor-check
 //   or  deno run -A --unstable-ffi tests/editor_layout_browser.js [port]
 //
-// CHROME_BIN overrides the browser binary (defaults to macOS Google Chrome).
+// The browser is chosen by tests/chrome-bin.js; CHROME_BIN overrides it.
 
 import { launch } from "@astral/astral";
+import { chromeBin } from "./chrome-bin.js";
 
 const port = Number(Deno.args[0] ?? 8011);
 const root = new URL("..", import.meta.url).pathname;
-const chrome = Deno.env.get("CHROME_BIN") ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const chrome = chromeBin();
 // Left unresolved on purpose: on macOS the temp dir is behind a symlink, which
 // is how the dev server's live reload was found to miss such boards.
 const dir = Deno.makeTempDirSync({ prefix: "agent-diagrams-editor-" });

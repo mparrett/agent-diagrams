@@ -8,13 +8,13 @@
 // Run:  deno run --allow-net --allow-read --allow-write --allow-env --allow-run \
 //         tests/parity_browser.js [url]
 //
-// CHROME_BIN overrides the browser binary (defaults to macOS Google Chrome).
+// The browser is chosen by tests/chrome-bin.js; CHROME_BIN overrides it.
 
 import { launch } from "@astral/astral";
+import { chromeBin } from "./chrome-bin.js";
 
 const url = Deno.args[0] ?? "http://127.0.0.1:7787/tests/parity-page.html";
-const path = Deno.env.get("CHROME_BIN") ??
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const path = chromeBin();
 
 const browser = await launch({ path, headless: true });
 let code = 1;

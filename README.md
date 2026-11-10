@@ -477,6 +477,7 @@ Git history of `diagram-state.json` is your version timeline; `capture` pins sha
 | `render-diagram.js` | One-liner: load + render |
 | `raster-check.js` | Verifies the rendered PNG actually contains its text (`just raster-check`) |
 | `tests/editor_layout_browser.js` | Drives the editor in headless Chrome: a drag saves only that box, and the editor matches the renderer (`just editor-check`) |
+| `tests/chrome-bin.js` | Picks the browser for the headless drivers: `CHROME_BIN`, else Playwright's `chrome-headless-shell`, else Google Chrome (which leaks an app-bundle copy per run on macOS) |
 | `bin/upstream-check.js` | Asks whether any `@gfx/canvas` workaround can be deleted yet (`just upstream-check`) |
 | `bin/import-depgraph.js` | Builds a board from a Deno module graph (`just import-deps`) |
 | `bin/import-filetree.js` | Builds a board from a directory tree (`just import-tree`) |
